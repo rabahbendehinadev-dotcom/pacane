@@ -1,0 +1,239 @@
+Act as a senior ERP product architect and full-stack engineer.
+
+Integrate the module:
+
+CONSOMMATION INTERNE / CESSION INTERNE DE CONSOMMABLES
+
+into the existing EXECUTIVE / MANAGER DASHBOARD
+without polluting customer sales KPIs.
+
+==================================================
+BUSINESS GOAL
+==================================================
+
+Managers and directors need to quickly see:
+- how much each boutique consumes in internal consumables
+- which branches cost the most internally
+- which internal consumable products are used the most
+- the operational cost impact by period
+
+This data must appear in the executive dashboard as INTERNAL COST metrics,
+not as customer sales or turnover.
+
+==================================================
+STRICT ACCOUNTING / KPI RULE
+==================================================
+
+Internal consumption must:
+- increase internal operational cost visibility
+- NOT increase revenue
+- NOT increase customer turnover
+- NOT count as a customer sale
+- NOT appear in sales KPIs
+- NOT affect receivables
+- NOT affect POS KPIs
+
+It may affect:
+- operational cost KPIs
+- branch cost KPIs
+- executive overview KPIs
+
+==================================================
+DASHBOARD INTEGRATION SCOPE
+==================================================
+
+Integrate internal consumption into:
+1. Executive / manager dashboard summary cards
+2. Branch comparison section
+3. Cost breakdown section
+4. Alerts / insights section if useful
+
+Do this cleanly and professionally.
+
+==================================================
+SECTION 1 — KPI CARDS
+==================================================
+
+Add dedicated KPI cards for internal consumption.
+
+Suggested cards:
+1. Consommation interne du mois
+- total confirmed internal consumable cost in current period
+
+2. Boutiques consommatrices
+- number of branches that received internal consumables in current period
+
+3. Produit interne le plus consommé
+- top internal consumable by cost or quantity
+
+4. Documents internes confirmés
+- count of confirmed internal consumption documents in current period
+
+Card rules:
+- use confirmed documents only
+- exclude draft and cancelled
+- respect current dashboard date range if one exists
+- respect branch scope and role permissions
+
+==================================================
+SECTION 2 — BRANCH COMPARISON
+==================================================
+
+In the existing branch performance / comparison area,
+add internal consumption cost as a separate metric.
+
+For each boutique:
+- Ventes nettes
+- Dépenses
+- Consommation interne
+
+Do NOT merge internal consumption into sales.
+Display it as its own operational cost line/bar/value.
+
+Possible visualization:
+- grouped bar chart per branch:
+  - ventes
+  - dépenses
+  - consommation interne
+
+Or:
+- existing branch cards/tables with an added internal cost field
+
+Requirement:
+This must help management see which boutique consumes more supplies internally.
+
+==================================================
+SECTION 3 — COST BREAKDOWN
+==================================================
+
+Add or extend a breakdown section for operational cost composition.
+
+Suggested breakdown:
+- Dépenses classiques
+- Consommation interne
+- Other operational costs if already present
+
+Goal:
+Managers should understand that some branch cost comes from internal supplies distributed from central stock.
+
+==================================================
+SECTION 4 — INSIGHTS / ALERTS
+==================================================
+
+Add a small optional insight block such as:
+- "Boutique la plus consommatrice ce mois"
+- "Produit consommable interne le plus utilisé"
+- "Hausse de consommation interne vs mois précédent"
+- "Aucune consommation interne sur la période" if empty
+
+Only show useful insights if data exists.
+
+==================================================
+SECTION 5 — BRANCH SCOPE
+==================================================
+
+Very important:
+Dashboard integration must respect branch scope.
+
+Rules:
+- Admin/global users can see all branches within their scope
+- Restricted users see only branches they are allowed to see
+- If dashboard is filtered to one branch, internal consumption must also be filtered to that branch only
+- No branch leakage
+
+==================================================
+SECTION 6 — DATA RULES
+==================================================
+
+Use only:
+- confirmed internal consumption documents
+- their confirmed line totals / document totals
+
+Exclude:
+- drafts
+- cancelled documents
+
+Use current date filter logic of dashboard if present.
+If dashboard has:
+- today
+- this week
+- this month
+- custom range
+internal consumption data must follow the same range.
+
+==================================================
+SECTION 7 — API / BACKEND
+==================================================
+
+Add or extend dashboard endpoints cleanly.
+
+Possible options:
+- extend executive dashboard endpoint
+or
+- add dedicated internal consumption dashboard summary endpoint
+
+Requirements:
+- branch-scope safe
+- date-range safe
+- efficient aggregations
+- no duplication with sales tables
+- no accidental joins that inflate counts
+
+Needed aggregates:
+- total internal consumption cost
+- count of confirmed documents
+- count of destination branches
+- top product by cost / quantity
+- branch totals
+- period trend if chart needed
+
+==================================================
+SECTION 8 — UI / UX
+==================================================
+
+French UI only.
+
+Design must remain premium and clean.
+
+Requirements:
+- cards visually aligned with existing dashboard
+- internal cost clearly labeled
+- no confusing vocabulary
+- use labels like:
+  - "Consommation interne"
+  - "Coût interne"
+  - "Boutique la plus consommatrice"
+  - "Produit interne le plus utilisé"
+
+Do not clutter the dashboard.
+Integrate naturally.
+
+==================================================
+SECTION 9 — TESTS
+==================================================
+
+Test:
+1. Confirmed internal consumption documents appear in dashboard metrics
+2. Draft/cancelled documents do not appear
+3. Branch filter limits internal consumption correctly
+4. Date filter limits internal consumption correctly
+5. Executive dashboard totals remain financially coherent
+6. Sales turnover does not change because of internal consumption
+7. Branch comparison displays internal consumption separately
+8. Top consuming boutique is correct
+9. Top internal product is correct
+10. No console errors
+11. No API 500 errors
+
+==================================================
+SECTION 10 — DELIVERABLE FORMAT
+==================================================
+
+Return a concise French report:
+- dashboard cards added
+- charts/tables updated
+- endpoint(s) updated
+- confirmed-only rule status
+- branch-scope status
+- confirmation that internal consumption does NOT affect sales KPIs
+- tests passed

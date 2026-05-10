@@ -109,6 +109,70 @@ router.get("/internal-consumptions", requireAuth, requirePermission(P.internalCo
   res.json(result);
 });
 
+// ── CSV HELPERS ───────────────────────────────────────────────────────────────
+function csvEsc(v: string | number | null | undefined): string {
+  if (v == null) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+function csvRow(fields: (string | number | null | undefined)[]): string {
+  return fields.map(csvEsc).join(",");
+}
+
+// ── EXPORT LIST ───────────────────────────────────────────────────────────────
+router.get("/internal-consumptions/export", requireAuth, requirePermission(P.internalConsumptions.export), async (req, res): Promise<void> => {
+  const { sourceBranchId, destinationBranchId, status, dateFrom, dateTo } = req.query as Record<string, string>;
+  const user = req.user!;
+  const conditions: any[] = [];
+
+  if (!user.adminAccess) {
+    if (user.branchIds.length === 0) {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="CONSOMMATION_INTERNE_LISTE_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send("\uFEFFRéférence,Date,Source,Destination,Statut,Nombre de lignes,Coût total,Créé par,Notes\r\n");
+      return;
+    }
+    const ids = user.branchIds.join(",");
+    conditions.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
+  }
+  if (sourceBranchId) conditions.push(eq(internalConsumptionsTable.sourceBranchId, parseInt(sourceBranchId, 10)));
+  if (destinationBranchId) conditions.push(eq(internalConsumptionsTable.destinationBranchId, parseInt(destinationBranchId, 10)));
+  if (status) conditions.push(eq(internalConsumptionsTable.status, status));
+  if (dateFrom) conditions.push(gte(internalConsumptionsTable.documentDate, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
+    conditions.push(lte(internalConsumptionsTable.documentDate, end));
+  }
+
+  const docs = conditions.length
+    ? await db.select().from(internalConsumptionsTable).where(and(...conditions)).orderBy(desc(internalConsumptionsTable.createdAt))
+    : await db.select().from(internalConsumptionsTable).orderBy(desc(internalConsumptionsTable.createdAt));
+
+  const rows = await Promise.all(docs.map(d => buildDocResponse(d, false)));
+
+  const STATUS_LABELS: Record<string, string> = { draft: "Brouillon", confirmed: "Confirmé", cancelled: "Annulé" };
+  const header = "Référence,Date,Source,Destination,Statut,Nombre de lignes,Coût total,Créé par,Notes\r\n";
+  const body = rows.map(d => csvRow([
+    d.reference,
+    d.documentDate ? new Date(d.documentDate).toLocaleDateString("fr-DZ") : "",
+    d.sourceBranchName,
+    d.destinationBranchName,
+    STATUS_LABELS[d.status] ?? d.status,
+    d.itemCount,
+    d.totalCost,
+    d.createdByName ?? "",
+    (d as any).notes ?? "",
+  ])).join("\r\n");
+
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="CONSOMMATION_INTERNE_LISTE_${date}.csv"`);
+  res.send("\uFEFF" + header + body);
+});
+
 // ── GET ONE ───────────────────────────────────────────────────────────────────
 router.get("/internal-consumptions/:id", requireAuth, requirePermission(P.internalConsumptions.view), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
@@ -366,6 +430,96 @@ router.get("/internal-consumptions/reports/summary", requireAuth, requirePermiss
   const byProduct = Object.values(byProductMap).sort((a, b) => b.totalCost - a.totalCost);
 
   res.json({ totalCost, totalQty, docCount, byBranch, byProduct });
+});
+
+// ── EXPORT REPORTS ────────────────────────────────────────────────────────────
+router.get("/internal-consumptions/reports/export", requireAuth, requirePermission(P.internalConsumptions.export), async (req, res): Promise<void> => {
+  const { tab = "branch", dateFrom, dateTo, destinationBranchId, sourceBranchId } = req.query as Record<string, string>;
+  const user = req.user!;
+  const date = new Date().toISOString().slice(0, 10);
+
+  const baseConditions: any[] = [eq(internalConsumptionsTable.status, "confirmed")];
+  if (!user.adminAccess) {
+    if (user.branchIds.length === 0) {
+      const filename = tab === "product"
+        ? `CONSOMMATION_INTERNE_RAPPORT_PRODUITS_${date}.csv`
+        : `CONSOMMATION_INTERNE_RAPPORT_BOUTIQUES_${date}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send("\uFEFF");
+      return;
+    }
+    const ids = user.branchIds.join(",");
+    baseConditions.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
+  }
+  if (sourceBranchId) baseConditions.push(eq(internalConsumptionsTable.sourceBranchId, parseInt(sourceBranchId, 10)));
+  if (destinationBranchId) baseConditions.push(eq(internalConsumptionsTable.destinationBranchId, parseInt(destinationBranchId, 10)));
+  if (dateFrom) baseConditions.push(gte(internalConsumptionsTable.documentDate, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
+    baseConditions.push(lte(internalConsumptionsTable.documentDate, end));
+  }
+
+  const docs = await db.select().from(internalConsumptionsTable).where(and(...baseConditions));
+  const docIds = docs.map(d => d.id);
+
+  let csvContent = "";
+
+  if (tab === "product") {
+    const items = docIds.length ? await db
+      .select({ item: internalConsumptionItemsTable, productName: productsTable.name })
+      .from(internalConsumptionItemsTable)
+      .innerJoin(internalConsumptionsTable, eq(internalConsumptionItemsTable.documentId, internalConsumptionsTable.id))
+      .leftJoin(productsTable, eq(internalConsumptionItemsTable.productId, productsTable.id))
+      .where(inArray(internalConsumptionItemsTable.documentId, docIds)) : [];
+
+    const byProductMap: Record<number, { productId: number; productName: string; totalCost: number; totalQty: number }> = {};
+    for (const i of items) {
+      const pid = i.item.productId;
+      const p = byProductMap[pid] ?? { productId: pid, productName: i.productName ?? "?", totalCost: 0, totalQty: 0 };
+      p.totalCost += parseFloat(i.item.totalCost as string);
+      p.totalQty += parseFloat(i.item.quantity as string);
+      byProductMap[pid] = p;
+    }
+    const rows = Object.values(byProductMap).sort((a, b) => b.totalCost - a.totalCost);
+
+    csvContent = "Rang,Produit,Quantité totale,Coût total\r\n" +
+      rows.map((r, idx) => csvRow([idx + 1, r.productName, r.totalQty, r.totalCost])).join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="CONSOMMATION_INTERNE_RAPPORT_PRODUITS_${date}.csv"`);
+  } else {
+    const items = docIds.length ? await db
+      .select({ item: internalConsumptionItemsTable, destinationBranchId: internalConsumptionsTable.destinationBranchId })
+      .from(internalConsumptionItemsTable)
+      .innerJoin(internalConsumptionsTable, eq(internalConsumptionItemsTable.documentId, internalConsumptionsTable.id))
+      .where(inArray(internalConsumptionItemsTable.documentId, docIds)) : [];
+
+    const byBranchMap: Record<number, { branchId: number; totalCost: number; totalQty: number; docCount: number }> = {};
+    for (const doc of docs) {
+      const b = byBranchMap[doc.destinationBranchId] ?? { branchId: doc.destinationBranchId, totalCost: 0, totalQty: 0, docCount: 0 };
+      b.totalCost += parseFloat(doc.totalCost as string);
+      b.docCount += 1;
+      byBranchMap[doc.destinationBranchId] = b;
+    }
+    for (const i of items) {
+      const b = byBranchMap[i.destinationBranchId];
+      if (b) b.totalQty += parseFloat(i.item.quantity as string);
+    }
+
+    const branches = await db.select({ id: branchesTable.id, name: branchesTable.name }).from(branchesTable);
+    const branchNames: Record<number, string> = Object.fromEntries(branches.map(b => [b.id, b.name]));
+    const rows = Object.values(byBranchMap).map(b => ({ ...b, branchName: branchNames[b.branchId] ?? String(b.branchId) }))
+      .sort((a, b) => b.totalCost - a.totalCost);
+
+    csvContent = "Rang,Boutique,Nombre de documents,Quantité totale,Coût total\r\n" +
+      rows.map((r, idx) => csvRow([idx + 1, r.branchName, r.docCount, r.totalQty, r.totalCost])).join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="CONSOMMATION_INTERNE_RAPPORT_BOUTIQUES_${date}.csv"`);
+  }
+
+  res.send("\uFEFF" + csvContent);
 });
 
 export default router;

@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronsUpDown, Check, Plus, Trash2, X, FileDown, CheckCircle, Pencil, Package, Loader2, AlertTriangle } from "lucide-react";
+import { ChevronsUpDown, Check, Plus, Trash2, X, FileDown, CheckCircle, Pencil, Package, Loader2, AlertTriangle, Download } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
@@ -124,6 +124,7 @@ export default function InternalConsumptions() {
   const canCreate = isAdmin || hasPerm("internal_consumptions.create");
   const canConfirm = isAdmin || hasPerm("internal_consumptions.confirm");
   const canCancel = isAdmin || hasPerm("internal_consumptions.cancel");
+  const canExport = isAdmin || hasPerm("internal_consumptions.export");
 
   // Filters & UI state
   const [tab, setTab] = useState("all");
@@ -137,6 +138,7 @@ export default function InternalConsumptions() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [shortageOpen, setShortageOpen] = useState(false);
   const [shortages, setShortages] = useState<Array<{ productName: string; required: number; available: number }>>([]);
+  const [exporting, setExporting] = useState(false);
 
   // Create/edit form state
   const [form, setForm] = useState({ sourceBranchId: "", destinationBranchId: "", documentDate: format(new Date(), "yyyy-MM-dd"), notes: "" });
@@ -330,6 +332,36 @@ export default function InternalConsumptions() {
     );
   }
 
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const exportParams: Record<string, string> = {};
+      if (tab !== "all") exportParams.status = tab;
+      if (filterSource !== "all") exportParams.sourceBranchId = filterSource;
+      if (filterDest !== "all") exportParams.destinationBranchId = filterDest;
+      if (filterDateFrom) exportParams.dateFrom = filterDateFrom;
+      if (filterDateTo) exportParams.dateTo = filterDateTo;
+      const qs = new URLSearchParams(exportParams).toString();
+      const r = await fetch(`/api/internal-consumptions/export${qs ? `?${qs}` : ""}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+      });
+      if (!r.ok) throw new Error("Export échoué");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `CONSOMMATION_INTERNE_LISTE_${format(new Date(), "yyyy-MM-dd")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "Erreur export", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const selectedProduct = products.find(p => String(p.id) === newItem.productId);
 
   return (
@@ -340,12 +372,20 @@ export default function InternalConsumptions() {
           <h1 className="text-2xl font-bold tracking-tight">Consommation interne</h1>
           <p className="text-muted-foreground text-sm">Gestion des produits consommables internes (frottoir, balai, chiffon...)</p>
         </div>
-        {canCreate && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nouveau document
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
+              {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Exporter CSV
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouveau document
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

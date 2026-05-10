@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAuth } from "@/lib/auth";
+import { toast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { useGetBranches } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Package, Building2, TrendingDown, Filter, X } from "lucide-react";
+import { BarChart3, Package, Building2, TrendingDown, X, Download, Loader2 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 function formatDA(n: number) {
   return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA";
@@ -34,6 +36,18 @@ function fmt(n: number) {
 }
 
 export default function InternalConsumptionReports() {
+  const { user: authUser } = useAuth();
+  const isAdmin = (authUser as any)?.adminAccess === true;
+  const perms: string[] = (authUser as any)?.permissions ?? [];
+  function hasPerm(p: string) {
+    if (perms.includes("*")) return true;
+    if (perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return perms.includes(`${mod}.*`);
+  }
+  const canExport = isAdmin || hasPerm("internal_consumptions.export");
+  const [exporting, setExporting] = useState(false);
+
   const { data: branches = [] } = useGetBranches();
 
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
@@ -64,6 +78,36 @@ export default function InternalConsumptionReports() {
 
   const hasActiveFilters = destBranchId !== "all" || srcBranchId !== "all";
 
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const exportParams: Record<string, string> = { tab: activeTab };
+      if (dateFrom) exportParams.dateFrom = dateFrom;
+      if (dateTo) exportParams.dateTo = dateTo;
+      if (destBranchId !== "all") exportParams.destinationBranchId = destBranchId;
+      if (srcBranchId !== "all") exportParams.sourceBranchId = srcBranchId;
+      const qs = new URLSearchParams(exportParams).toString();
+      const r = await fetch(`/api/internal-consumptions/reports/export?${qs}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+      });
+      if (!r.ok) throw new Error("Export échoué");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const suffix = activeTab === "product" ? "PRODUITS" : "BOUTIQUES";
+      a.download = `CONSOMMATION_INTERNE_RAPPORT_${suffix}_${format(new Date(), "yyyy-MM-dd")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "Erreur export", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -72,6 +116,12 @@ export default function InternalConsumptionReports() {
           <h1 className="text-2xl font-bold tracking-tight">Rapport — Consommation interne</h1>
           <p className="text-muted-foreground text-sm">Synthèse des consommations internes confirmées par période</p>
         </div>
+        {canExport && (
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
+            {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            Exporter CSV
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
