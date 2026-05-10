@@ -18,7 +18,7 @@ import {
   Wallet, RotateCcw, Building2, AlertTriangle, AlertCircle,
   CheckCircle2, Package, ArrowLeftRight, Factory,
   CreditCard, Banknote, Users, ZapOff, Clock,
-  Info, ChevronRight,
+  Info, ChevronRight, FlaskConical,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -280,6 +280,72 @@ export default function ExecutiveDashboard() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════
+          SECTION 1b — Internal consumption KPIs (operational costs, NOT sales)
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <div>
+        <SectionTitle icon={FlaskConical} title="Coûts internes opérationnels" color="text-orange-600"
+          badge="Confirmés uniquement" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card className="border-0 shadow-sm border-l-4 border-l-orange-400">
+            <CardContent className="p-4 space-y-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <FlaskConical className="h-3 w-3 text-orange-500" />
+                Consommation interne
+              </p>
+              {ovLoading ? <div className="h-8 w-28 bg-muted animate-pulse rounded" /> : (
+                <p className="text-2xl font-black text-orange-700">{fmtDA(ov?.totalInternalCost ?? 0)}</p>
+              )}
+              <p className="text-[10px] text-muted-foreground">coût opérationnel sur la période</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4 space-y-1">
+              <Stat label="Documents confirmés" value={String(ov?.internalDocCount ?? 0)}
+                sub="bons de consommation" color="amber" loading={ovLoading} />
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4 space-y-1">
+              <Stat label="Boutiques consommatrices" value={String(ov?.internalBranchCount ?? 0)}
+                sub="destinations actives" color="blue" loading={ovLoading} />
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4 space-y-1">
+              {ovLoading ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Produit le plus utilisé</p>
+                  <div className="h-5 w-24 bg-muted animate-pulse rounded" />
+                </div>
+              ) : ov?.topInternalProduct ? (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Produit le plus utilisé</p>
+                  <p className="text-sm font-bold text-slate-700 truncate">{ov.topInternalProduct.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{fmtDA(ov.topInternalProduct.totalCost)}</p>
+                </div>
+              ) : (
+                <Stat label="Produit le plus utilisé" value="—" sub="aucune donnée" color="slate" />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        {/* Insight bar */}
+        {!ovLoading && (ov?.topInternalBranch || ov?.totalInternalCost > 0) && (
+          <div className="mt-3 p-3 rounded-lg bg-orange-50/70 border border-orange-100 flex flex-wrap items-center gap-4 text-xs">
+            <FlaskConical className="h-4 w-4 text-orange-500 shrink-0" />
+            {ov?.topInternalBranch && (
+              <span className="text-orange-800">
+                <span className="font-semibold">Boutique la plus consommatrice :</span> {ov.topInternalBranch.name} — {fmtDA(ov.topInternalBranch.totalCost)}
+              </span>
+            )}
+            {ov?.totalInternalCost === 0 && (
+              <span className="text-orange-700 italic">Aucune consommation interne confirmée sur cette période.</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
           SECTION 2 — Commercial + Trend side-by-side
       ═══════════════════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -534,10 +600,10 @@ export default function ExecutiveDashboard() {
             {/* Bar chart */}
             <Card className="border-0 shadow-sm">
               <CardHeader className="pb-1">
-                <CardTitle className="text-xs font-semibold text-muted-foreground">CA par agence</CardTitle>
+                <CardTitle className="text-xs font-semibold text-muted-foreground">CA · Dépenses · Coût interne par agence</CardTitle>
               </CardHeader>
               <CardContent className="pb-3">
-                <ResponsiveContainer width="100%" height={180}>
+                <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={bData} layout="vertical" margin={{ left: 4, right: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                     <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => fmtDA(v)} width={60} />
@@ -545,6 +611,7 @@ export default function ExecutiveDashboard() {
                     <Tooltip formatter={(v: any) => fmtDA2(v)} />
                     <Bar dataKey="revenue" name="CA" fill="#10b981" radius={[0, 4, 4, 0]} />
                     <Bar dataKey="expenses" name="Dépenses" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="internalCost" name="Coût interne" fill="#f97316" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -555,10 +622,11 @@ export default function ExecutiveDashboard() {
               <CardContent className="p-0">
                 <div className="divide-y divide-border/50">
                   {/* Header */}
-                  <div className="grid grid-cols-6 px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <div className="grid grid-cols-7 px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                     <span className="col-span-2">Agence</span>
                     <span className="text-right text-green-700">CA</span>
                     <span className="text-right text-red-700">Dépenses</span>
+                    <span className="text-right text-orange-600">Coût interne</span>
                     <span className="text-right text-indigo-700">Résultat</span>
                     <span className="text-right">Risques</span>
                   </div>
@@ -566,13 +634,16 @@ export default function ExecutiveDashboard() {
                     const hasRisk = b.lowStockCount > 0 || b.productionBlocked > 0;
                     const resPct = Math.round((b.estimatedResult / Math.max(b.revenue, 1)) * 100);
                     return (
-                      <div key={b.branchId} className="grid grid-cols-6 px-4 py-2.5 items-center hover:bg-muted/30 transition-colors">
+                      <div key={b.branchId} className="grid grid-cols-7 px-4 py-2.5 items-center hover:bg-muted/30 transition-colors">
                         <div className="col-span-2 flex items-center gap-2">
                           <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ["#10b981","#6366f1","#f59e0b","#ef4444","#8b5cf6"][i%5] }} />
                           <span className="text-xs font-medium">{b.branchName}</span>
                         </div>
                         <div className="text-right text-xs font-bold text-green-700">{fmtDA(b.revenue)}</div>
                         <div className="text-right text-xs text-red-700">{b.expenses > 0 ? fmtDA(b.expenses) : <span className="text-muted-foreground">—</span>}</div>
+                        <div className="text-right text-xs text-orange-600 font-medium">
+                          {b.internalCost > 0 ? fmtDA(b.internalCost) : <span className="text-muted-foreground">—</span>}
+                        </div>
                         <div className={`text-right text-xs font-semibold ${b.estimatedResult >= 0 ? "text-green-700" : "text-red-700"}`}>
                           {b.estimatedResult !== 0 ? `${b.estimatedResult >= 0 ? "+" : ""}${resPct}%` : "—"}
                         </div>
@@ -626,6 +697,11 @@ export default function ExecutiveDashboard() {
                         {b.estimatedResult >= 0 ? "+" : ""}{fmtDA(b.estimatedResult)}
                       </span>
                     </span>
+                    {b.internalCost > 0 && (
+                      <span className="text-orange-600 font-medium flex items-center gap-0.5">
+                        <FlaskConical className="h-2.5 w-2.5" />{fmtDA(b.internalCost)}
+                      </span>
+                    )}
                     {b.lowStockCount > 0 && <span className="text-amber-600">{b.lowStockCount} stock bas</span>}
                   </div>
                 </div>

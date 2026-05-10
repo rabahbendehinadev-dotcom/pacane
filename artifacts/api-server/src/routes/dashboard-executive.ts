@@ -19,6 +19,8 @@ import {
   transfersTable,
   stockLevelsTable, productsTable, branchesTable,
   alertsTable,
+  internalConsumptionsTable,
+  internalConsumptionItemsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, visibleBranchIds } from "../middlewares/permissions";
@@ -129,6 +131,58 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
     total: sql<string>`COUNT(*)`,
   }).from(transfersTable);
 
+  // ── Internal Consumption ──────────────────────────────────────────────────
+  const icDateConds = dateConds(internalConsumptionsTable.documentDate, from, to);
+  const icBaseConds: any[] = [eq(internalConsumptionsTable.status, "confirmed"), ...icDateConds];
+  if (scope !== null) {
+    if (scope.length === 0) {
+      icBaseConds.push(sql`FALSE`);
+    } else {
+      const ids = scope.join(",");
+      icBaseConds.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
+    }
+  }
+  if (extraBranchCond) icBaseConds.push(eq(internalConsumptionsTable.destinationBranchId, extraBranchCond));
+
+  const [icAgg] = await db.select({
+    totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
+    docCount: sql<string>`COUNT(*)`,
+    branchCount: sql<string>`COUNT(DISTINCT ${internalConsumptionsTable.destinationBranchId})`,
+  }).from(internalConsumptionsTable).where(and(...icBaseConds));
+
+  // Top internal product by cost
+  const icDocIds = (await db.select({ id: internalConsumptionsTable.id })
+    .from(internalConsumptionsTable).where(and(...icBaseConds))).map(r => r.id);
+
+  let topInternalProduct: { name: string; totalCost: number } | null = null;
+  let topInternalBranch: { name: string; totalCost: number } | null = null;
+
+  if (icDocIds.length > 0) {
+    const [topProd] = await db.select({
+      name: productsTable.name,
+      totalCost: sql<string>`COALESCE(SUM(${internalConsumptionItemsTable.totalCost}::numeric), 0)`,
+    }).from(internalConsumptionItemsTable)
+      .innerJoin(productsTable, eq(internalConsumptionItemsTable.productId, productsTable.id))
+      .where(inArray(internalConsumptionItemsTable.documentId, icDocIds))
+      .groupBy(productsTable.name)
+      .orderBy(sql`SUM(${internalConsumptionItemsTable.totalCost}::numeric) DESC`)
+      .limit(1);
+    if (topProd) topInternalProduct = { name: topProd.name, totalCost: parseFloat(topProd.totalCost) };
+
+    const [topBr] = await db.select({
+      branchId: internalConsumptionsTable.destinationBranchId,
+      totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
+    }).from(internalConsumptionsTable)
+      .where(and(...icBaseConds))
+      .groupBy(internalConsumptionsTable.destinationBranchId)
+      .orderBy(sql`SUM(${internalConsumptionsTable.totalCost}::numeric) DESC`)
+      .limit(1);
+    if (topBr) {
+      const [brRow] = await db.select({ name: branchesTable.name }).from(branchesTable).where(eq(branchesTable.id, topBr.branchId));
+      topInternalBranch = { name: brRow?.name ?? String(topBr.branchId), totalCost: parseFloat(topBr.totalCost) };
+    }
+  }
+
   // ── Stock alerts (products with quantity <= alert_quantity) ────────────────
   const stockAlertConds: any[] = [
     sql`${stockLevelsTable.quantity}::numeric <= ${productsTable.alertQuantity}::numeric`,
@@ -199,6 +253,12 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
     // Financials
     estimatedResult,
     operatingMargin: netRevenue > 0 ? Math.round((estimatedResult / netRevenue) * 100) : 0,
+    // Internal consumption (operational costs, NOT sales)
+    totalInternalCost: parseFloat(icAgg?.totalCost ?? "0"),
+    internalDocCount: parseInt(icAgg?.docCount ?? "0", 10),
+    internalBranchCount: parseInt(icAgg?.branchCount ?? "0", 10),
+    topInternalProduct,
+    topInternalBranch,
   });
 });
 
@@ -290,7 +350,9 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
   const dateSaleConds = dateConds(salesTable.createdAt, from, to);
   const dateExpConds = dateConds(expensesTable.createdAt, from, to);
 
-  const [salesByBranch, expByBranch, prodByBranch, stockByBranch] = await Promise.all([
+  const dateIcConds = dateConds(internalConsumptionsTable.documentDate, from, to);
+
+  const [salesByBranch, expByBranch, prodByBranch, stockByBranch, icByBranch] = await Promise.all([
     db.select({
       branchId: salesTable.branchId,
       revenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
@@ -335,6 +397,18 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
       .innerJoin(productsTable, eq(stockLevelsTable.productId, productsTable.id))
       .where(inArray(stockLevelsTable.branchId, branchIds))
       .groupBy(stockLevelsTable.branchId),
+
+    db.select({
+      branchId: internalConsumptionsTable.destinationBranchId,
+      internalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
+      icDocCount: sql<string>`COUNT(*)`,
+    }).from(internalConsumptionsTable)
+      .where(and(
+        eq(internalConsumptionsTable.status, "confirmed"),
+        inArray(internalConsumptionsTable.destinationBranchId, branchIds),
+        ...dateIcConds,
+      ))
+      .groupBy(internalConsumptionsTable.destinationBranchId),
   ]);
 
   // Index maps
@@ -342,14 +416,17 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
   const expMap = Object.fromEntries(expByBranch.map(r => [r.branchId, r]));
   const prodMap = Object.fromEntries(prodByBranch.map(r => [r.branchId, r]));
   const stockMap = Object.fromEntries(stockByBranch.map(r => [r.branchId, r]));
+  const icMap = Object.fromEntries(icByBranch.map(r => [r.branchId, r]));
 
   const result = branches.map(b => {
     const s = salesMap[b.id];
     const e = expMap[b.id];
     const p = prodMap[b.id];
     const st = stockMap[b.id];
+    const ic = icMap[b.id];
     const revenue = parseFloat(s?.revenue ?? "0");
     const expenses = parseFloat(e?.expenses ?? "0");
+    const internalCost = parseFloat(ic?.internalCost ?? "0");
     return {
       branchId: b.id,
       branchName: b.name,
@@ -358,6 +435,7 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
       paid: parseFloat(s?.paid ?? "0"),
       unpaidRevenue: Math.max(0, parseFloat(s?.unpaid ?? "0")),
       expenses,
+      internalCost,
       estimatedResult: revenue - expenses,
       productionInProgress: parseInt(p?.inProgress ?? "0", 10),
       productionBlocked: parseInt(p?.blocked ?? "0", 10),
