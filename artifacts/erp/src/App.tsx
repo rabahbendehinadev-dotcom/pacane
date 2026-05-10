@@ -77,9 +77,19 @@ function HomeRoute() {
   return <DashboardLayout><Dashboard /></DashboardLayout>;
 }
 
+function StripTrailingSlash() {
+  const [location, navigate] = useLocation();
+  if (location !== "/" && location.endsWith("/")) {
+    navigate(location.slice(0, -1), { replace: true });
+  }
+  return null;
+}
+
 function AppRoutes() {
   return (
-    <Switch>
+    <>
+      <StripTrailingSlash />
+      <Switch>
       <Route path="/login" component={Login} />
 
       <Route path="/">
@@ -178,6 +188,7 @@ function AppRoutes() {
 
       <Route component={NotFound} />
     </Switch>
+    </>
   );
 }
 
