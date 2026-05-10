@@ -1,15 +1,16 @@
-# [Project name]
+# Pacane ERP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Pacane ERP is a comprehensive, multi-branch Enterprise Resource Planning system for managing stock, sales, POS, purchases, production, treasury, and analytics.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/erp run dev` — run the ERP frontend (port 18996)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV`
 
 ## Stack
 
@@ -19,26 +20,48 @@ _Replace the heading above with the project's name, and this line with one sente
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
+- Frontend: React + Vite, Wouter routing, React Query, shadcn/ui, Tailwind CSS
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- **Frontend**: `artifacts/erp/src/`
+- **Backend routes**: `artifacts/api-server/src/routes/`
+- **DB schema**: `lib/db/src/schema/`
+- **OpenAPI spec**: `lib/api-spec/openapi.yaml`
+- **Generated API hooks**: `lib/api-client-react/src/generated/`
+- **Generated Zod schemas**: `lib/api-zod/src/generated/`
+- **Object storage helpers**: `lib/object-storage-web/src/`
+- **i18n (ar/fr)**: `artifacts/erp/src/lib/i18n/`
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Branch Isolation**: Each operational unit (stock, sales, POS) functions independently per branch; global reporting aggregates across branches. Non-admin users can only access their assigned branches.
+- **JWT Auth**: JWT tokens stored in localStorage, managed by a global AuthProvider in `artifacts/erp/src/lib/auth.tsx`.
+- **Orval codegen**: API client hooks and Zod schemas are auto-generated from `openapi.yaml` — always run codegen after spec changes.
+- **Object storage**: File uploads handled via `@workspace/object-storage-web` using Uppy.
+- **PDF generation**: Client-side PDF generation with jspdf + jspdf-autotable via `artifacts/erp/src/lib/pdf-generator.ts`.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Core ERP modules**: Stock, POS, Sales, Purchases, Production, Transfers, Expenses
+- **Advanced analytics**: POS, Sales, Purchases, Production, Treasury, Executive Dashboard
+- **Financial management**: Treasury module, expense tracking, P&L summaries
+- **Customer management**: CRM, loyalty program, RFM segmentation, wallet credit
+- **RBAC**: Role-based access control with granular permissions per branch
+- **Alerts & notifications**: Low stock, credit limits, overdue receivables
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Iterative development: ask before major changes.
+- Always respect Branch Isolation as a fundamental operational boundary, not just a filter.
+- Use `formatDA(n)` for displaying Algerian Dinar amounts.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **Branch Isolation**: Always filter data by `inArray(table.branchId, user.branchIds)` for non-admin users.
+- **Credit overrides**: Require `P.sales.overrideCredit` permission and must be logged.
+- **Currency**: Use `formatDA(n)` for display; `parseFloat()` when converting UI input to DB numeric fields.
+- **Codegen**: After any changes to `openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen`.
 
 ## Pointers
 
