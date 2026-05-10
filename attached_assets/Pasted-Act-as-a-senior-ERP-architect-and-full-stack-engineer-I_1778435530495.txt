@@ -1,0 +1,515 @@
+Act as a senior ERP architect and full-stack engineer.
+
+Implement a new business workflow in Pacane ERP for:
+
+CONSOMMATION INTERNE DES BOUTIQUES
+(also acceptable internal naming: Cession interne de consommables)
+
+==================================================
+BUSINESS CONTEXT
+==================================================
+
+This ERP is multi-branch.
+
+We have some internal consumable products such as:
+- Frottoir
+- Balai
+- Chiffon
+- Other cleaning / maintenance / internal-use items
+
+These products:
+- are NOT sold to external customers
+- are consumed internally by our boutiques / branches
+- are often stored in a central stock location such as "Ecole Stock"
+- then sent internally to boutiques like BEN OMAR, SIDI YAHYA, etc.
+
+Business need:
+I want to move these internal consumables from a central stock branch (example: Ecole Stock) to one of my boutiques, and track how much each boutique consumes.
+
+Important:
+This must NOT be treated as a normal customer sale.
+This must NOT increase customer sales revenue.
+This must NOT appear in customer sales analytics.
+
+However:
+I still want the boutique to receive the product internally at the same purchase cost.
+
+Example:
+- I buy 1 frottoir for 100 DA
+- it enters stock in ECOLE STOCK
+- boutique BEN OMAR needs 1
+- I issue an internal consumption / internal cession document
+- stock decreases in ECOLE STOCK
+- stock increases in BEN OMAR
+- BEN OMAR is charged internally with cost = 100 DA
+- this must be visible later in internal consumption reports by boutique
+
+==================================================
+CORE BUSINESS RULES
+==================================================
+
+1. This is NOT a customer sale
+- no client
+- no customer receivable
+- no sales revenue
+- no impact on sales KPIs
+- no impact on POS
+- no impact on external invoices
+
+2. This is NOT just a basic transfer
+A normal transfer only moves stock.
+Here we also need internal cost attribution to the destination boutique.
+
+3. Internal consumables must be tracked by boutique
+I want to know:
+- how much each boutique received
+- how much internal consumable cost each boutique accumulated
+- which products are consumed most internally
+- per period / per branch / per product
+
+4. Internal consumables should move at purchase cost
+Default rule:
+- use current purchase cost / standard cost / latest purchase cost already available in product cost logic
+- do NOT use sales price
+- do NOT generate margin
+- internal transfer price = cost price
+
+==================================================
+PRODUCT MODEL CHANGES
+==================================================
+
+Add a clean classification for products.
+
+If the current schema allows, add or extend a field like:
+- usage_type
+or
+- product_usage_type
+
+Suggested values:
+- sellable_customer
+- raw_material
+- packaging
+- internal_consumable
+- semi_finished
+
+At minimum, support:
+- internal_consumable
+
+Behavior:
+- internal_consumable products must not appear in customer POS sales
+- they can appear in internal consumption module
+- they remain stock-managed products
+
+If changing the product model is too invasive, create a safe compatible alternative using:
+- boolean flag: is_internal_consumable
+But preferred solution is a typed usage field.
+
+==================================================
+NEW MODULE TO BUILD
+==================================================
+
+Create a new module in sidebar/menu:
+
+CONSOMMATION INTERNE
+
+Suggested subpages:
+- Liste
+- Nouvelle cession interne
+- Rapports
+
+French labels only in UI.
+
+==================================================
+DOCUMENT MODEL
+==================================================
+
+Create a dedicated document model for internal consumable movement.
+
+Suggested tables:
+
+internal_consumptions
+- id
+- reference
+- source_branch_id
+- destination_branch_id
+- document_date
+- status
+- total_cost
+- notes
+- created_by_user_id
+- created_at
+- updated_at
+
+internal_consumption_items
+- id
+- document_id
+- product_id
+- quantity
+- unit_id
+- unit_cost
+- total_cost
+- created_at
+
+Status values:
+- draft
+- confirmed
+- cancelled
+
+Reference format example:
+CI-2026-0001
+
+==================================================
+WORKFLOW
+==================================================
+
+Create a new internal consumption document with:
+
+Header:
+- Source branch (example: ECOLE STOCK)
+- Destination boutique (example: BEN OMAR)
+- Date
+- Reference
+- Notes
+
+Lines:
+- Product
+- Quantity
+- Unit
+- Unit cost
+- Total cost
+
+Rules:
+1. Only internal consumable products should be selectable in this module
+2. Source and destination branches must be different
+3. Quantity must be > 0
+4. Source branch must have enough stock
+5. On confirmation:
+   - decrease stock in source branch
+   - increase stock in destination branch
+   - create stock movement logs
+   - store total internal cost
+6. On cancellation:
+   - if already confirmed, either block cancellation or require safe reversal logic
+   - do not silently corrupt stock
+
+==================================================
+COST RULE
+==================================================
+
+When adding a line:
+- automatically fetch product internal cost from current purchase cost logic
+- default unit_cost = product purchase cost / standard cost / last known purchase cost
+
+Use this value:
+- for line total
+- for document total
+- for boutique internal cost reporting
+
+Important:
+This is not a sale price.
+This is cost-only movement.
+
+If no purchase cost exists:
+- allow 0 only if current ERP already allows zero-cost products
+- otherwise show warning:
+  "Aucun coût d'achat défini pour ce produit"
+
+==================================================
+STOCK IMPACT
+==================================================
+
+On document confirmation:
+- source branch stock -= quantity
+- destination branch stock += quantity
+
+This must be atomic and branch-safe.
+Never allow negative stock in source branch.
+
+Create stock movements with a distinct movement type, such as:
+- internal_consumption_out
+- internal_consumption_in
+
+So reporting can distinguish this from:
+- sales
+- purchases
+- transfers
+- adjustments
+- production
+
+==================================================
+WHY THIS IS DIFFERENT FROM TRANSFER
+==================================================
+
+Although stock moves between branches like a transfer, this module must additionally:
+- classify the movement as internal consumable distribution
+- assign internal cost to the destination boutique
+- appear in dedicated internal consumption reports
+- not pollute normal transfer analytics unless intentionally included
+
+So build this as its own workflow/module, not just reuse transfer UI with a label change.
+
+==================================================
+LIST PAGE
+==================================================
+
+Create a professional list page:
+"Consommation interne"
+
+Columns:
+- Référence
+- Date
+- Source
+- Destination
+- Nombre de lignes
+- Coût total
+- Statut
+- Créé par
+- Actions
+
+Filters:
+- date range
+- source branch
+- destination branch
+- status
+- product if useful
+
+Actions:
+- View
+- Print
+- PDF
+- CSV export if compatible with current export architecture
+
+==================================================
+DETAIL PAGE / DRAWER
+==================================================
+
+Show:
+- reference
+- source branch
+- destination branch
+- date
+- status
+- created by
+- notes
+- item lines
+- total cost
+
+Line columns:
+- Produit
+- Quantité
+- Unité
+- Coût unitaire
+- Total
+
+Add:
+- print action
+- export PDF action
+
+==================================================
+REPORTS PAGE
+==================================================
+
+Build a dedicated reporting section for this module.
+
+I want reports such as:
+
+1. Consommation interne par boutique
+- total internal consumable cost by destination branch
+
+2. Consommation par produit
+- which consumables are most distributed internally
+
+3. Consommation par période
+- daily / weekly / monthly totals
+
+4. Classement boutiques
+- which boutiques consume the most internal consumables
+
+5. Classement produits
+- top internal consumables by cost and quantity
+
+Filters:
+- date range
+- destination branch
+- source branch
+- product
+- category if useful
+
+KPIs:
+- total cost
+- total quantity moved
+- number of documents
+- number of boutiques concerned
+- top consumed product
+- top consuming boutique
+
+Important:
+These reports are internal cost reports, not sales reports.
+
+==================================================
+FINANCIAL / ANALYTICAL RULES
+==================================================
+
+This module must:
+- affect internal cost reporting
+- optionally affect branch operational cost summaries if architecture allows
+- NOT affect customer sales turnover
+- NOT affect gross sales / net sales
+- NOT affect POS analytics
+- NOT create receivables
+- NOT create supplier payables directly
+
+If executive dashboard or treasury has a place for internal operating cost, this module can later be integrated there.
+For now, keep it as dedicated internal consumption reporting.
+
+==================================================
+PRODUCT SELECTOR RULES
+==================================================
+
+In "Nouvelle cession interne":
+- only products flagged as internal_consumable should appear
+- hide normal customer-sellable products unless explicitly dual-use
+- branch stock shown must be from source branch only
+- quantity cannot exceed available stock in source branch
+
+==================================================
+PERMISSIONS / RBAC
+==================================================
+
+Respect existing RBAC and branch scope.
+
+Suggested permissions:
+- internal_consumption.view
+- internal_consumption.create
+- internal_consumption.confirm
+- internal_consumption.cancel
+- internal_consumption.export
+- internal_consumption.print
+
+Rules:
+- branch-restricted users can only use branches within their scope
+- admins can access all
+- no one should create a document for unauthorized branches
+
+==================================================
+PDF / PRINT
+==================================================
+
+Create professional print/PDF support.
+
+Document title:
+"Cession interne de consommables"
+or
+"Consommation interne"
+
+PDF must include:
+- company header
+- source branch
+- destination boutique
+- date
+- reference
+- line items
+- total cost
+- created by
+- notes
+- footer
+
+Filename example:
+CONSOMMATION_INTERNE_CI-2026-0001.pdf
+
+==================================================
+CSV EXPORT
+==================================================
+
+If reusable export architecture already exists, integrate this module with CSV export.
+
+CSV columns:
+- reference
+- date
+- source branch
+- destination branch
+- product
+- quantity
+- unit
+- unit cost
+- total cost
+- status
+- created by
+
+==================================================
+SEEDED DEMO DATA
+==================================================
+
+Add realistic test data:
+- source = ECOLE STOCK
+- destination = BEN OMAR
+- products:
+  - frottoir
+  - balai
+  - chiffon
+- realistic quantities
+- realistic purchase costs
+- at least 4–6 seeded internal consumption documents across branches
+
+==================================================
+TEST SCENARIOS
+==================================================
+
+Verify these exact scenarios:
+
+1. Product "frottoir" is internal_consumable
+- cost = 100 DA
+- source stock ECOLE STOCK = 10
+- create internal document to BEN OMAR for qty 1
+- confirm
+Expected:
+- ECOLE STOCK stock = 9
+- BEN OMAR stock = 1
+- internal cost for BEN OMAR = 100 DA
+
+2. Product "balai" qty 3 to SIDI YAHYA
+- total internal cost = unit cost * 3
+
+3. If source stock is insufficient
+- block with clean error
+
+4. Product not flagged internal_consumable
+- should not appear in selector
+
+5. Report by boutique
+- BEN OMAR shows internal consumable total cost correctly
+
+6. Sales reports remain unchanged
+- no fake revenue added
+
+7. POS remains unchanged
+- internal consumables do not appear as customer sellable items unless explicitly configured otherwise
+
+8. No API 500 errors
+9. No console errors
+10. Branch isolation remains correct
+
+==================================================
+DELIVERABLE FORMAT
+==================================================
+
+Implement directly in the existing project.
+
+At the end, provide a concise French report with:
+1. DB tables added
+2. product field(s) added/updated
+3. routes/endpoints added
+4. list/detail/report pages added
+5. PDF/CSV support added
+6. seeded scenarios created
+7. permissions added
+8. what remains as future optional improvements
+
+IMPORTANT:
+- Keep current ERP architecture intact
+- Do not break transfers
+- Do not break purchases
+- Do not break sales/POS
+- Do not mix this with customer sales
+- Build it as a real internal cost movement module
+- French UI labels only

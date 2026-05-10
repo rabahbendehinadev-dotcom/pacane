@@ -20,6 +20,7 @@ export const productsTable = pgTable("products", {
   isSellable: boolean("is_sellable").notNull().default(true),
   isPurchasable: boolean("is_purchasable").notNull().default(false),
   isFabricated: boolean("is_fabricated").notNull().default(false),
+  isInternalConsumable: boolean("is_internal_consumable").notNull().default(false),
   branchIds: integer("branch_ids").array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

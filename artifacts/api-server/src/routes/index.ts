@@ -36,6 +36,7 @@ import treasuryRouter from "./treasury";
 import purchaseReturnsRouter from "./purchase-returns";
 import catalogImportRouter from "./catalog-import";
 import replenishmentRouter from "./replenishment";
+import internalConsumptionsRouter from "./internal-consumptions";
 
 const router: IRouter = Router();
 
@@ -77,5 +78,6 @@ router.use(treasuryRouter);
 router.use(purchaseReturnsRouter);
 router.use(catalogImportRouter);
 router.use(replenishmentRouter);
+router.use(internalConsumptionsRouter);
 
 export default router;

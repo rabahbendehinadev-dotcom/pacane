@@ -15,6 +15,7 @@ import {
   ChefHat,
   Factory,
   ArrowLeftRight,
+  Wrench,
   SlidersHorizontal,
   FileText,
   MonitorSmartphone,
@@ -86,6 +87,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
         { label: "Commande automatique", href: "/replenishment", icon: ClipboardList, perm: "replenishment.view" },
         { label: t("production"), href: "/production", icon: Factory, perm: "production.view" },
         { label: "Transferts", href: "/transfers", icon: ArrowLeftRight, perm: "transfers.view" },
+        { label: "Consommation interne", href: "/internal-consumptions", icon: Wrench, perm: "internal_consumptions.view" },
         { label: "Ajustements", href: "/adjustments", icon: SlidersHorizontal, perm: "adjustments.view" },
       ],
     },
@@ -111,6 +113,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
         { label: "Analytique Ventes", href: "/analytics/sales", icon: BarChart2, perm: "analytics.view" },
         { label: "Analytique Achats", href: "/analytics/purchases", icon: TrendingUp, perm: "analytics.view" },
         { label: "Analytique Production", href: "/analytics/production", icon: Factory, perm: "analytics.view" },
+        { label: "Conso. interne", href: "/internal-consumptions/reports", icon: Wrench, perm: "internal_consumptions.view" },
       ],
     },
     {

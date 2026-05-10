@@ -2453,3 +2453,276 @@ export const DeleteAttachmentParams = zod.object({
 export const DeleteAttachmentResponse = zod.object({
   success: zod.boolean().optional(),
 });
+
+/**
+ * @summary List internal consumptions
+ */
+export const GetInternalConsumptionsQueryParams = zod.object({
+  sourceBranchId: zod.coerce.number().optional(),
+  destinationBranchId: zod.coerce.number().optional(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]).optional(),
+  dateFrom: zod.date().optional(),
+  dateTo: zod.date().optional(),
+});
+
+export const GetInternalConsumptionsResponseItem = zod.object({
+  id: zod.number(),
+  reference: zod.string(),
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  sourceBranchName: zod.string(),
+  destinationBranchName: zod.string(),
+  documentDate: zod.coerce.date(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]),
+  totalCost: zod.number(),
+  itemCount: zod.number(),
+  notes: zod.string().nullish(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date().optional(),
+  items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        documentId: zod.number(),
+        productId: zod.number(),
+        productName: zod.string(),
+        quantity: zod.number(),
+        unitId: zod.number().nullish(),
+        unitName: zod.string().optional(),
+        unitCost: zod.number(),
+        totalCost: zod.number(),
+      }),
+    )
+    .optional(),
+});
+export const GetInternalConsumptionsResponse = zod.array(
+  GetInternalConsumptionsResponseItem,
+);
+
+/**
+ * @summary Create a new internal consumption document
+ */
+export const CreateInternalConsumptionBody = zod.object({
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  documentDate: zod.coerce.date().optional(),
+  notes: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      productId: zod.number(),
+      quantity: zod.number(),
+      unitId: zod.number().nullish(),
+      unitCost: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get consumption report summary
+ */
+export const GetInternalConsumptionsSummaryQueryParams = zod.object({
+  sourceBranchId: zod.coerce.number().optional(),
+  destinationBranchId: zod.coerce.number().optional(),
+  dateFrom: zod.date().optional(),
+  dateTo: zod.date().optional(),
+});
+
+export const GetInternalConsumptionsSummaryResponse = zod.object({
+  totalCost: zod.number(),
+  totalQty: zod.number(),
+  docCount: zod.number(),
+  byBranch: zod.array(
+    zod.object({
+      branchId: zod.number().optional(),
+      branchName: zod.string().optional(),
+      totalCost: zod.number().optional(),
+      totalQty: zod.number().optional(),
+      docCount: zod.number().optional(),
+    }),
+  ),
+  byProduct: zod.array(
+    zod.object({
+      productId: zod.number().optional(),
+      productName: zod.string().optional(),
+      totalCost: zod.number().optional(),
+      totalQty: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get single internal consumption
+ */
+export const GetInternalConsumptionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetInternalConsumptionResponse = zod.object({
+  id: zod.number(),
+  reference: zod.string(),
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  sourceBranchName: zod.string(),
+  destinationBranchName: zod.string(),
+  documentDate: zod.coerce.date(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]),
+  totalCost: zod.number(),
+  itemCount: zod.number(),
+  notes: zod.string().nullish(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date().optional(),
+  items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        documentId: zod.number(),
+        productId: zod.number(),
+        productName: zod.string(),
+        quantity: zod.number(),
+        unitId: zod.number().nullish(),
+        unitName: zod.string().optional(),
+        unitCost: zod.number(),
+        totalCost: zod.number(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Update a draft internal consumption
+ */
+export const UpdateInternalConsumptionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateInternalConsumptionBody = zod.object({
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  documentDate: zod.coerce.date().optional(),
+  notes: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      productId: zod.number(),
+      quantity: zod.number(),
+      unitId: zod.number().nullish(),
+      unitCost: zod.number().optional(),
+    }),
+  ),
+});
+
+export const UpdateInternalConsumptionResponse = zod.object({
+  id: zod.number(),
+  reference: zod.string(),
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  sourceBranchName: zod.string(),
+  destinationBranchName: zod.string(),
+  documentDate: zod.coerce.date(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]),
+  totalCost: zod.number(),
+  itemCount: zod.number(),
+  notes: zod.string().nullish(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date().optional(),
+  items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        documentId: zod.number(),
+        productId: zod.number(),
+        productName: zod.string(),
+        quantity: zod.number(),
+        unitId: zod.number().nullish(),
+        unitName: zod.string().optional(),
+        unitCost: zod.number(),
+        totalCost: zod.number(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Confirm and apply stock movements
+ */
+export const ConfirmInternalConsumptionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmInternalConsumptionResponse = zod.object({
+  id: zod.number(),
+  reference: zod.string(),
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  sourceBranchName: zod.string(),
+  destinationBranchName: zod.string(),
+  documentDate: zod.coerce.date(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]),
+  totalCost: zod.number(),
+  itemCount: zod.number(),
+  notes: zod.string().nullish(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date().optional(),
+  items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        documentId: zod.number(),
+        productId: zod.number(),
+        productName: zod.string(),
+        quantity: zod.number(),
+        unitId: zod.number().nullish(),
+        unitName: zod.string().optional(),
+        unitCost: zod.number(),
+        totalCost: zod.number(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Cancel a draft internal consumption
+ */
+export const CancelInternalConsumptionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelInternalConsumptionResponse = zod.object({
+  id: zod.number(),
+  reference: zod.string(),
+  sourceBranchId: zod.number(),
+  destinationBranchId: zod.number(),
+  sourceBranchName: zod.string(),
+  destinationBranchName: zod.string(),
+  documentDate: zod.coerce.date(),
+  status: zod.enum(["draft", "confirmed", "cancelled"]),
+  totalCost: zod.number(),
+  itemCount: zod.number(),
+  notes: zod.string().nullish(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date().optional(),
+  items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        documentId: zod.number(),
+        productId: zod.number(),
+        productName: zod.string(),
+        quantity: zod.number(),
+        unitId: zod.number().nullish(),
+        unitName: zod.string().optional(),
+        unitCost: zod.number(),
+        totalCost: zod.number(),
+      }),
+    )
+    .optional(),
+});

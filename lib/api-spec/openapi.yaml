@@ -33,6 +33,8 @@ tags:
     description: Object storage upload and serving endpoints
   - name: attachments
     description: File attachment management for ERP entities
+  - name: internal-consumptions
+    description: Internal consumptions (consommation interne)
 
 paths:
   /healthz:
@@ -1906,6 +1908,189 @@ paths:
                 properties:
                   success:
                     type: boolean
+
+  # INTERNAL CONSUMPTIONS
+  /internal-consumptions:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumptions
+      summary: List internal consumptions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sourceBranchId
+          in: query
+          schema:
+            type: integer
+        - name: destinationBranchId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, confirmed, cancelled]
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of internal consumptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalConsumption'
+    post:
+      tags: [internal-consumptions]
+      operationId: createInternalConsumption
+      summary: Create a new internal consumption document
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInternalConsumptionBody'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/reports/summary:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumptionsSummary
+      summary: Get consumption report summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sourceBranchId
+          in: query
+          schema:
+            type: integer
+        - name: destinationBranchId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Summary report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumptionReportSummary'
+
+  /internal-consumptions/{id}:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumption
+      summary: Get single internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Internal consumption
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+    put:
+      tags: [internal-consumptions]
+      operationId: updateInternalConsumption
+      summary: Update a draft internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInternalConsumptionBody'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/{id}/confirm:
+    post:
+      tags: [internal-consumptions]
+      operationId: confirmInternalConsumption
+      summary: Confirm and apply stock movements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/{id}/cancel:
+    post:
+      tags: [internal-consumptions]
+      operationId: cancelInternalConsumption
+      summary: Cancel a draft internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
 
 components:
   schemas:
@@ -4031,3 +4216,136 @@ components:
           type: integer
         branchId:
           type: ["integer", "null"]
+
+    InternalConsumption:
+      type: object
+      required: [id, reference, sourceBranchId, destinationBranchId, sourceBranchName, destinationBranchName, documentDate, status, totalCost, itemCount, createdAt]
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        sourceBranchId:
+          type: integer
+        destinationBranchId:
+          type: integer
+        sourceBranchName:
+          type: string
+        destinationBranchName:
+          type: string
+        documentDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, confirmed, cancelled]
+        totalCost:
+          type: number
+        itemCount:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        createdByUserId:
+          type: ["integer", "null"]
+        createdByName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalConsumptionItem"
+
+    InternalConsumptionItem:
+      type: object
+      required: [id, documentId, productId, productName, quantity, unitCost, totalCost]
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitId:
+          type: ["integer", "null"]
+        unitName:
+          type: string
+        unitCost:
+          type: number
+        totalCost:
+          type: number
+
+    CreateInternalConsumptionBody:
+      type: object
+      required: [sourceBranchId, destinationBranchId, items]
+      properties:
+        sourceBranchId:
+          type: integer
+        destinationBranchId:
+          type: integer
+        documentDate:
+          type: string
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId:
+                type: integer
+              quantity:
+                type: number
+              unitId:
+                type: ["integer", "null"]
+              unitCost:
+                type: number
+
+    InternalConsumptionReportSummary:
+      type: object
+      required: [totalCost, totalQty, docCount, byBranch, byProduct]
+      properties:
+        totalCost:
+          type: number
+        totalQty:
+          type: number
+        docCount:
+          type: integer
+        byBranch:
+          type: array
+          items:
+            type: object
+            properties:
+              branchId:
+                type: integer
+              branchName:
+                type: string
+              totalCost:
+                type: number
+              totalQty:
+                type: number
+              docCount:
+                type: integer
+        byProduct:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: integer
+              productName:
+                type: string
+              totalCost:
+                type: number
+              totalQty:
+                type: number

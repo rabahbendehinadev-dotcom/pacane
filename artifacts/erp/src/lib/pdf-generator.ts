@@ -1716,3 +1716,115 @@ export function generateSessionClosurePdf(session: SessionClosureData, company: 
   const dateStr = fmtDate(session.closedAt ?? new Date().toISOString()).replace(/ /g, "-");
   doc.save(`CLOTURE-${session.branchName.replace(/\s+/g, "-")}-${dateStr}.pdf`);
 }
+
+// ── Internal Consumption PDF ─────────────────────────────────────────────────
+
+export interface InternalConsumptionDocData {
+  reference: string;
+  status: string;
+  documentDate: string | Date;
+  sourceBranchName: string;
+  destinationBranchName: string;
+  createdByName?: string | null;
+  notes?: string | null;
+  totalCost: number;
+  items: Array<{
+    productName: string;
+    quantity: number;
+    unitName?: string;
+    unitCost: number;
+    totalCost: number;
+  }>;
+}
+
+const IC_STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon", confirmed: "Confirmé", cancelled: "Annulé",
+};
+
+export function generateInternalConsumptionPdf(doc: InternalConsumptionDocData, company: CompanySettings) {
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const sym = company.currencySymbol ?? "DA";
+
+  buildHeader(pdf, company, "CONSOMMATION INTERNE", doc.reference,
+    fmtDate(doc.documentDate), doc.sourceBranchName, doc.status,
+    IC_STATUS_LABELS[doc.status] ?? doc.status);
+
+  let y = 58;
+
+  // Info block
+  pdf.setFillColor(...BRAND_LIGHT);
+  pdf.setDrawColor(...BORDER_COLOR);
+  pdf.setLineWidth(0.3);
+  pdf.roundedRect(10, y, pageW - 20, 26, 3, 3, "FD");
+
+  const infoFields: [string, string][] = [
+    ["Boutique source", doc.sourceBranchName],
+    ["Boutique destination", doc.destinationBranchName],
+    ["Date document", fmtDate(doc.documentDate)],
+    ["Créé par", doc.createdByName ?? "—"],
+  ];
+
+  let fx = 16; let fy = y + 8;
+  for (let i = 0; i < infoFields.length; i++) {
+    const [lbl, val] = infoFields[i];
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(7); pdf.setTextColor(...BRAND_COLOR);
+    pdf.text(lbl.toUpperCase(), fx, fy);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.setTextColor(...BRAND_DARK);
+    pdf.text(val, fx, fy + 5);
+    if (i % 2 === 0) { fx = pageW / 2 + 5; }
+    else { fx = 16; fy += 15; }
+  }
+
+  y += 32;
+
+  // Items table
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(9); pdf.setTextColor(...BRAND_COLOR);
+  pdf.text("ARTICLES CONSOMMÉS", 14, y); y += 4;
+
+  autoTable(pdf, {
+    startY: y,
+    head: [["Produit", "Qté", "Unité", "Coût unitaire", "Total"]],
+    body: doc.items.map(item => [
+      item.productName,
+      new Intl.NumberFormat("fr-DZ", { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(item.quantity),
+      item.unitName ?? "",
+      fmtDA(item.unitCost, sym),
+      fmtDA(item.totalCost, sym),
+    ]),
+    theme: "grid",
+    styles: { font: "helvetica", fontSize: 8.5, cellPadding: 3 },
+    headStyles: { fillColor: BRAND_DARK, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: "auto" },
+      1: { cellWidth: 20, halign: "right" },
+      2: { cellWidth: 18, halign: "center" },
+      3: { cellWidth: 32, halign: "right" },
+      4: { cellWidth: 32, halign: "right" },
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  y = (pdf as any).lastAutoTable.finalY + 8;
+
+  // Total
+  y = buildTotalsBlock(pdf, y, [
+    ["Coût total", fmtDA(doc.totalCost, sym)],
+  ]);
+
+  // Notes
+  if (doc.notes?.trim()) y = buildNotes(pdf, y, doc.notes);
+
+  // Signatures
+  y = Math.max(y, 235);
+  pdf.setDrawColor(...BORDER_COLOR); pdf.setLineWidth(0.3);
+  pdf.line(14, y, 80, y);
+  pdf.line(pageW - 80, y, pageW - 14, y);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(7.5); pdf.setTextColor(...TEXT_MUTED);
+  pdf.text("Signature responsable source", 14, y + 5);
+  pdf.text("Signature responsable destination", pageW - 80, y + 5);
+
+  buildFooter(pdf, company);
+  const dateStr = fmtDate(doc.documentDate).replace(/ /g, "-");
+  pdf.save(`CI-${doc.reference}-${dateStr}.pdf`);
+}

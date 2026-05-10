@@ -1,0 +1,300 @@
+Act as a senior ERP QA auditor and business workflow validator.
+
+Your task is to perform a COMPLETE QA AUDIT of the new module:
+
+CONSOMMATION INTERNE / CESSION INTERNE DE CONSOMMABLES
+
+This is not a coding-first task.
+This is a deep validation task.
+You must inspect the current implementation and verify whether it is truly correct for a real multi-branch ERP.
+
+==================================================
+BUSINESS CONTEXT
+==================================================
+
+This module is used for internal consumable products such as:
+- frottoir
+- balai
+- chiffon
+- other internal-use supplies
+
+These products:
+- are stocked in a central branch such as ECOLE STOCK
+- are sent internally to boutiques like BEN OMAR, SIDI YAHYA, etc.
+- are NOT customer sales
+- must NOT affect sales revenue
+- must move at purchase cost / internal cost
+- must allow tracking internal consumable cost by boutique
+
+The expected workflow is:
+- source branch stock decreases
+- destination boutique stock increases
+- internal cost is assigned to destination boutique
+- this appears in dedicated internal consumption reports
+- this does NOT appear as customer turnover
+
+==================================================
+AUDIT OBJECTIVE
+==================================================
+
+Determine whether this module is:
+- functionally correct
+- branch-safe
+- stock-safe
+- financially coherent
+- UI-complete
+- report-consistent
+- launch-ready
+
+Be strict and specific.
+
+==================================================
+AUDIT CHECKLIST
+==================================================
+
+1. PRODUCT ELIGIBILITY
+Verify:
+- only products flagged as internal consumable can be selected
+- normal customer-sellable products do not appear by mistake
+- raw materials / finished products do not appear unless explicitly intended
+- product selector shows correct source-branch stock
+- product unit is correct
+
+2. SOURCE / DESTINATION BRANCH RULES
+Verify:
+- source branch is required
+- destination branch is required
+- source and destination cannot be the same
+- branch-limited users can only access allowed branches
+- admin/global users can access all according to scope
+- no branch leakage in selector, list, detail, or reports
+
+3. STOCK MOVEMENT LOGIC
+Verify on confirmation:
+- source stock decreases correctly
+- destination stock increases correctly
+- quantities are exact
+- no negative stock allowed in source
+- no double application if user clicks twice
+- stock movement rows are created
+- movement types are distinct and correct
+- stock history remains coherent
+
+4. COST LOGIC
+Verify:
+- unit cost comes from purchase/standard cost logic, not sales price
+- total line cost = quantity × unit cost
+- document total = sum of line totals
+- cost remains stable after confirmation
+- destination boutique internal cost is tracked correctly
+- no margin/revenue is generated from this workflow
+
+5. STATUS LOGIC
+Verify statuses:
+- draft
+- confirmed
+- cancelled
+
+Check:
+- draft does not move stock
+- confirmed moves stock exactly once
+- cancelled does not corrupt stock
+- confirmed document cannot be re-confirmed and duplicate stock movement
+- status badges and detail views are consistent
+
+6. LIST PAGE
+Verify:
+- references display correctly
+- source and destination branches display correctly
+- line count is correct
+- total cost is correct
+- created by displays correctly
+- status filter works
+- date filters work
+- branch filters work
+- no empty/broken actions
+
+7. DETAIL PAGE / DRAWER
+Verify:
+- header info is correct
+- line items correct
+- quantities/units correct
+- cost totals correct
+- notes visible
+- created by visible
+- branch names correct
+- PDF/print actions work if implemented
+- no undefined/null fields visible
+
+8. REPORTS
+Verify dedicated reporting:
+- cost by boutique
+- cost by product
+- cost by period
+- ranking of boutiques
+- ranking of products
+
+Check:
+- filters work
+- totals are correct
+- branch scope is respected
+- report does NOT mix with customer sales reports
+- report does NOT inflate revenue
+- export CSV works if implemented
+
+9. FINANCIAL COHERENCE
+Verify:
+- this module does NOT affect sales revenue
+- this module does NOT create receivables
+- this module does NOT create supplier payables directly
+- this module can be treated as internal operating cost only
+- financial dashboards do not count these records as external turnover
+
+10. PDF / PRINT / EXPORT
+If implemented, verify:
+- PDF title is correct
+- source and destination visible
+- quantities and costs visible
+- totals correct
+- branch scope respected
+- CSV export rows correct
+- filenames correct
+
+11. PERMISSIONS
+Verify permissions such as:
+- internal_consumption.view
+- internal_consumption.create
+- internal_consumption.confirm
+- internal_consumption.cancel
+- internal_consumption.export
+- internal_consumption.print
+
+Check:
+- UI visibility
+- backend enforcement
+- direct API access denied if unauthorized
+- branch scope respected in all endpoints
+
+12. EDGE CASES
+Test these scenarios:
+A. source stock = 10, qty = 1 → confirmed works
+B. source stock = 1, qty = 2 → blocked
+C. source stock = 0 → blocked
+D. same source and destination → blocked
+E. product not internal_consumable → blocked or hidden
+F. confirm same document twice → no duplicate stock movement
+G. delete/cancel after confirm → safe behavior only
+H. multiple lines in one document → totals correct
+I. decimal quantity if unit allows it → behaves correctly
+J. refresh/reopen detail page → numbers remain stable
+
+13. SEEDED DATA QUALITY
+Verify:
+- seeded examples are realistic
+- branches like ECOLE STOCK / BEN OMAR exist
+- internal consumable products are present
+- line costs are realistic
+- demo data helps testing, not hides bugs
+
+==================================================
+REQUIRED TEST SCENARIOS
+==================================================
+
+Run at least these exact scenarios:
+
+Scenario 1:
+- Product: frottoir
+- Cost: 100 DA
+- Source: ECOLE STOCK
+- Destination: BEN OMAR
+- Qty: 1
+Expected:
+- ECOLE STOCK stock -1
+- BEN OMAR stock +1
+- internal cost = 100 DA
+
+Scenario 2:
+- Product: balai
+- Qty: 3
+- unit cost: 120 DA
+Expected:
+- total line cost = 360 DA
+- document total updated correctly
+
+Scenario 3:
+- Source stock insufficient
+Expected:
+- confirmation blocked
+- clear error message
+
+Scenario 4:
+- Restricted branch user
+Expected:
+- only allowed branches visible
+- cannot create document outside scope
+
+Scenario 5:
+- Report by boutique
+Expected:
+- BEN OMAR internal cost reflects confirmed documents only
+
+==================================================
+OUTPUT FORMAT
+==================================================
+
+Return the audit in this exact structure:
+
+1. Executive verdict
+- Ready / Partial / Not ready
+
+2. What is solid
+- bullet list
+
+3. What is weak or incomplete
+- bullet list
+
+4. Functional bugs found
+For each:
+- severity
+- module/page
+- cause
+- impact
+
+5. Stock integrity verdict
+- safe / risky
+- with explanation
+
+6. Financial integrity verdict
+- safe / risky
+- with explanation
+
+7. Branch isolation verdict
+- safe / risky
+- with explanation
+
+8. Permissions verdict
+- safe / partial / risky
+
+9. Reports verdict
+- accurate / partial / misleading
+
+10. Final recommendation
+Choose one:
+- ready to use
+- fix a few issues first
+- do not use yet
+
+11. If issues exist, propose exact next fixes in priority order
+
+==================================================
+IMPORTANT RULES
+==================================================
+
+- Do not assume it is correct because the UI looks good
+- Inspect backend behavior too
+- Verify stock math carefully
+- Verify branch scope carefully
+- Verify this module does not pollute sales/revenue logic
+- Be precise, not generic
+- If it is good, say it clearly
+- If it is risky, say it clearly

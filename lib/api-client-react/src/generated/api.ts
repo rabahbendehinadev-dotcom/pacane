@@ -38,6 +38,7 @@ import type {
   CreateCategoryBody,
   CreateContactBody,
   CreateExpenseBody,
+  CreateInternalConsumptionBody,
   CreateProductBody,
   CreateProductionOrderBody,
   CreatePurchaseBody,
@@ -57,6 +58,8 @@ import type {
   GetContactsParams,
   GetDashboardSummaryParams,
   GetExpensesParams,
+  GetInternalConsumptionsParams,
+  GetInternalConsumptionsSummaryParams,
   GetPOSSessionsParams,
   GetProductionOrdersParams,
   GetProductionPlanningParams,
@@ -74,6 +77,8 @@ import type {
   GetTransfersParams,
   GetUsersParams,
   HealthStatus,
+  InternalConsumption,
+  InternalConsumptionReportSummary,
   LoginBody,
   LoginResponse,
   OpenPOSSessionBody,
@@ -7987,4 +7992,650 @@ export const useDeleteAttachment = <
   TContext
 > => {
   return useMutation(getDeleteAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary List internal consumptions
+ */
+export const getGetInternalConsumptionsUrl = (
+  params?: GetInternalConsumptionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/internal-consumptions?${stringifiedParams}`
+    : `/api/internal-consumptions`;
+};
+
+export const getInternalConsumptions = async (
+  params?: GetInternalConsumptionsParams,
+  options?: RequestInit,
+): Promise<InternalConsumption[]> => {
+  return customFetch<InternalConsumption[]>(
+    getGetInternalConsumptionsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInternalConsumptionsQueryKey = (
+  params?: GetInternalConsumptionsParams,
+) => {
+  return [`/api/internal-consumptions`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetInternalConsumptionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInternalConsumptions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInternalConsumptionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumptions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInternalConsumptionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInternalConsumptions>>
+  > = ({ signal }) =>
+    getInternalConsumptions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInternalConsumptions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInternalConsumptionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInternalConsumptions>>
+>;
+export type GetInternalConsumptionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List internal consumptions
+ */
+
+export function useGetInternalConsumptions<
+  TData = Awaited<ReturnType<typeof getInternalConsumptions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInternalConsumptionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumptions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInternalConsumptionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new internal consumption document
+ */
+export const getCreateInternalConsumptionUrl = () => {
+  return `/api/internal-consumptions`;
+};
+
+export const createInternalConsumption = async (
+  createInternalConsumptionBody: CreateInternalConsumptionBody,
+  options?: RequestInit,
+): Promise<InternalConsumption> => {
+  return customFetch<InternalConsumption>(getCreateInternalConsumptionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInternalConsumptionBody),
+  });
+};
+
+export const getCreateInternalConsumptionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInternalConsumption>>,
+    TError,
+    { data: BodyType<CreateInternalConsumptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInternalConsumption>>,
+  TError,
+  { data: BodyType<CreateInternalConsumptionBody> },
+  TContext
+> => {
+  const mutationKey = ["createInternalConsumption"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInternalConsumption>>,
+    { data: BodyType<CreateInternalConsumptionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInternalConsumption(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInternalConsumptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInternalConsumption>>
+>;
+export type CreateInternalConsumptionMutationBody =
+  BodyType<CreateInternalConsumptionBody>;
+export type CreateInternalConsumptionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new internal consumption document
+ */
+export const useCreateInternalConsumption = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInternalConsumption>>,
+    TError,
+    { data: BodyType<CreateInternalConsumptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInternalConsumption>>,
+  TError,
+  { data: BodyType<CreateInternalConsumptionBody> },
+  TContext
+> => {
+  return useMutation(getCreateInternalConsumptionMutationOptions(options));
+};
+
+/**
+ * @summary Get consumption report summary
+ */
+export const getGetInternalConsumptionsSummaryUrl = (
+  params?: GetInternalConsumptionsSummaryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/internal-consumptions/reports/summary?${stringifiedParams}`
+    : `/api/internal-consumptions/reports/summary`;
+};
+
+export const getInternalConsumptionsSummary = async (
+  params?: GetInternalConsumptionsSummaryParams,
+  options?: RequestInit,
+): Promise<InternalConsumptionReportSummary> => {
+  return customFetch<InternalConsumptionReportSummary>(
+    getGetInternalConsumptionsSummaryUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInternalConsumptionsSummaryQueryKey = (
+  params?: GetInternalConsumptionsSummaryParams,
+) => {
+  return [
+    `/api/internal-consumptions/reports/summary`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInternalConsumptionsSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInternalConsumptionsSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInternalConsumptionsSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumptionsSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInternalConsumptionsSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInternalConsumptionsSummary>>
+  > = ({ signal }) =>
+    getInternalConsumptionsSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInternalConsumptionsSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInternalConsumptionsSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInternalConsumptionsSummary>>
+>;
+export type GetInternalConsumptionsSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get consumption report summary
+ */
+
+export function useGetInternalConsumptionsSummary<
+  TData = Awaited<ReturnType<typeof getInternalConsumptionsSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInternalConsumptionsSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumptionsSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInternalConsumptionsSummaryQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get single internal consumption
+ */
+export const getGetInternalConsumptionUrl = (id: number) => {
+  return `/api/internal-consumptions/${id}`;
+};
+
+export const getInternalConsumption = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InternalConsumption> => {
+  return customFetch<InternalConsumption>(getGetInternalConsumptionUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetInternalConsumptionQueryKey = (id: number) => {
+  return [`/api/internal-consumptions/${id}`] as const;
+};
+
+export const getGetInternalConsumptionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInternalConsumption>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumption>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInternalConsumptionQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInternalConsumption>>
+  > = ({ signal }) => getInternalConsumption(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInternalConsumption>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInternalConsumptionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInternalConsumption>>
+>;
+export type GetInternalConsumptionQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get single internal consumption
+ */
+
+export function useGetInternalConsumption<
+  TData = Awaited<ReturnType<typeof getInternalConsumption>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInternalConsumption>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInternalConsumptionQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a draft internal consumption
+ */
+export const getUpdateInternalConsumptionUrl = (id: number) => {
+  return `/api/internal-consumptions/${id}`;
+};
+
+export const updateInternalConsumption = async (
+  id: number,
+  createInternalConsumptionBody: CreateInternalConsumptionBody,
+  options?: RequestInit,
+): Promise<InternalConsumption> => {
+  return customFetch<InternalConsumption>(getUpdateInternalConsumptionUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInternalConsumptionBody),
+  });
+};
+
+export const getUpdateInternalConsumptionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateInternalConsumption>>,
+    TError,
+    { id: number; data: BodyType<CreateInternalConsumptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateInternalConsumption>>,
+  TError,
+  { id: number; data: BodyType<CreateInternalConsumptionBody> },
+  TContext
+> => {
+  const mutationKey = ["updateInternalConsumption"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateInternalConsumption>>,
+    { id: number; data: BodyType<CreateInternalConsumptionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateInternalConsumption(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateInternalConsumptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateInternalConsumption>>
+>;
+export type UpdateInternalConsumptionMutationBody =
+  BodyType<CreateInternalConsumptionBody>;
+export type UpdateInternalConsumptionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a draft internal consumption
+ */
+export const useUpdateInternalConsumption = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateInternalConsumption>>,
+    TError,
+    { id: number; data: BodyType<CreateInternalConsumptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateInternalConsumption>>,
+  TError,
+  { id: number; data: BodyType<CreateInternalConsumptionBody> },
+  TContext
+> => {
+  return useMutation(getUpdateInternalConsumptionMutationOptions(options));
+};
+
+/**
+ * @summary Confirm and apply stock movements
+ */
+export const getConfirmInternalConsumptionUrl = (id: number) => {
+  return `/api/internal-consumptions/${id}/confirm`;
+};
+
+export const confirmInternalConsumption = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InternalConsumption> => {
+  return customFetch<InternalConsumption>(
+    getConfirmInternalConsumptionUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getConfirmInternalConsumptionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmInternalConsumption>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmInternalConsumption>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["confirmInternalConsumption"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmInternalConsumption>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return confirmInternalConsumption(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmInternalConsumptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof confirmInternalConsumption>>
+>;
+
+export type ConfirmInternalConsumptionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Confirm and apply stock movements
+ */
+export const useConfirmInternalConsumption = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmInternalConsumption>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmInternalConsumption>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getConfirmInternalConsumptionMutationOptions(options));
+};
+
+/**
+ * @summary Cancel a draft internal consumption
+ */
+export const getCancelInternalConsumptionUrl = (id: number) => {
+  return `/api/internal-consumptions/${id}/cancel`;
+};
+
+export const cancelInternalConsumption = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InternalConsumption> => {
+  return customFetch<InternalConsumption>(getCancelInternalConsumptionUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCancelInternalConsumptionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelInternalConsumption>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelInternalConsumption>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelInternalConsumption"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelInternalConsumption>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelInternalConsumption(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelInternalConsumptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelInternalConsumption>>
+>;
+
+export type CancelInternalConsumptionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Cancel a draft internal consumption
+ */
+export const useCancelInternalConsumption = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelInternalConsumption>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelInternalConsumption>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelInternalConsumptionMutationOptions(options));
 };

@@ -1432,6 +1432,90 @@ export interface CreateAttachmentBody {
   branchId?: number | null;
 }
 
+export type InternalConsumptionStatus =
+  (typeof InternalConsumptionStatus)[keyof typeof InternalConsumptionStatus];
+
+export const InternalConsumptionStatus = {
+  draft: "draft",
+  confirmed: "confirmed",
+  cancelled: "cancelled",
+} as const;
+
+export interface InternalConsumptionItem {
+  id: number;
+  documentId: number;
+  productId: number;
+  productName: string;
+  quantity: number;
+  /** @nullable */
+  unitId?: number | null;
+  unitName?: string;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface InternalConsumption {
+  id: number;
+  reference: string;
+  sourceBranchId: number;
+  destinationBranchId: number;
+  sourceBranchName: string;
+  destinationBranchName: string;
+  documentDate: string;
+  status: InternalConsumptionStatus;
+  totalCost: number;
+  itemCount: number;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  createdByUserId?: number | null;
+  /** @nullable */
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  items?: InternalConsumptionItem[];
+}
+
+export type CreateInternalConsumptionBodyItemsItem = {
+  productId: number;
+  quantity: number;
+  /** @nullable */
+  unitId?: number | null;
+  unitCost?: number;
+};
+
+export interface CreateInternalConsumptionBody {
+  sourceBranchId: number;
+  destinationBranchId: number;
+  documentDate?: string;
+  /** @nullable */
+  notes?: string | null;
+  items: CreateInternalConsumptionBodyItemsItem[];
+}
+
+export type InternalConsumptionReportSummaryByBranchItem = {
+  branchId?: number;
+  branchName?: string;
+  totalCost?: number;
+  totalQty?: number;
+  docCount?: number;
+};
+
+export type InternalConsumptionReportSummaryByProductItem = {
+  productId?: number;
+  productName?: string;
+  totalCost?: number;
+  totalQty?: number;
+};
+
+export interface InternalConsumptionReportSummary {
+  totalCost: number;
+  totalQty: number;
+  docCount: number;
+  byBranch: InternalConsumptionReportSummaryByBranchItem[];
+  byProduct: InternalConsumptionReportSummaryByProductItem[];
+}
+
 export type GetDashboardSummaryParams = {
   /**
    * @nullable
@@ -1771,4 +1855,28 @@ export const GetAttachmentsEntityType = {
 
 export type DeleteAttachment200 = {
   success?: boolean;
+};
+
+export type GetInternalConsumptionsParams = {
+  sourceBranchId?: number;
+  destinationBranchId?: number;
+  status?: GetInternalConsumptionsStatus;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type GetInternalConsumptionsStatus =
+  (typeof GetInternalConsumptionsStatus)[keyof typeof GetInternalConsumptionsStatus];
+
+export const GetInternalConsumptionsStatus = {
+  draft: "draft",
+  confirmed: "confirmed",
+  cancelled: "cancelled",
+} as const;
+
+export type GetInternalConsumptionsSummaryParams = {
+  sourceBranchId?: number;
+  destinationBranchId?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };

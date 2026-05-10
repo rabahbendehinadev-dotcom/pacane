@@ -22,6 +22,7 @@ export const P = {
   treasury:        { view: "treasury.view" },
   analytics:       { view: "analytics.view" },
   replenishment:   { view: "replenishment.view", create: "replenishment.create", print: "replenishment.print", export: "replenishment.export" },
+  internalConsumptions: { view: "internal_consumptions.view", create: "internal_consumptions.create", confirm: "internal_consumptions.confirm", cancel: "internal_consumptions.cancel", export: "internal_consumptions.export" },
 } as const;
 
 export function hasPermission(permissions: string[], permission: string): boolean {
@@ -80,6 +81,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "analytics.view",
     "settings.view",
     "replenishment.*",
+    "internal_consumptions.*",
   ],
 
   "Caissier": [
@@ -109,6 +111,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "adjustments.*",
     "purchases.view", "purchases.receive",
     "purchase_returns.view",
+    "internal_consumptions.*",
   ],
 
   "Responsable achats": [
