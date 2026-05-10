@@ -140,6 +140,12 @@ router.post("/internal-consumptions", requireAuth, requirePermission(P.internalC
     const qty = parseFloat(String(item.quantity ?? 0));
     const cost = parseFloat(String(item.unitCost ?? 0));
     if (qty <= 0) { res.status(400).json({ error: "La quantité doit être supérieure à 0" }); return; }
+    const [prod] = await db.select({ name: productsTable.name, isConsumable: productsTable.isInternalConsumable })
+      .from(productsTable).where(eq(productsTable.id, parseInt(String(item.productId), 10)));
+    if (!prod?.isConsumable) {
+      res.status(400).json({ error: `Le produit "${prod?.name ?? item.productId}" n'est pas marqué comme consommable interne. Activez l'option dans la fiche produit.` });
+      return;
+    }
     totalCost += qty * cost;
   }
 
@@ -187,6 +193,12 @@ router.put("/internal-consumptions/:id", requireAuth, requirePermission(P.intern
   for (const item of items) {
     const qty = parseFloat(String(item.quantity ?? 0));
     const cost = parseFloat(String(item.unitCost ?? 0));
+    const [prod] = await db.select({ name: productsTable.name, isConsumable: productsTable.isInternalConsumable })
+      .from(productsTable).where(eq(productsTable.id, parseInt(String(item.productId), 10)));
+    if (!prod?.isConsumable) {
+      res.status(400).json({ error: `Le produit "${prod?.name ?? item.productId}" n'est pas marqué comme consommable interne.` });
+      return;
+    }
     totalCost += qty * cost;
   }
 

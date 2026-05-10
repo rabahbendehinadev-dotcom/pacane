@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetBranches, useGetProducts, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateInternalConsumptionPdf } from "@/lib/pdf-generator";
@@ -129,7 +129,10 @@ export default function InternalConsumptions() {
   const [tab, setTab] = useState("all");
   const [filterSource, setFilterSource] = useState("all");
   const [filterDest, setFilterDest] = useState("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [pendingEdit, setPendingEdit] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [shortageOpen, setShortageOpen] = useState(false);
@@ -147,6 +150,8 @@ export default function InternalConsumptions() {
   if (tab !== "all") params.status = tab;
   if (filterSource !== "all") params.sourceBranchId = parseInt(filterSource);
   if (filterDest !== "all") params.destinationBranchId = parseInt(filterDest);
+  if (filterDateFrom) params.dateFrom = filterDateFrom;
+  if (filterDateTo) params.dateTo = filterDateTo;
 
   const { data: docs = [], isLoading, refetch } = useQuery<ICDoc[]>({
     queryKey: ["internal-consumptions", params],
@@ -163,11 +168,21 @@ export default function InternalConsumptions() {
   });
 
   const { data: branches = [] } = useGetBranches();
-  const { data: products = [] } = useGetProducts({});
+  const { data: allProducts = [] } = useGetProducts({});
+  const products = allProducts.filter((p: any) => p.isInternalConsumable === true);
   const { data: companySettings } = useGetCompanySettings();
 
+  // Auto-open edit dialog after detail loads when pencil was clicked from table row
+  useEffect(() => {
+    if (pendingEdit && selectedDoc) {
+      openEdit(selectedDoc);
+      setSelectedId(null);
+      setPendingEdit(false);
+    }
+  }, [pendingEdit, selectedDoc]);
+
   const filteredDocs = docs;
-  const totalCost = filteredDocs.reduce((s, d) => s + d.totalCost, 0);
+  const confirmedCost = filteredDocs.filter(d => d.status === "confirmed").reduce((s, d) => s + d.totalCost, 0);
 
   function resetForm() {
     setForm({ sourceBranchId: "", destinationBranchId: "", documentDate: format(new Date(), "yyyy-MM-dd"), notes: "" });
@@ -345,10 +360,10 @@ export default function InternalConsumptions() {
         </Card>
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Coût total</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Coût confirmé</CardTitle>
           </CardHeader>
           <CardContent className="pb-4 px-4">
-            <p className="text-2xl font-bold">{formatDA(totalCost)}</p>
+            <p className="text-2xl font-bold">{formatDA(confirmedCost)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -382,9 +397,11 @@ export default function InternalConsumptions() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 ml-auto flex-wrap">
+        <div className="flex gap-2 ml-auto flex-wrap items-center">
+          <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 text-xs w-36" title="Du" />
+          <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 text-xs w-36" title="Au" />
           <Select value={filterSource} onValueChange={setFilterSource}>
-            <SelectTrigger className="w-44 h-8 text-xs">
+            <SelectTrigger className="w-40 h-8 text-xs">
               <SelectValue placeholder="Source" />
             </SelectTrigger>
             <SelectContent>
@@ -393,7 +410,7 @@ export default function InternalConsumptions() {
             </SelectContent>
           </Select>
           <Select value={filterDest} onValueChange={setFilterDest}>
-            <SelectTrigger className="w-44 h-8 text-xs">
+            <SelectTrigger className="w-40 h-8 text-xs">
               <SelectValue placeholder="Destination" />
             </SelectTrigger>
             <SelectContent>
@@ -401,6 +418,11 @@ export default function InternalConsumptions() {
               {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          {(filterDateFrom || filterDateTo || filterSource !== "all" || filterDest !== "all") && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterSource("all"); setFilterDest("all"); }}>
+              <X className="h-3 w-3 mr-1" />Réinitialiser
+            </Button>
+          )}
         </div>
       </div>
 
@@ -441,6 +463,7 @@ export default function InternalConsumptions() {
                     <div className="flex gap-1">
                       {doc.status === "draft" && canCreate && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => {
+                          setPendingEdit(true);
                           setSelectedId(doc.id);
                         }}>
                           <Pencil className="h-3 w-3" />
