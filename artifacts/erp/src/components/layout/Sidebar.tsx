@@ -31,6 +31,7 @@ import {
   Heart,
   Undo2,
   ClipboardList,
+  PackageCheck,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -83,6 +84,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       items: [
         { label: t("stock"), href: "/stock", icon: Boxes, perm: "stock.view" },
         { label: t("purchases"), href: "/purchases", icon: ShoppingCart, perm: "purchases.view" },
+        { label: "Réceptions", href: "/receptions", icon: PackageCheck, perm: "purchases.view" },
         { label: "Retours fournisseurs", href: "/purchase-returns", icon: Undo2, perm: "purchase_returns.view" },
         { label: "Commande automatique", href: "/replenishment", icon: ClipboardList, perm: "replenishment.view" },
         { label: t("production"), href: "/production", icon: Factory, perm: "production.view" },

@@ -40,6 +40,7 @@ import PurchaseReturnsPage from "@/pages/purchase-returns";
 import ReplenishmentPage from "@/pages/replenishment";
 import InternalConsumptions from "@/pages/internal-consumptions";
 import InternalConsumptionReports from "@/pages/internal-consumptions-reports";
+import Receptions from "@/pages/receptions";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -184,6 +185,9 @@ function AppRoutes() {
       </Route>
       <Route path="/internal-consumptions/reports">
         <DashboardLayout><InternalConsumptionReports /></DashboardLayout>
+      </Route>
+      <Route path="/receptions">
+        <DashboardLayout><Receptions /></DashboardLayout>
       </Route>
 
       <Route component={NotFound} />
