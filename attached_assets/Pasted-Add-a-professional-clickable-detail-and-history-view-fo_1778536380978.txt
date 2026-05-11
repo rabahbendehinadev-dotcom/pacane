@@ -1,0 +1,325 @@
+Add a professional clickable detail and history view for each purchase reception in the “Achats & Réceptions” page.
+
+Context:
+In the current Achats & Réceptions page, the table shows purchase receptions such as:
+- REC-000001
+- Date
+- Fournisseur
+- Articles
+- Total TTC
+- Versement
+- Reste à payer
+- Mode
+- Statut
+- Utilisateur
+- Actions
+
+Problem:
+The user cannot click on a reception and inspect it.
+The reception number looks like a badge but does not open a full detail/history view.
+This is not acceptable for a professional ERP.
+
+Required behavior:
+The user must be able to click:
+- the reception number, for example REC-000001
+- or a new “Voir” action button
+
+And open a complete purchase/reception detail view with full history.
+
+Important rules:
+- Do not break existing purchase creation.
+- Do not break stock logic.
+- Do not break supplier debt logic.
+- Do not break caisse/payment logic.
+- Do not break Retour fournisseur.
+- Do not break Annuler.
+- Preserve multi-tenant organizationId isolation.
+- Keep French UI.
+- Keep DA / DZD formatting.
+- Keep TypeScript at 0 errors.
+- Keep existing list table layout.
+
+====================================================
+PART 1 — AUDIT CURRENT PURCHASE DETAILS
+====================================================
+
+Before coding, inspect and document:
+
+1. Current Achats & Réceptions page file.
+2. Current purchase/reception table component.
+3. Current API used to list receptions.
+4. Existing backend tables/models for:
+   - purchases/receptions
+   - purchase/reception lines
+   - suppliers
+   - products
+   - stock movements
+   - supplier ledger/debt movements
+   - cash/caisse movements
+   - returns fournisseur
+   - audit logs
+5. Whether a purchase detail endpoint already exists.
+6. Whether purchase items are already returned in the list response.
+7. Current Retour and Annuler logic.
+
+Reuse existing logic and endpoints when possible.
+
+====================================================
+PART 2 — MAKE RECEPTION NUMBER CLICKABLE
+====================================================
+
+In the Achats & Réceptions table:
+
+1. Make the reception number clickable:
+   - REC-000001 should behave like a link/button.
+2. Add hover style:
+   - underline or pointer cursor.
+3. Add an explicit action button:
+   - “Voir”
+   - icon: eye if available
+4. Clicking REC number or “Voir” opens the same detail view.
+
+Do not remove existing actions:
+- Retour
+- Annuler
+
+Recommended actions order:
+- Voir
+- Retour
+- Annuler
+
+====================================================
+PART 3 — DETAIL VIEW UI
+====================================================
+
+Create a professional purchase reception detail view.
+
+Preferred implementation:
+- Side drawer if the app already uses drawers.
+- Otherwise use a modal.
+- If the detail is too large, use a dedicated route:
+  /purchases/:id
+
+The detail view must show:
+
+HEADER:
+- N° réception
+- Statut badge
+- Date exacte: DD/MM/YYYY HH:mm:ss
+- Fournisseur
+- Utilisateur
+- Mode de paiement
+- Source de paiement if available
+- Réf. fournisseur if available
+
+SUMMARY CARDS:
+- Total TTC
+- Versement
+- Reste à payer
+- Dette fournisseur avant/après if available
+- Nombre d’articles
+- Caisse/source impactée if payment exists
+
+ITEMS TABLE:
+- Code barre
+- Référence
+- Désignation
+- Quantité
+- PA TTC
+- PV TTC if available
+- Montant TTC
+- Stock avant if available
+- Stock après if available
+
+HISTORIQUE / MOUVEMENTS:
+Add a section or tabs:
+
+Tab 1: Articles
+- all received products
+
+Tab 2: Paiement & Dette
+- payment mode
+- paid amount
+- remaining amount
+- supplier debt movement
+- caisse movement if any
+
+Tab 3: Stock
+- stock movements created by this reception
+- product name
+- quantity in
+- stock before/after if available
+- date/time
+
+Tab 4: Retours
+- supplier returns linked to this reception
+- returned quantity
+- amount
+- date/time
+- status
+
+Tab 5: Historique
+- audit logs linked to this reception
+- created by
+- cancelled by if any
+- returned by if any
+- timestamps
+
+ACTIONS:
+- Imprimer bon de réception
+- Télécharger PDF if supported
+- Retour fournisseur
+- Annuler réception if allowed
+- Copier numéro
+- Fermer
+
+If a feature is not implemented yet, do not create a broken button.
+Either hide it or mark it as disabled with tooltip:
+“Bientôt disponible”.
+
+====================================================
+PART 4 — BACKEND DETAIL ENDPOINT
+====================================================
+
+Add or improve a backend endpoint:
+
+GET /purchases/:id
+
+It must return:
+- purchase/reception main record
+- supplier info
+- user info if available
+- items/lines
+- linked products
+- stock movements
+- cash/caisse movements
+- supplier ledger/debt movements
+- supplier returns linked to this reception
+- audit logs if available
+
+Security rules:
+1. Route requires authentication.
+2. Use auth.organizationId.
+3. Never trust organizationId from client.
+4. Return 404 if the reception does not belong to current organization.
+5. Do not leak another organization’s supplier/products/movements.
+6. Do not return sensitive user fields.
+7. Handle missing old data safely.
+
+French errors:
+- “Réception introuvable.”
+- “Accès non autorisé.”
+
+====================================================
+PART 5 — HISTORY DATA HANDLING
+====================================================
+
+If some historical data does not exist yet, show clean fallback:
+
+- Stock avant: “Non disponible”
+- Stock après: “Non disponible”
+- Source paiement: “Non renseignée”
+- Mouvement caisse: “Aucun mouvement caisse”
+- Retours: “Aucun retour fournisseur”
+- Historique: “Aucun historique disponible”
+
+Do not crash.
+
+====================================================
+PART 6 — LINKED ACTIONS
+====================================================
+
+From the detail view:
+
+1. Retour fournisseur:
+   - opens the existing supplier return flow
+   - preselects this reception
+   - does not require the user to search again
+
+2. Annuler:
+   - uses existing safe cancellation logic
+   - asks confirmation:
+     “Voulez-vous vraiment annuler cette réception ?”
+   - after success, refreshes detail and list
+
+3. Copier numéro:
+   - copies REC number to clipboard
+   - shows toast:
+     “Numéro copié.”
+
+4. Close:
+   - returns to list without losing filters/search.
+
+====================================================
+PART 7 — FRONTEND STATE / REFRESH
+====================================================
+
+After opening detail:
+- show loading state
+- show error state if not found
+- cache or refetch cleanly
+
+After actions:
+- refetch purchase list
+- refetch detail
+- preserve current search/filter if any
+
+====================================================
+PART 8 — TESTS
+====================================================
+
+Run these tests:
+
+1. Open Achats & Réceptions page.
+2. Click REC-000001.
+3. Detail view opens.
+4. Detail shows:
+   - N° réception
+   - fournisseur
+   - exact date/time
+   - total TTC
+   - versement
+   - reste à payer
+   - mode paiement
+   - utilisateur
+5. Items table shows received products.
+6. Stock tab shows stock movement or clean fallback.
+7. Paiement/Dette tab shows supplier debt information or clean fallback.
+8. Retours tab shows linked returns or clean empty state.
+9. Historique tab shows audit logs or clean empty state.
+10. “Retour fournisseur” from detail opens return flow for this reception.
+11. “Annuler” from detail uses existing cancellation logic.
+12. Direct URL/API access to another organization’s purchase returns 404/403.
+13. Old records with missing fields do not crash.
+14. TypeScript:
+   - 0 errors
+15. Browser console:
+   - no critical errors.
+
+====================================================
+REQUIRED OUTPUT
+====================================================
+
+After implementation, provide a report with:
+
+1. What purchase detail logic existed before
+2. What clickable actions were added
+3. What UI was created: drawer/modal/route
+4. What backend endpoint was added or improved
+5. What data is shown in the detail view
+6. How historique/movements are displayed
+7. How Retour fournisseur and Annuler are linked
+8. Multi-tenant isolation test result
+9. Files changed
+10. Tests performed and results
+11. TypeScript status
+12. Remaining limitations
+
+Also explicitly confirm:
+- REC-000001 is now clickable.
+- User can open every purchase/reception and inspect full details.
+- User can see items, payment, supplier debt, stock movements, returns, and history.
+- Retour fournisseur can be launched from the reception detail.
+- Annuler can be launched from the reception detail safely.
+- Cross-organization access is blocked.
+- TypeScript remains at 0 errors.
