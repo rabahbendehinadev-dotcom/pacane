@@ -10,6 +10,7 @@ export const productsTable = pgTable("products", {
   type: text("type").notNull().default("finished"),
   categoryId: integer("category_id"),
   unitId: integer("unit_id").notNull(),
+  workerId: integer("worker_id"),
   description: text("description"),
   imageUrl: text("image_url"),
   costPrice: numeric("cost_price", { precision: 15, scale: 2 }).notNull().default("0"),

@@ -23,3 +23,4 @@ export * from "./loyalty";
 export { purchaseReturnsTable, purchaseReturnItemsTable } from "./purchases";
 export * from "./replenishment";
 export * from "./internal-consumptions";
+export * from "./workers";

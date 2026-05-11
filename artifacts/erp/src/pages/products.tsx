@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useGetProducts, useCreateProduct, useUpdateProduct, useGetCategories, useGetUnits, useGetBranches, getGetProductsQueryKey, Product } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,14 @@ function ProductThumb({ url, name }: { url: string | null; name: string }) {
 
 function formatDA(n: number) { return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA"; }
 
-const EMPTY = { name: "", type: "finished", sku: "", categoryId: "none", unitId: "none", costPrice: "", sellingPrice: "", alertQuantity: "", isSellable: true, isPurchasable: true, isFabricated: false, description: "" };
+const EMPTY = { name: "", type: "finished", sku: "", categoryId: "none", unitId: "none", workerId: "none", costPrice: "", sellingPrice: "", alertQuantity: "", isSellable: true, isPurchasable: true, isFabricated: false, description: "" };
+
+interface WorkerOption { id: number; name: string; isActive: boolean; }
+async function fetchActiveWorkers(): Promise<WorkerOption[]> {
+  const r = await fetch("/api/workers", { headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` } });
+  if (!r.ok) return [];
+  return r.json();
+}
 
 function typeBadge(type: string) {
   const m: Record<string, { label: string; cls: string }> = {
@@ -85,6 +93,7 @@ export default function Products() {
   const { data: categories = [] } = useGetCategories();
   const { data: units = [] } = useGetUnits();
   const { data: branches = [] } = useGetBranches();
+  const { data: allWorkers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchActiveWorkers });
   const pieceUnitId = units.find(u => !u.allowDecimals && (u.name.toLowerCase().includes("pièce") || u.abbreviation.toLowerCase() === "pcs"))?.id?.toString() ?? null;
   async function saveReplenishmentRulesFor(productId: number, rules: Record<number, { targetSunWed: string; targetThuSat: string }>) {
     const payload = Object.entries(rules)
@@ -132,7 +141,7 @@ export default function Products() {
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
-    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.sellingPrice?.toString() ?? "", alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, description: p.description ?? "" });
+    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, workerId: (p as any).workerId?.toString() ?? "none", costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.sellingPrice?.toString() ?? "", alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, description: p.description ?? "" });
     setSelectedBranchIds((p as any).branchIds ?? []);
     setImagePreview(p.imageUrl ?? null);
     setPendingImagePath(null);
@@ -180,6 +189,7 @@ export default function Products() {
       ...form,
       categoryId: form.categoryId && form.categoryId !== "none" ? parseInt(form.categoryId) : null,
       unitId: form.unitId && form.unitId !== "none" ? parseInt(form.unitId) : null,
+      workerId: form.workerId && form.workerId !== "none" ? parseInt(form.workerId) : null,
       costPrice: form.costPrice ? parseFloat(form.costPrice) : null,
       sellingPrice: form.sellingPrice ? parseFloat(form.sellingPrice) : null,
       alertQuantity: form.alertQuantity ? parseFloat(form.alertQuantity) : null,
@@ -492,6 +502,21 @@ export default function Products() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div>
+              <Label>Responsable de préparation</Label>
+              <Select value={form.workerId} onValueChange={v => setForm(f => ({ ...f, workerId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Non affecté" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non affecté</SelectItem>
+                  {allWorkers.filter(w => w.isActive || w.id.toString() === form.workerId).map(w => (
+                    <SelectItem key={w.id} value={String(w.id)}>
+                      {w.name}{!w.isActive ? " (désactivé)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Sites commerciaux — multi-select dropdown */}

@@ -15,12 +15,19 @@ import { format } from "date-fns";
 import {
   ShoppingCart, Package, AlertTriangle, CheckCircle2, Calculator,
   Download, Printer, FileText, Loader2, Building2, CalendarDays,
-  Users, RefreshCw,
+  Users, RefreshCw, HardHat,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const AUTH_HEADER = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
+
+interface WorkerOption { id: number; name: string; isActive: boolean; }
+async function fetchWorkers(): Promise<WorkerOption[]> {
+  const r = await fetch("/api/workers", { headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` } });
+  if (!r.ok) return [];
+  return r.json();
+}
 
 interface ReplenishmentItem {
   productId: number;
@@ -28,6 +35,8 @@ interface ReplenishmentItem {
   sku: string | null;
   categoryName: string | null;
   unitName: string;
+  workerId: number | null;
+  workerName: string | null;
   currentStock: number;
   targetStock: number;
   quantityToOrder: number;
@@ -64,19 +73,23 @@ export default function ReplenishmentPage() {
   const [branchId, setBranchId] = useState<string>("");
   const [date, setDate] = useState<string>(tomorrow);
   const [categoryId, setCategoryId] = useState<string>("all");
+  const [workerId, setWorkerId] = useState<string>("all");
   const [onlyToOrder, setOnlyToOrder] = useState<boolean>(true);
   const [groupBySupplier, setGroupBySupplier] = useState<boolean>(false);
+  const [groupByWorker, setGroupByWorker] = useState<boolean>(false);
   const [triggered, setTriggered] = useState(false);
 
   const { data: branches = [] } = useGetBranches();
   const { data: categories = [] } = useGetCategories();
+  const { data: workers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchWorkers });
 
-  const fetchKey = ["replenishment-calculate", branchId, date, categoryId, triggered];
+  const fetchKey = ["replenishment-calculate", branchId, date, categoryId, workerId, triggered];
   const { data: result, isLoading, isFetching, refetch } = useQuery<ReplenishmentResult>({
     queryKey: fetchKey,
     queryFn: async () => {
       const params = new URLSearchParams({ branchId, date });
       if (categoryId && categoryId !== "all") params.set("categoryId", categoryId);
+      if (workerId && workerId !== "all") params.set("workerId", workerId);
       const r = await fetch(`/api/replenishment/calculate?${params}`, { headers: AUTH_HEADER() });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
@@ -102,12 +115,22 @@ export default function ReplenishmentPage() {
     return map;
   }, [displayItems]);
 
+  const itemsByWorker = useCallback(() => {
+    const map = new Map<string, ReplenishmentItem[]>();
+    for (const item of displayItems) {
+      const key = item.workerName ?? "Non affecté";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return map;
+  }, [displayItems]);
+
   function exportCsv() {
     if (!result) return;
     const rows = [
-      ["Produit", "SKU", "Catégorie", "Unité", "Stock actuel", "Stock cible", "Qté à commander", "Fournisseur", "Statut"],
+      ["Produit", "SKU", "Catégorie", "Responsable", "Unité", "Stock actuel", "Stock cible", "Qté à commander", "Fournisseur", "Statut"],
       ...displayItems.map(i => [
-        i.productName, i.sku ?? "", i.categoryName ?? "", i.unitName,
+        i.productName, i.sku ?? "", i.categoryName ?? "", i.workerName ?? "Non affecté", i.unitName,
         fmtQty(i.currentStock), fmtQty(i.targetStock), fmtQty(i.quantityToOrder),
         i.supplierName ?? "", i.status === "to_order" ? "À commander" : "OK"
       ])
@@ -136,24 +159,34 @@ export default function ReplenishmentPage() {
     doc.text(`Objectif : ${result.weekdayGroupLabel}`, 14, 42);
     doc.text(`Généré le : ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 48);
 
-    const groups = groupBySupplier ? Array.from(itemsBySupplier().entries()) : [["Tous les produits", displayItems] as [string, ReplenishmentItem[]]];
+    let groups: [string, ReplenishmentItem[]][];
+    let groupLabel = "";
+    if (groupByWorker) {
+      groups = Array.from(itemsByWorker().entries());
+      groupLabel = "Responsable";
+    } else if (groupBySupplier) {
+      groups = Array.from(itemsBySupplier().entries());
+      groupLabel = "Fournisseur";
+    } else {
+      groups = [["Tous les produits", displayItems]];
+    }
     let startY = 56;
 
-    for (const [supplierName, items] of groups) {
-      if (groupBySupplier) {
+    for (const [groupName, items] of groups) {
+      if (groupByWorker || groupBySupplier) {
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.text(`Fournisseur : ${supplierName}`, 14, startY);
+        doc.text(`${groupLabel} : ${groupName}`, 14, startY);
         startY += 6;
       }
 
       autoTable(doc, {
         startY,
-        head: [["Produit", "SKU", "Unité", "Stock actuel", "Stock cible", "Qté à commander"]],
+        head: [["Produit", "SKU", groupByWorker ? "Fournisseur" : "Unité", "Stock actuel", "Stock cible", "Qté à commander"]],
         body: items.map(i => [
           i.productName,
           i.sku ?? "—",
-          i.unitName,
+          groupByWorker ? (i.supplierName ?? "—") : i.unitName,
           fmtQty(i.currentStock),
           fmtQty(i.targetStock),
           fmtQty(i.quantityToOrder),
@@ -242,14 +275,32 @@ export default function ReplenishmentPage() {
               </Select>
             </div>
 
+            <div className="flex flex-col gap-1.5 min-w-[160px]">
+              <Label className="text-xs font-medium">Responsable</Label>
+              <Select value={workerId} onValueChange={setWorkerId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="none">Non affecté</SelectItem>
+                  {workers.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex flex-col gap-2 pt-1">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                 <Checkbox checked={onlyToOrder} onCheckedChange={v => setOnlyToOrder(!!v)} />
                 Afficher uniquement les produits à commander
               </label>
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <Checkbox checked={groupBySupplier} onCheckedChange={v => setGroupBySupplier(!!v)} />
+                <Checkbox checked={groupBySupplier} onCheckedChange={v => { setGroupBySupplier(!!v); if (v) setGroupByWorker(false); }} />
                 Grouper par fournisseur
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <Checkbox checked={groupByWorker} onCheckedChange={v => { setGroupByWorker(!!v); if (v) setGroupBySupplier(false); }} />
+                Grouper par responsable
               </label>
             </div>
 
@@ -371,7 +422,19 @@ export default function ReplenishmentPage() {
           {/* Table */}
           {triggered && !loading && result && displayItems.length > 0 && (
             <>
-              {groupBySupplier ? (
+              {groupByWorker ? (
+                Array.from(itemsByWorker().entries()).map(([workerName, items]) => (
+                  <div key={workerName} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <HardHat className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-semibold text-sm">{workerName}</span>
+                      <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+                    </div>
+                    <ReplenishmentTable items={items} showWorker={false} />
+                    <Separator />
+                  </div>
+                ))
+              ) : groupBySupplier ? (
                 Array.from(itemsBySupplier().entries()).map(([supplierName, items]) => (
                   <div key={supplierName} className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -379,12 +442,12 @@ export default function ReplenishmentPage() {
                       <span className="font-semibold text-sm">{supplierName}</span>
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
                     </div>
-                    <ReplenishmentTable items={items} />
+                    <ReplenishmentTable items={items} showWorker={true} />
                     <Separator />
                   </div>
                 ))
               ) : (
-                <ReplenishmentTable items={displayItems} />
+                <ReplenishmentTable items={displayItems} showWorker={true} />
               )}
             </>
           )}
@@ -394,7 +457,7 @@ export default function ReplenishmentPage() {
   );
 }
 
-function ReplenishmentTable({ items }: { items: ReplenishmentItem[] }) {
+function ReplenishmentTable({ items, showWorker = true }: { items: ReplenishmentItem[]; showWorker?: boolean }) {
   return (
     <div className="rounded-lg border overflow-hidden">
       <Table>
@@ -403,6 +466,7 @@ function ReplenishmentTable({ items }: { items: ReplenishmentItem[] }) {
             <TableHead className="font-semibold">Produit</TableHead>
             <TableHead className="font-semibold">SKU</TableHead>
             <TableHead className="font-semibold">Catégorie</TableHead>
+            {showWorker && <TableHead className="font-semibold">Responsable</TableHead>}
             <TableHead className="font-semibold text-right">Stock actuel</TableHead>
             <TableHead className="font-semibold text-right">Stock cible</TableHead>
             <TableHead className="font-semibold text-right">Qté à commander</TableHead>
@@ -417,6 +481,17 @@ function ReplenishmentTable({ items }: { items: ReplenishmentItem[] }) {
               <TableCell className="font-medium text-sm">{item.productName}</TableCell>
               <TableCell className="text-xs text-muted-foreground font-mono">{item.sku ?? "—"}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{item.categoryName ?? "—"}</TableCell>
+              {showWorker && (
+                <TableCell className="text-sm text-muted-foreground">
+                  {item.workerName ? (
+                    <span className="inline-flex items-center gap-1">
+                      <HardHat className="h-3 w-3 text-muted-foreground/60" />{item.workerName}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40 text-xs">Non affecté</span>
+                  )}
+                </TableCell>
+              )}
               <TableCell className="text-right text-sm font-mono">{fmtQty(item.currentStock)}</TableCell>
               <TableCell className="text-right text-sm font-mono text-muted-foreground">{fmtQty(item.targetStock)}</TableCell>
               <TableCell className="text-right">

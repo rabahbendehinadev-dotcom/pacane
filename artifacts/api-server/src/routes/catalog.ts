@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, categoriesTable, unitsTable, productsTable, stockLevelsTable } from "@workspace/db";
+import { db, categoriesTable, unitsTable, productsTable, stockLevelsTable, workersTable } from "@workspace/db";
 import { eq, and, ilike, sql, like, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -67,21 +67,23 @@ router.post("/units", requireAuth, requirePermission(P.products.create), async (
 // PRODUCTS
 router.get("/products", requireAuth, async (req, res): Promise<void> => {
   const { type, categoryId, search } = req.query as Record<string, string>;
-  let query = db.select({
+  const rows = await db.select({
     p: productsTable,
     unitName: unitsTable.abbreviation,
     totalStock: sql<string>`COALESCE((SELECT SUM(sl.quantity) FROM stock_levels sl WHERE sl.product_id = ${productsTable.id}), 0)`,
-    catName: categoriesTable.name
+    catName: categoriesTable.name,
+    workerName: workersTable.name,
   }).from(productsTable)
     .leftJoin(unitsTable, eq(productsTable.unitId, unitsTable.id))
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .$dynamic();
+    .leftJoin(workersTable, eq(productsTable.workerId, workersTable.id))
+    .orderBy(productsTable.name);
 
-  const rows = await query.orderBy(productsTable.name);
   let products = rows.map(r => ({
     ...r.p,
     unitName: r.unitName ?? "",
     categoryName: r.catName ?? null,
+    workerName: r.workerName ?? null,
     totalStock: parseFloat(r.totalStock),
     costPrice: parseFloat(r.p.costPrice as string),
     sellingPrice: parseFloat(r.p.sellingPrice as string),
@@ -100,18 +102,23 @@ async function resolvePieceUnitId(): Promise<number | null> {
 }
 
 router.post("/products", requireAuth, requirePermission(P.products.create), async (req, res): Promise<void> => {
-  let { name, sku, barcode, type, categoryId, unitId, description, costPrice, sellingPrice, alertQuantity, shelfLifeDays, isManaged, isSellable, isPurchasable, isFabricated, branchIds, imageUrl } = req.body;
+  let { name, sku, barcode, type, categoryId, unitId, workerId, description, costPrice, sellingPrice, alertQuantity, shelfLifeDays, isManaged, isSellable, isPurchasable, isFabricated, branchIds, imageUrl } = req.body;
   if (!name || !type || !unitId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   try {
     const [product] = await db.insert(productsTable).values({
-      name, sku, barcode, type, categoryId, unitId, description, imageUrl: imageUrl ?? null,
+      name, sku, barcode, type, categoryId, unitId, workerId: workerId ?? null, description, imageUrl: imageUrl ?? null,
       costPrice: costPrice?.toString() ?? "0", sellingPrice: sellingPrice?.toString() ?? "0",
       alertQuantity: alertQuantity?.toString(), shelfLifeDays, isManaged: isManaged ?? true,
       isSellable: isSellable ?? true, isPurchasable: isPurchasable ?? false, isFabricated: isFabricated ?? false,
       branchIds: Array.isArray(branchIds) ? branchIds : []
     }).returning();
     const [unit] = await db.select().from(unitsTable).where(eq(unitsTable.id, product.unitId));
-    res.status(201).json({ ...product, unitName: unit?.abbreviation ?? "", categoryName: null, totalStock: 0, costPrice: parseFloat(product.costPrice as string), sellingPrice: parseFloat(product.sellingPrice as string), alertQuantity: product.alertQuantity ? parseFloat(product.alertQuantity as string) : null });
+    let workerName: string | null = null;
+    if (product.workerId) {
+      const [w] = await db.select().from(workersTable).where(eq(workersTable.id, product.workerId));
+      workerName = w?.name ?? null;
+    }
+    res.status(201).json({ ...product, unitName: unit?.abbreviation ?? "", categoryName: null, workerName, totalStock: 0, costPrice: parseFloat(product.costPrice as string), sellingPrice: parseFloat(product.sellingPrice as string), alertQuantity: product.alertQuantity ? parseFloat(product.alertQuantity as string) : null });
   } catch (err: any) {
     req.log.error({ err }, "Error creating product");
     res.status(500).json({ error: err?.message ?? "Erreur lors de la création du produit" });
@@ -158,7 +165,7 @@ router.get("/products/:id", requireAuth, requirePermission(P.products.view), asy
 
 router.patch("/products/:id", requireAuth, requirePermission(P.products.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const allowed = ["name", "sku", "barcode", "type", "categoryId", "unitId", "description", "costPrice", "sellingPrice", "alertQuantity", "isManaged", "isSellable", "isPurchasable", "isFabricated", "branchIds", "imageUrl"];
+  const allowed = ["name", "sku", "barcode", "type", "categoryId", "unitId", "workerId", "description", "costPrice", "sellingPrice", "alertQuantity", "isManaged", "isSellable", "isPurchasable", "isFabricated", "branchIds", "imageUrl"];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
@@ -173,7 +180,12 @@ router.patch("/products/:id", requireAuth, requirePermission(P.products.edit), a
     if (!product) { res.status(404).json({ error: "Produit introuvable" }); return; }
     const [unit] = await db.select().from(unitsTable).where(eq(unitsTable.id, product.unitId));
     const [{ totalStock }] = await db.select({ totalStock: sql<string>`COALESCE(SUM(quantity), 0)` }).from(stockLevelsTable).where(eq(stockLevelsTable.productId, id));
-    res.json({ ...product, unitName: unit?.abbreviation ?? "", categoryName: null, totalStock: parseFloat(totalStock), costPrice: parseFloat(product.costPrice as string), sellingPrice: parseFloat(product.sellingPrice as string), alertQuantity: product.alertQuantity ? parseFloat(product.alertQuantity as string) : null });
+    let workerName: string | null = null;
+    if (product.workerId) {
+      const [w] = await db.select().from(workersTable).where(eq(workersTable.id, product.workerId));
+      workerName = w?.name ?? null;
+    }
+    res.json({ ...product, unitName: unit?.abbreviation ?? "", categoryName: null, workerName, totalStock: parseFloat(totalStock), costPrice: parseFloat(product.costPrice as string), sellingPrice: parseFloat(product.sellingPrice as string), alertQuantity: product.alertQuantity ? parseFloat(product.alertQuantity as string) : null });
   } catch (err: any) {
     req.log.error({ err }, "Error updating product");
     res.status(500).json({ error: err?.message ?? "Erreur lors de la mise à jour du produit" });

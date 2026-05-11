@@ -32,6 +32,7 @@ import {
   Undo2,
   ClipboardList,
   PackageCheck,
+  HardHat,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -76,6 +77,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
         { label: t("products"), href: "/products", icon: Package, perm: "products.view" },
         { label: t("categories"), href: "/categories", icon: Tags, perm: "products.view" },
         { label: t("units"), href: "/units", icon: Scale, perm: "products.view" },
+        { label: "Ouvriers", href: "/workers", icon: HardHat, perm: "workers.view" },
         { label: "Recettes", href: "/recipes", icon: ChefHat, perm: "recipes.view" },
       ],
     },

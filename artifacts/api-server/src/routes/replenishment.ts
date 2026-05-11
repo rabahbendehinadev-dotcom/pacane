@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, productReplenishmentRulesTable, productsTable, branchesTable, stockLevelsTable, categoriesTable, unitsTable, contactsTable, purchaseItemsTable, purchasesTable } from "@workspace/db";
+import { db, productReplenishmentRulesTable, productsTable, branchesTable, stockLevelsTable, categoriesTable, unitsTable, contactsTable, purchaseItemsTable, purchasesTable, workersTable } from "@workspace/db";
 import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess } from "../middlewares/permissions";
@@ -19,7 +19,7 @@ function getWeekdayGroupLabel(group: "sun_wed" | "thu_sat"): string {
 // GET /replenishment/calculate
 router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenishment.view), async (req, res): Promise<void> => {
   const user = req.user!;
-  const { branchId: branchIdStr, date: dateStr, categoryId: categoryIdStr } = req.query as Record<string, string>;
+  const { branchId: branchIdStr, date: dateStr, categoryId: categoryIdStr, workerId: workerIdStr } = req.query as Record<string, string>;
 
   if (!branchIdStr) { res.status(400).json({ error: "branchId requis" }); return; }
   const branchId = parseInt(branchIdStr, 10);
@@ -53,7 +53,7 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
 
   const productIds = rules.map(r => r.productId);
 
-  // Fetch products with category and unit (no supplier join — avoids cartesian product)
+  // Fetch products with category, unit and worker
   const products = await db.select({
     id: productsTable.id,
     name: productsTable.name,
@@ -63,9 +63,12 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
     unitId: productsTable.unitId,
     unitName: unitsTable.name,
     unitAbbr: unitsTable.abbreviation,
+    workerId: productsTable.workerId,
+    workerName: workersTable.name,
   }).from(productsTable)
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .leftJoin(unitsTable, eq(productsTable.unitId, unitsTable.id))
+    .leftJoin(workersTable, eq(productsTable.workerId, workersTable.id))
     .where(inArray(productsTable.id, productIds));
 
   // Fetch last supplier per product from purchase history (distinct per product)
@@ -104,11 +107,17 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
     ruleMap.set(r.productId, r);
   }
 
-  // Filter by category if requested
+  // Filter by category/worker if requested
   const categoryId = categoryIdStr ? parseInt(categoryIdStr, 10) : null;
+  const workerIdFilter = workerIdStr && workerIdStr !== "all" ? (workerIdStr === "none" ? 0 : parseInt(workerIdStr, 10)) : null;
 
   const items = products
     .filter(p => !categoryId || p.categoryId === categoryId)
+    .filter(p => {
+      if (workerIdFilter === null) return true;
+      if (workerIdFilter === 0) return p.workerId === null;
+      return p.workerId === workerIdFilter;
+    })
     .map(p => {
       const rule = ruleMap.get(p.id);
       if (!rule) return null;
@@ -123,6 +132,8 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
         sku: p.sku ?? null,
         categoryName: p.categoryName ?? null,
         unitName: p.unitAbbr ?? p.unitName ?? "",
+        workerId: p.workerId ?? null,
+        workerName: p.workerName ?? null,
         currentStock,
         targetStock,
         quantityToOrder,

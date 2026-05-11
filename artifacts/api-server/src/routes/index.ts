@@ -38,6 +38,7 @@ import catalogImportRouter from "./catalog-import";
 import replenishmentRouter from "./replenishment";
 import internalConsumptionsRouter from "./internal-consumptions";
 import receptionsRouter from "./receptions";
+import workersRouter from "./workers";
 
 const router: IRouter = Router();
 
@@ -81,5 +82,6 @@ router.use(catalogImportRouter);
 router.use(replenishmentRouter);
 router.use(internalConsumptionsRouter);
 router.use(receptionsRouter);
+router.use(workersRouter);
 
 export default router;
