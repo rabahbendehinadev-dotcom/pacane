@@ -198,13 +198,18 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
     .innerJoin(productsTable, eq(stockLevelsTable.productId, productsTable.id))
     .where(and(...stockAlertConds));
 
-  // ── ERP Alerts (unresolved) ────────────────────────────────────────────────
-  const [erpAlertAgg] = await db.select({
-    total: sql<string>`COUNT(*)`,
-    critical: sql<string>`COUNT(CASE WHEN ${alertsTable.severity}='critical' THEN 1 END)`,
-    unread: sql<string>`COUNT(CASE WHEN NOT ${alertsTable.isRead} THEN 1 END)`,
-  }).from(alertsTable)
-    .where(isNull(alertsTable.resolvedAt));
+  // ── ERP Alerts (unresolved) — try/catch: table may not exist yet ──────────
+  let erpAlertAgg: { total: string; critical: string; unread: string } | undefined;
+  try {
+    [erpAlertAgg] = await db.select({
+      total: sql<string>`COUNT(*)`,
+      critical: sql<string>`COUNT(CASE WHEN ${alertsTable.severity}='critical' THEN 1 END)`,
+      unread: sql<string>`COUNT(CASE WHEN NOT ${alertsTable.isRead} THEN 1 END)`,
+    }).from(alertsTable)
+      .where(isNull(alertsTable.resolvedAt));
+  } catch {
+    erpAlertAgg = { total: '0', critical: '0', unread: '0' };
+  }
 
   const grossRevenue = parseFloat(saleAgg?.grossRevenue ?? "0");
   const totalRefunded = parseFloat(retAgg?.totalRefunded ?? "0");

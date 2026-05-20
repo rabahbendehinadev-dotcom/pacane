@@ -39,6 +39,39 @@ async function runMigrations() {
         CONSTRAINT target_thu_sat_non_negative CHECK (target_thu_sat >= 0)
       );
     `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS erp_alerts (
+        id SERIAL PRIMARY KEY,
+        alert_key TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        module TEXT NOT NULL,
+        branch_id INTEGER,
+        entity_id INTEGER,
+        entity_type TEXT,
+        meta JSONB,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        read_by_user_id INTEGER,
+        read_at TIMESTAMP WITH TIME ZONE,
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      ALTER TABLE internal_consumptions
+        ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
+    `);
+    await db.execute(sql`
+      ALTER TABLE internal_consumption_items
+        ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
+    `);
+    await db.execute(sql`
+      ALTER TABLE internal_consumption_items
+        ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
+    `);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
