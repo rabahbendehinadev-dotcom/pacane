@@ -131,56 +131,60 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
     total: sql<string>`COUNT(*)`,
   }).from(transfersTable);
 
-  // ── Internal Consumption ──────────────────────────────────────────────────
-  const icDateConds = dateConds(internalConsumptionsTable.documentDate, from, to);
-  const icBaseConds: any[] = [eq(internalConsumptionsTable.status, "confirmed"), ...icDateConds];
-  if (scope !== null) {
-    if (scope.length === 0) {
-      icBaseConds.push(sql`FALSE`);
-    } else {
-      const ids = scope.join(",");
-      icBaseConds.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
-    }
-  }
-  if (extraBranchCond) icBaseConds.push(eq(internalConsumptionsTable.destinationBranchId, extraBranchCond));
-
-  const [icAgg] = await db.select({
-    totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
-    docCount: sql<string>`COUNT(*)`,
-    branchCount: sql<string>`COUNT(DISTINCT ${internalConsumptionsTable.destinationBranchId})`,
-  }).from(internalConsumptionsTable).where(and(...icBaseConds));
-
-  // Top internal product by cost
-  const icDocIds = (await db.select({ id: internalConsumptionsTable.id })
-    .from(internalConsumptionsTable).where(and(...icBaseConds))).map(r => r.id);
-
+  // ── Internal Consumption (try/catch: total_cost may not exist yet) ──────────
+  let icAgg: { totalCost: string; docCount: string; branchCount: string } | undefined;
   let topInternalProduct: { name: string; totalCost: number } | null = null;
   let topInternalBranch: { name: string; totalCost: number } | null = null;
-
-  if (icDocIds.length > 0) {
-    const [topProd] = await db.select({
-      name: productsTable.name,
-      totalCost: sql<string>`COALESCE(SUM(${internalConsumptionItemsTable.totalCost}::numeric), 0)`,
-    }).from(internalConsumptionItemsTable)
-      .innerJoin(productsTable, eq(internalConsumptionItemsTable.productId, productsTable.id))
-      .where(inArray(internalConsumptionItemsTable.documentId, icDocIds))
-      .groupBy(productsTable.name)
-      .orderBy(sql`SUM(${internalConsumptionItemsTable.totalCost}::numeric) DESC`)
-      .limit(1);
-    if (topProd) topInternalProduct = { name: topProd.name, totalCost: parseFloat(topProd.totalCost) };
-
-    const [topBr] = await db.select({
-      branchId: internalConsumptionsTable.destinationBranchId,
-      totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
-    }).from(internalConsumptionsTable)
-      .where(and(...icBaseConds))
-      .groupBy(internalConsumptionsTable.destinationBranchId)
-      .orderBy(sql`SUM(${internalConsumptionsTable.totalCost}::numeric) DESC`)
-      .limit(1);
-    if (topBr) {
-      const [brRow] = await db.select({ name: branchesTable.name }).from(branchesTable).where(eq(branchesTable.id, topBr.branchId));
-      topInternalBranch = { name: brRow?.name ?? String(topBr.branchId), totalCost: parseFloat(topBr.totalCost) };
+  try {
+    const icDateConds = dateConds(internalConsumptionsTable.documentDate, from, to);
+    const icBaseConds: any[] = [eq(internalConsumptionsTable.status, "confirmed"), ...icDateConds];
+    if (scope !== null) {
+      if (scope.length === 0) {
+        icBaseConds.push(sql`FALSE`);
+      } else {
+        const ids = scope.join(",");
+        icBaseConds.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
+      }
     }
+    if (extraBranchCond) icBaseConds.push(eq(internalConsumptionsTable.destinationBranchId, extraBranchCond));
+
+    [icAgg] = await db.select({
+      totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
+      docCount: sql<string>`COUNT(*)`,
+      branchCount: sql<string>`COUNT(DISTINCT ${internalConsumptionsTable.destinationBranchId})`,
+    }).from(internalConsumptionsTable).where(and(...icBaseConds));
+
+    const icDocIds = (await db.select({ id: internalConsumptionsTable.id })
+      .from(internalConsumptionsTable).where(and(...icBaseConds))).map(r => r.id);
+
+    if (icDocIds.length > 0) {
+      const [topProd] = await db.select({
+        name: productsTable.name,
+        totalCost: sql<string>`COALESCE(SUM(${internalConsumptionItemsTable.totalCost}::numeric), 0)`,
+      }).from(internalConsumptionItemsTable)
+        .innerJoin(productsTable, eq(internalConsumptionItemsTable.productId, productsTable.id))
+        .where(inArray(internalConsumptionItemsTable.documentId, icDocIds))
+        .groupBy(productsTable.name)
+        .orderBy(sql`SUM(${internalConsumptionItemsTable.totalCost}::numeric) DESC`)
+        .limit(1);
+      if (topProd) topInternalProduct = { name: topProd.name, totalCost: parseFloat(topProd.totalCost) };
+
+      const [topBr] = await db.select({
+        branchId: internalConsumptionsTable.destinationBranchId,
+        totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
+      }).from(internalConsumptionsTable)
+        .where(and(...icBaseConds))
+        .groupBy(internalConsumptionsTable.destinationBranchId)
+        .orderBy(sql`SUM(${internalConsumptionsTable.totalCost}::numeric) DESC`)
+        .limit(1);
+      if (topBr) {
+        const [brRow] = await db.select({ name: branchesTable.name }).from(branchesTable).where(eq(branchesTable.id, topBr.branchId));
+        topInternalBranch = { name: brRow?.name ?? String(topBr.branchId), totalCost: parseFloat(topBr.totalCost) };
+      }
+    }
+  } catch (icErr) {
+    req.log.warn({ err: icErr }, "overview: internal consumptions query failed — returning 0");
+    icAgg = { totalCost: '0', docCount: '0', branchCount: '0' };
   }
 
   // ── Stock alerts (products with quantity <= alert_quantity) ────────────────
