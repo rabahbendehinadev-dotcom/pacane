@@ -36,7 +36,7 @@ RUN pnpm --filter @workspace/erp run build
 RUN pnpm --filter @workspace/api-server run build
 
 # ── Collect output ──
-RUN mkdir -p /out/frontend && cp -r artifacts/erp/dist/. /out/frontend/
+RUN mkdir -p /out/frontend && cp -r artifacts/erp/dist/public/. /out/frontend/
 RUN mkdir -p /out/server   && cp -r artifacts/api-server/dist/. /out/server/
 
 # ============================================================
