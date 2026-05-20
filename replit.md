@@ -1,6 +1,6 @@
-# [Project name]
+# Pacane ERP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A full ERP system for Pacane — imported from https://github.com/unlock-gab/pacanegabra. Covers inventory, orders, clients, suppliers, production, and more.
 
 ## Run & Operate
 
@@ -14,7 +14,8 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React + Vite (port 23023, served at `/`)
+- API: Express 5 (port 8080, served at `/api`)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -22,23 +23,29 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/erp-app/` — React/Vite frontend
+- `artifacts/api-server/` — Express backend
+- `lib/` — shared libraries (db, api-spec, etc.)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Frontend served at root `/`, API at `/api` — path-based routing via Replit proxy.
+- The ERP frontend workflow is a manually-configured workflow named "Pacane ERP" (not the artifact-managed `artifacts/erp-app: web` workflow). The artifact-managed workflow consistently fails on port detection due to a Replit platform issue; `configureWorkflow` is the workaround.
+- Dev command: `PORT=23023 BASE_PATH=/ pnpm --filter @workspace/erp-app run dev`
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Full ERP for Pacane: authentication, inventory management, order management, client/supplier management, and production tracking.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_Populate as you build._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **Always use the "Pacane ERP" manual workflow** (not `artifacts/erp-app: web`) for the frontend — the artifact-managed workflow fails on port detection in this environment.
+- The API server requires `DATABASE_URL` env var to start. Without it, the backend will fail on startup.
+- `SESSION_SECRET` env var is already set.
 
 ## Pointers
 

@@ -1,0 +1,392 @@
+Act as a senior ERP architect and full-stack engineer.
+
+Implement a new structured production organization feature in Pacane ERP:
+
+OUVRIERS / RESPONSABLES DE PRÉPARATION
+
+The goal is to organize the automatic replenishment / bon de commande workflow by responsible worker.
+
+==================================================
+BUSINESS CONTEXT
+==================================================
+
+In this ERP, products can require preparation by specific workers.
+
+Example:
+- Product A is prepared by worker "Rabah"
+- Product B is prepared by worker "Ghanou"
+- Product C is prepared by worker "Rabah"
+
+Today, the automatic bon de commande / replenishment page can calculate what needs to be produced or replenished.
+But it shows all products together.
+
+This is not operationally convenient.
+
+I want to assign each product to one responsible worker, so that:
+- products are organized by worker
+- I can filter the automatic replenishment page by worker
+- I can print a bon de commande / preparation sheet for one worker only
+- each worker receives only the products they are responsible for
+
+Important:
+This worker assignment is GLOBAL for the product across the whole site/app.
+For now, one product = one responsible worker.
+Do NOT make it branch-specific in this first version.
+
+==================================================
+MAIN GOAL
+==================================================
+
+Build:
+1. A new page/module: Ouvriers
+2. A new field on products: responsible worker
+3. Integration into the automatic replenishment / bon de commande page:
+   - filter by worker
+   - group by worker
+   - print by worker
+
+==================================================
+PHASE 1 — DATABASE
+==================================================
+
+Create a new table for workers.
+
+Suggested table:
+workers
+- id
+- name
+- code nullable
+- phone nullable
+- notes nullable
+- is_active boolean default true
+- created_at
+- updated_at
+
+Constraints:
+- name required
+- no duplicate active names if possible
+- code optional but unique if provided
+
+Then update products table:
+- add worker_id nullable (FK workers.id)
+
+Business rule:
+- one product can have zero or one responsible worker
+- one worker can be assigned to many products
+
+Do not break existing products.
+Migration must be safe.
+
+==================================================
+PHASE 2 — NEW PAGE / MODULE: OUVRIERS
+==================================================
+
+Add a new sidebar/menu entry:
+OUVRIERS
+
+This must be a real management page, French UI only.
+
+Features:
+1. List page
+2. Create worker
+3. Edit worker
+4. Activate / deactivate worker
+5. Search/filter by name/status
+
+Columns in list:
+- Nom
+- Code
+- Téléphone
+- Statut
+- Nombre de produits liés
+- Actions
+
+Actions:
+- Voir
+- Modifier
+- Activer / désactiver
+
+Create/Edit form fields:
+- Nom *
+- Code
+- Téléphone
+- Notes
+- Actif
+
+Rules:
+- cannot delete worker if already linked to products; use deactivate instead
+- deactivated workers should not be selectable by default in product form
+- keep UI premium and consistent with ERP
+
+==================================================
+PHASE 3 — PRODUCT FORM INTEGRATION
+==================================================
+
+In product create/edit modal/page, add a new field:
+
+"Ouvrier responsable"
+or
+"Responsable préparation"
+
+Use a dropdown/select.
+
+Behavior:
+- selectable from active workers only
+- current assigned worker must show when editing product
+- assignment is optional (nullable)
+- saving product must save worker_id correctly
+
+UI helper text:
+"Cet ouvrier sera utilisé pour organiser le bon de commande automatique et les feuilles de préparation."
+
+Do not break:
+- product type
+- categories
+- units
+- replenishment automatic settings
+- existing pricing fields
+- stock logic
+
+==================================================
+PHASE 4 — AUTOMATIC REPLENISHMENT / BON DE COMMANDE INTEGRATION
+==================================================
+
+Integrate workers into the existing automatic replenishment page/module.
+
+Add:
+1. Worker filter
+2. Group by worker option
+3. Print/export by worker
+
+New filters:
+- Branch
+- Date
+- Category
+- Supplier if existing
+- Worker
+- Checkbox: "Afficher uniquement les produits à commander"
+- Checkbox: "Grouper par ouvrier"
+
+Worker filter behavior:
+- if a worker is selected, show only products linked to that worker
+- if no worker selected, show all products as before
+
+Group by worker behavior:
+- if enabled, organize table/output by worker sections
+- products without assigned worker go to:
+  "Non affecté"
+
+Important:
+This feature must not change replenishment quantity calculation.
+It only changes organization/display/filtering.
+
+Keep current formula:
+quantity_to_order = max(0, target_stock_for_today_range - current_branch_stock)
+
+==================================================
+PHASE 5 — BON DE COMMANDE / PRINT BY WORKER
+==================================================
+
+This is the key business feature.
+
+I want to be able to generate/print automatic bon de commande by worker.
+
+Use cases:
+- print all products for one selected worker
+- print grouped sections for all workers
+- each worker gets only their products
+
+Required print modes:
+1. Print global
+2. Print filtered by selected worker
+3. Print grouped by worker
+
+If grouped by worker:
+- each worker should have a clear section header:
+  "Ouvrier: Rabah"
+  "Ouvrier: Ghanou"
+- products under each section only
+- products without worker under:
+  "Non affecté"
+
+Print/PDF document must include:
+- Company name/logo
+- Branch
+- Date
+- Day-range logic applied
+- Worker name if filtered
+- Products table:
+  - Produit
+  - SKU
+  - Unité
+  - Stock actuel
+  - Stock cible
+  - Quantité à préparer / commander
+- Totals:
+  - nombre de lignes
+  - quantité totale if useful
+
+If grouped by worker:
+- page can contain multiple sections
+- optional page break between workers for cleaner printing
+
+Filename examples:
+- BON_COMMANDE_RABAH_2026-04-22.pdf
+- BON_COMMANDE_PAR_OUVRIER_2026-04-22.pdf
+
+==================================================
+PHASE 6 — LIST / REPORTING SUPPORT
+==================================================
+
+Enhance replenishment page and related reporting with worker visibility.
+
+In replenishment table, add column:
+- Ouvrier responsable
+
+In KPI/summary if relevant:
+- Nombre d’ouvriers concernés
+- Ouvrier avec le plus de produits à préparer
+
+Optional but useful:
+Add a grouped summary card:
+- top worker by total quantity to prepare
+
+If not natural to add as a KPI card, keep it in grouped table only.
+
+==================================================
+PHASE 7 — VALIDATION RULES
+==================================================
+
+Rules:
+1. Product can have only one worker in this first version
+2. Worker assignment is global, not branch-specific
+3. Deactivated workers:
+   - remain visible on old linked products if already assigned
+   - cannot be newly assigned unless reactivated
+4. Products without worker:
+   - still work in replenishment
+   - appear under "Non affecté"
+5. Filtering by worker must not affect stock math
+6. Grouping by worker must not affect stock math
+7. Printing by worker must not affect stock math
+
+==================================================
+PHASE 8 — PERMISSIONS / RBAC
+==================================================
+
+Add clean permissions if needed:
+
+For workers:
+- workers.view
+- workers.create
+- workers.edit
+- workers.deactivate
+
+For replenishment worker-based views:
+- use existing replenishment permissions
+
+Rules:
+- only authorized users can manage workers
+- branch-restricted users can still use replenishment page within their branch scope
+- worker list itself is global, but only visible to users with worker permissions
+
+==================================================
+PHASE 9 — TEST SCENARIOS
+==================================================
+
+Create and verify these exact scenarios:
+
+Scenario 1:
+Workers created:
+- Rabah
+- Ghanou
+
+Scenario 2:
+Products assigned:
+- 100% CHOCOLAT -> Rabah
+- MILLE FEUILLE VANILLE -> Ghanou
+- ECLAIR CHOCOLAT -> Rabah
+- one product without worker
+
+Expected:
+- product edit form saves and reloads assignment correctly
+
+Scenario 3:
+Open bon de commande automatique
+- filter by worker = Rabah
+Expected:
+- only Rabah products appear
+
+Scenario 4:
+Enable "Grouper par ouvrier"
+Expected:
+- sections:
+  Rabah
+  Ghanou
+  Non affecté
+
+Scenario 5:
+Print by worker = Ghanou
+Expected:
+- PDF/print contains only Ghanou products
+
+Scenario 6:
+No worker assigned
+Expected:
+- product still appears in replenishment under "Non affecté"
+
+Scenario 7:
+Deactivate worker Rabah
+Expected:
+- Rabah no longer appears in new assignment dropdown by default
+- products already assigned still keep existing relation for historical consistency
+
+Scenario 8:
+No API 500 errors
+No console errors
+No stock logic broken
+No product form regression
+
+==================================================
+PHASE 10 — UI / UX QUALITY
+==================================================
+
+French UI only.
+
+Labels suggestions:
+- Ouvriers
+- Nouvel ouvrier
+- Modifier ouvrier
+- Ouvrier responsable
+- Non affecté
+- Grouper par ouvrier
+- Filtrer par ouvrier
+
+Design:
+- premium clean ERP style
+- same design language as current app
+- no crude/raw admin UI
+- table and form consistency with current project
+
+==================================================
+PHASE 11 — DELIVERABLE FORMAT
+==================================================
+
+At the end, return a concise French report with:
+1. DB table(s) added
+2. product field added
+3. worker page(s) added
+4. replenishment page updates
+5. print/PDF by worker support
+6. permissions added
+7. test scenarios passed
+8. any future suggested improvements
+
+IMPORTANT:
+- Do not break current replenishment logic
+- Do not break product form
+- Do not make this branch-specific yet
+- Keep one product -> one worker only
+- Keep assignment global for now
+- French labels only
+- Safe migration only

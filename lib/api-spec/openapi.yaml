@@ -3,20 +3,45 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Pâtisserie ERP API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: branches
+  - name: users
+  - name: roles
+  - name: contacts
+  - name: products
+  - name: categories
+  - name: units
+  - name: stock
+  - name: purchases
+  - name: recipes
+  - name: production
+  - name: sales
+  - name: pos
+  - name: transfers
+  - name: adjustments
+  - name: expenses
+  - name: reports
+  - name: settings
+  - name: dashboard
+  - name: storage
+    description: Object storage upload and serving endpoints
+  - name: attachments
+    description: File attachment management for ERP entities
+  - name: internal-consumptions
+    description: Internal consumptions (consommation interne)
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +49,2049 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # AUTH
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthenticated
+
+  # DASHBOARD
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard KPI summary
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: date
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/alerts:
+    get:
+      operationId: getDashboardAlerts
+      tags: [dashboard]
+      summary: Operational alerts
+      responses:
+        "200":
+          description: Alerts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Recent activity feed
+      responses:
+        "200":
+          description: Activity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+  /dashboard/sales-trend:
+    get:
+      operationId: getSalesTrend
+      tags: [dashboard]
+      summary: Sales trend chart data
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: days
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Sales trend
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesTrendPoint"
+  /dashboard/top-products:
+    get:
+      operationId: getTopProducts
+      tags: [dashboard]
+      summary: Top selling products
+      responses:
+        "200":
+          description: Top products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopProduct"
+  /dashboard/branch-performance:
+    get:
+      operationId: getBranchPerformance
+      tags: [dashboard]
+      summary: Branch performance comparison
+      responses:
+        "200":
+          description: Branch performance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BranchPerformance"
+
+  # BRANCHES
+  /branches:
+    get:
+      operationId: getBranches
+      tags: [branches]
+      summary: List branches
+      responses:
+        "200":
+          description: Branches list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Branch"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Create branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchBody"
+      responses:
+        "201":
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+  /branches/{id}:
+    get:
+      operationId: getBranch
+      tags: [branches]
+      summary: Get branch
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+    patch:
+      operationId: updateBranch
+      tags: [branches]
+      summary: Update branch
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBranchBody"
+      responses:
+        "200":
+          description: Branch updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+
+  # ROLES
+  /roles:
+    get:
+      operationId: getRoles
+      tags: [roles]
+      summary: List roles
+      responses:
+        "200":
+          description: Roles list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Role"
+    post:
+      operationId: createRole
+      tags: [roles]
+      summary: Create role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoleBody"
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+  /roles/{id}:
+    get:
+      operationId: getRole
+      tags: [roles]
+      summary: Get role
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+    patch:
+      operationId: updateRole
+      tags: [roles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoleBody"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+
+  # USERS
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: List users
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: roleId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get user
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # CONTACTS
+  /contacts:
+    get:
+      operationId: getContacts
+      tags: [contacts]
+      summary: List contacts
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Contacts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    post:
+      operationId: createContact
+      tags: [contacts]
+      summary: Create contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactBody"
+      responses:
+        "201":
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+  /contacts/{id}:
+    get:
+      operationId: getContact
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get contact
+      responses:
+        "200":
+          description: Contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+    patch:
+      operationId: updateContact
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContactBody"
+      responses:
+        "200":
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+  /contacts/{id}/transactions:
+    get:
+      operationId: getContactTransactions
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get contact transactions
+      responses:
+        "200":
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+  # CATEGORIES
+  /categories:
+    get:
+      operationId: getCategories
+      tags: [categories]
+      summary: List categories
+      responses:
+        "200":
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryBody"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+  /categories/{id}:
+    patch:
+      operationId: updateCategory
+      tags: [categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryBody"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  # UNITS
+  /units:
+    get:
+      operationId: getUnits
+      tags: [units]
+      summary: List units
+      responses:
+        "200":
+          description: Units list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Unit"
+    post:
+      operationId: createUnit
+      tags: [units]
+      summary: Create unit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUnitBody"
+      responses:
+        "201":
+          description: Unit created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unit"
+
+  # PRODUCTS
+  /products:
+    get:
+      operationId: getProducts
+      tags: [products]
+      summary: List products
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: categoryId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: lowStock
+          in: query
+          schema:
+            type: ["boolean", "null"]
+      responses:
+        "200":
+          description: Products list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get product
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductBody"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+  /products/{id}/stock:
+    get:
+      operationId: getProductStock
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get product stock by branch
+      responses:
+        "200":
+          description: Stock by branch
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockLevel"
+
+  # STOCK
+  /stock:
+    get:
+      operationId: getStockLevels
+      tags: [stock]
+      summary: Get stock levels
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: alert
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Stock levels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockLevel"
+  /stock/movements:
+    get:
+      operationId: getStockMovements
+      tags: [stock]
+      summary: Get stock movements
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: productId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Stock movements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockMovement"
+  /stock/alerts:
+    get:
+      operationId: getStockAlerts
+      tags: [stock]
+      summary: Get stock alerts
+      responses:
+        "200":
+          description: Stock alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockAlert"
+
+  # PURCHASES
+  /purchases:
+    get:
+      operationId: getPurchases
+      tags: [purchases]
+      summary: List purchases
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: supplierId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: paymentStatus
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Purchases list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Purchase"
+    post:
+      operationId: createPurchase
+      tags: [purchases]
+      summary: Create purchase order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseBody"
+      responses:
+        "201":
+          description: Purchase created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+  /purchases/{id}:
+    get:
+      operationId: getPurchase
+      tags: [purchases]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get purchase
+      responses:
+        "200":
+          description: Purchase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+    patch:
+      operationId: updatePurchase
+      tags: [purchases]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePurchaseBody"
+      responses:
+        "200":
+          description: Purchase updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+  /purchases/{id}/receive:
+    post:
+      operationId: receivePurchase
+      tags: [purchases]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Receive purchase (update stock)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceivePurchaseBody"
+      responses:
+        "200":
+          description: Purchase received
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+  /purchases/{id}/payment:
+    post:
+      operationId: addPurchasePayment
+      tags: [purchases]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Add payment to purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPaymentBody"
+      responses:
+        "200":
+          description: Payment added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+
+  # RECIPES
+  /recipes:
+    get:
+      operationId: getRecipes
+      tags: [recipes]
+      summary: List recipes
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Recipes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recipe"
+    post:
+      operationId: createRecipe
+      tags: [recipes]
+      summary: Create recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecipeBody"
+      responses:
+        "201":
+          description: Recipe created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+  /recipes/{id}:
+    get:
+      operationId: getRecipe
+      tags: [recipes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get recipe
+      responses:
+        "200":
+          description: Recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+    patch:
+      operationId: updateRecipe
+      tags: [recipes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecipeBody"
+      responses:
+        "200":
+          description: Recipe updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+
+  # PRODUCTION ORDERS
+  /production:
+    get:
+      operationId: getProductionOrders
+      tags: [production]
+      summary: List production orders
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Production orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductionOrder"
+    post:
+      operationId: createProductionOrder
+      tags: [production]
+      summary: Create production order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductionOrderBody"
+      responses:
+        "201":
+          description: Production order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionOrder"
+  /production/{id}:
+    get:
+      operationId: getProductionOrder
+      tags: [production]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get production order
+      responses:
+        "200":
+          description: Production order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionOrder"
+    patch:
+      operationId: updateProductionOrder
+      tags: [production]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update production order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductionOrderBody"
+      responses:
+        "200":
+          description: Production order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionOrder"
+  /production/{id}/complete:
+    post:
+      operationId: completeProductionOrder
+      tags: [production]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Complete production order (consume ingredients, add output to stock)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteProductionBody"
+      responses:
+        "200":
+          description: Production completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionOrder"
+  /production/planning:
+    get:
+      operationId: getProductionPlanning
+      tags: [production]
+      summary: Get production planning suggestions
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Planning suggestions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductionPlanningSuggestion"
+
+  # SALES
+  /sales:
+    get:
+      operationId: getSales
+      tags: [sales]
+      summary: List sales documents
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: customerId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Sales list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sale"
+    post:
+      operationId: createSale
+      tags: [sales]
+      summary: Create sale/order/quotation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSaleBody"
+      responses:
+        "201":
+          description: Sale created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+  /sales/{id}:
+    get:
+      operationId: getSale
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get sale
+      responses:
+        "200":
+          description: Sale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+    patch:
+      operationId: updateSale
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update sale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSaleBody"
+      responses:
+        "200":
+          description: Sale updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+  /sales/{id}/payment:
+    post:
+      operationId: addSalePayment
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Add payment to sale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPaymentBody"
+      responses:
+        "200":
+          description: Payment added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+  /sales/{id}/convert:
+    post:
+      operationId: convertSaleDocument
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Convert sale document to another type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetType:
+                  type: string
+                  enum: [quotation, order, sale]
+              required:
+                - targetType
+      responses:
+        "201":
+          description: Converted document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+  /sales/{id}/cancel:
+    post:
+      operationId: cancelSaleDocument
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Cancel a sale document
+      responses:
+        "200":
+          description: Cancelled document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+  /sales/{id}/duplicate:
+    post:
+      operationId: duplicateSaleDocument
+      tags: [sales]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Duplicate a sale document as draft
+      responses:
+        "201":
+          description: New draft document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+
+  # POS
+  /pos/sessions:
+    get:
+      operationId: getPOSSessions
+      tags: [pos]
+      summary: List POS sessions
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: POS sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/POSSession"
+    post:
+      operationId: openPOSSession
+      tags: [pos]
+      summary: Open POS session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenPOSSessionBody"
+      responses:
+        "201":
+          description: POS session opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/POSSession"
+  /pos/sessions/{id}:
+    get:
+      operationId: getPOSSession
+      tags: [pos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get POS session
+      responses:
+        "200":
+          description: POS session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/POSSession"
+  /pos/sessions/{id}/close:
+    post:
+      operationId: closePOSSession
+      tags: [pos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Close POS session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClosePOSSessionBody"
+      responses:
+        "200":
+          description: POS session closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/POSSession"
+  /pos/active-session:
+    get:
+      operationId: getActivePOSSession
+      tags: [pos]
+      summary: Get active POS session for current user's branch
+      responses:
+        "200":
+          description: Active session or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/POSSessionOrNull"
+
+  # TRANSFERS
+  /transfers:
+    get:
+      operationId: getTransfers
+      tags: [transfers]
+      summary: List transfers
+      parameters:
+        - name: sourceBranchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: destinationBranchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Transfers list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transfer"
+    post:
+      operationId: createTransfer
+      tags: [transfers]
+      summary: Create transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferBody"
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+  /transfers/{id}:
+    get:
+      operationId: getTransfer
+      tags: [transfers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get transfer
+      responses:
+        "200":
+          description: Transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+  /transfers/{id}/receive:
+    post:
+      operationId: receiveTransfer
+      tags: [transfers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Receive transfer (updates destination stock)
+      responses:
+        "200":
+          description: Transfer received
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+
+  # ADJUSTMENTS
+  /adjustments:
+    get:
+      operationId: getAdjustments
+      tags: [adjustments]
+      summary: List adjustments
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: reason
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Adjustments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Adjustment"
+    post:
+      operationId: createAdjustment
+      tags: [adjustments]
+      summary: Create adjustment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdjustmentBody"
+      responses:
+        "201":
+          description: Adjustment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Adjustment"
+
+  /adjustments/stats:
+    get:
+      operationId: getAdjustmentsStats
+      tags: [adjustments]
+      summary: Adjustments loss statistics
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: reason
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Adjustments stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdjustmentsStats"
+
+  # EXPENSES
+  /expenses:
+    get:
+      operationId: getExpenses
+      tags: [expenses]
+      summary: List expenses
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Expenses list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      summary: Create expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseBody"
+      responses:
+        "201":
+          description: Expense created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  # REPORTS
+  /reports/sales:
+    get:
+      operationId: getSalesReport
+      tags: [reports]
+      summary: Sales report
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: from
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: to
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Sales report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReport"
+  /reports/purchases:
+    get:
+      operationId: getPurchasesReport
+      tags: [reports]
+      summary: Purchases report
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: from
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: to
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Purchases report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasesReport"
+  /reports/stock-valuation:
+    get:
+      operationId: getStockValuationReport
+      tags: [reports]
+      summary: Stock valuation report
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Stock valuation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockValuationReport"
+  /reports/production:
+    get:
+      operationId: getProductionReport
+      tags: [reports]
+      summary: Production report
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: from
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: to
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Production report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionReport"
+  /reports/cash-sessions:
+    get:
+      operationId: getCashSessionsReport
+      tags: [reports]
+      summary: Cash sessions report
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: from
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: to
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Cash sessions report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashSessionsReport"
+
+  # SETTINGS
+  /settings/company:
+    get:
+      operationId: getCompanySettings
+      tags: [settings]
+      summary: Get company settings
+      responses:
+        "200":
+          description: Company settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanySettings"
+    patch:
+      operationId: updateCompanySettings
+      tags: [settings]
+      summary: Update company settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCompanySettingsBody"
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanySettings"
+  /settings/payment-methods:
+    get:
+      operationId: getPaymentMethods
+      tags: [settings]
+      summary: List payment methods
+      responses:
+        "200":
+          description: Payment methods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentMethod"
+
+  # STORAGE
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          description: Invalid request
+  /storage/objects/{objectPath}:
+    get:
+      tags: [storage]
+      operationId: getStorageObject
+      summary: Serve a stored object
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object binary content
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+
+  # ATTACHMENTS
+  /attachments:
+    get:
+      tags: [attachments]
+      operationId: getAttachments
+      summary: List attachments for an entity
+      parameters:
+        - name: entityType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [expense, purchase, sale]
+        - name: entityId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Attachment'
+    post:
+      tags: [attachments]
+      operationId: createAttachment
+      summary: Register an attachment after upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttachmentBody'
+      responses:
+        '201':
+          description: Attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+  /attachments/{id}:
+    delete:
+      tags: [attachments]
+      operationId: deleteAttachment
+      summary: Delete an attachment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # INTERNAL CONSUMPTIONS
+  /internal-consumptions:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumptions
+      summary: List internal consumptions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sourceBranchId
+          in: query
+          schema:
+            type: integer
+        - name: destinationBranchId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, confirmed, cancelled]
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of internal consumptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalConsumption'
+    post:
+      tags: [internal-consumptions]
+      operationId: createInternalConsumption
+      summary: Create a new internal consumption document
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInternalConsumptionBody'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/reports/summary:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumptionsSummary
+      summary: Get consumption report summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sourceBranchId
+          in: query
+          schema:
+            type: integer
+        - name: destinationBranchId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Summary report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumptionReportSummary'
+
+  /internal-consumptions/{id}:
+    get:
+      tags: [internal-consumptions]
+      operationId: getInternalConsumption
+      summary: Get single internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Internal consumption
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+    put:
+      tags: [internal-consumptions]
+      operationId: updateInternalConsumption
+      summary: Update a draft internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInternalConsumptionBody'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/{id}/confirm:
+    post:
+      tags: [internal-consumptions]
+      operationId: confirmInternalConsumption
+      summary: Confirm and apply stock movements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
+  /internal-consumptions/{id}/cancel:
+    post:
+      tags: [internal-consumptions]
+      operationId: cancelInternalConsumption
+      summary: Cancel a draft internal consumption
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalConsumption'
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +2102,2250 @@ components:
       required:
         - status
 
+    LoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        username:
+          type: string
+        phone:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, suspended, archived, invited]
+        language:
+          type: string
+          enum: [fr, ar]
+        roleId:
+          type: ["integer", "null"]
+        roleName:
+          type: ["string", "null"]
+        branchIds:
+          type: array
+          items:
+            type: integer
+        defaultBranchId:
+          type: ["integer", "null"]
+        posAccess:
+          type: boolean
+        adminAccess:
+          type: boolean
+        lastLogin:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - username
+        - status
+        - language
+        - posAccess
+        - adminAccess
+        - branchIds
+        - createdAt
+
+    CreateUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        phone:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, suspended, archived, invited]
+        language:
+          type: string
+          enum: [fr, ar]
+        roleId:
+          type: ["integer", "null"]
+        branchIds:
+          type: array
+          items:
+            type: integer
+        posAccess:
+          type: boolean
+        adminAccess:
+          type: boolean
+      required:
+        - name
+        - email
+        - username
+        - password
+        - status
+        - language
+        - posAccess
+        - adminAccess
+        - branchIds
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        language:
+          type: ["string", "null"]
+        roleId:
+          type: ["integer", "null"]
+        branchIds:
+          type: ["array", "null"]
+          items:
+            type: integer
+        posAccess:
+          type: ["boolean", "null"]
+        adminAccess:
+          type: ["boolean", "null"]
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        isSystem:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - isSystem
+        - permissions
+        - createdAt
+
+    CreateRoleBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        permissions:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - permissions
+
+    UpdateRoleBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        permissions:
+          type: ["array", "null"]
+          items:
+            type: string
+
+    Branch:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        code:
+          type: string
+        type:
+          type: string
+          enum: [shop, lab, warehouse, central]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        isMain:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - code
+        - type
+        - isActive
+        - isMain
+        - createdAt
+
+    CreateBranchBody:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        type:
+          type: string
+          enum: [shop, lab, warehouse, central]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        isMain:
+          type: boolean
+      required:
+        - name
+        - code
+        - type
+        - isActive
+        - isMain
+
+    UpdateBranchBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        code:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        isActive:
+          type: ["boolean", "null"]
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [customer, supplier, both]
+        companyName:
+          type: ["string", "null"]
+        displayName:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        taxId:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, blocked]
+        creditLimit:
+          type: ["number", "null"]
+        unpaidBalance:
+          type: number
+        notes:
+          type: ["string", "null"]
+        groupId:
+          type: ["integer", "null"]
+        groupName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - displayName
+        - status
+        - unpaidBalance
+        - createdAt
+
+    CreateContactBody:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [customer, supplier, both]
+        companyName:
+          type: ["string", "null"]
+        displayName:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        taxId:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, blocked]
+        creditLimit:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+        groupId:
+          type: ["integer", "null"]
+      required:
+        - type
+        - displayName
+        - status
+
+    UpdateContactBody:
+      type: object
+      properties:
+        type:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        displayName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        creditLimit:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        reference:
+          type: string
+        date:
+          type: string
+        amount:
+          type: number
+        paid:
+          type: number
+        due:
+          type: number
+        status:
+          type: string
+      required:
+        - id
+        - type
+        - reference
+        - date
+        - amount
+        - paid
+        - due
+        - status
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        parentId:
+          type: ["integer", "null"]
+        parentName:
+          type: ["string", "null"]
+        productCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - productCount
+        - createdAt
+
+    CreateCategoryBody:
+      type: object
+      properties:
+        name:
+          type: string
+        parentId:
+          type: ["integer", "null"]
+      required:
+        - name
+
+    UpdateCategoryBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        parentId:
+          type: ["integer", "null"]
+
+    Unit:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        abbreviation:
+          type: string
+        allowDecimals:
+          type: boolean
+      required:
+        - id
+        - name
+        - abbreviation
+        - allowDecimals
+
+    CreateUnitBody:
+      type: object
+      properties:
+        name:
+          type: string
+        abbreviation:
+          type: string
+        allowDecimals:
+          type: boolean
+      required:
+        - name
+        - abbreviation
+        - allowDecimals
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: ["string", "null"]
+        barcode:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [finished, ingredient, packaging, semi_finished]
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        unitId:
+          type: integer
+        unitName:
+          type: string
+        description:
+          type: ["string", "null"]
+        imageUrl:
+          type: ["string", "null"]
+        costPrice:
+          type: number
+        sellingPrice:
+          type: number
+        alertQuantity:
+          type: ["number", "null"]
+        shelfLifeDays:
+          type: ["integer", "null"]
+        isManaged:
+          type: boolean
+        isSellable:
+          type: boolean
+        isPurchasable:
+          type: boolean
+        isFabricated:
+          type: boolean
+        totalStock:
+          type: number
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - unitId
+        - unitName
+        - costPrice
+        - sellingPrice
+        - isManaged
+        - isSellable
+        - isPurchasable
+        - isFabricated
+        - totalStock
+        - createdAt
+
+    CreateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sku:
+          type: ["string", "null"]
+        barcode:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [finished, ingredient, packaging, semi_finished]
+        categoryId:
+          type: ["integer", "null"]
+        unitId:
+          type: integer
+        description:
+          type: ["string", "null"]
+        costPrice:
+          type: number
+        sellingPrice:
+          type: number
+        alertQuantity:
+          type: ["number", "null"]
+        shelfLifeDays:
+          type: ["integer", "null"]
+        isManaged:
+          type: boolean
+        isSellable:
+          type: boolean
+        isPurchasable:
+          type: boolean
+        isFabricated:
+          type: boolean
+      required:
+        - name
+        - type
+        - unitId
+        - costPrice
+        - sellingPrice
+        - isManaged
+        - isSellable
+        - isPurchasable
+        - isFabricated
+
+    UpdateProductBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        sku:
+          type: ["string", "null"]
+        barcode:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        categoryId:
+          type: ["integer", "null"]
+        unitId:
+          type: ["integer", "null"]
+        description:
+          type: ["string", "null"]
+        costPrice:
+          type: ["number", "null"]
+        sellingPrice:
+          type: ["number", "null"]
+        alertQuantity:
+          type: ["number", "null"]
+        isManaged:
+          type: ["boolean", "null"]
+        isSellable:
+          type: ["boolean", "null"]
+        isPurchasable:
+          type: ["boolean", "null"]
+        isFabricated:
+          type: ["boolean", "null"]
+
+    StockLevel:
+      type: object
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        productType:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        quantity:
+          type: number
+        alertQuantity:
+          type: ["number", "null"]
+        unitName:
+          type: string
+        status:
+          type: string
+          enum: [ok, low, critical, out]
+        valueCost:
+          type: number
+      required:
+        - productId
+        - productName
+        - productType
+        - branchId
+        - branchName
+        - quantity
+        - unitName
+        - status
+        - valueCost
+
+    StockMovement:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        productId:
+          type: integer
+        productName:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        reference:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - productId
+        - productName
+        - branchId
+        - branchName
+        - quantity
+        - unitCost
+        - createdAt
+
+    StockAlert:
+      type: object
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        quantity:
+          type: number
+        alertQuantity:
+          type: number
+        alertLevel:
+          type: string
+          enum: [low, critical, out]
+        unitName:
+          type: string
+      required:
+        - productId
+        - productName
+        - branchId
+        - branchName
+        - quantity
+        - alertQuantity
+        - alertLevel
+        - unitName
+
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        supplierId:
+          type: integer
+        supplierName:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        status:
+          type: string
+          enum: [draft, ordered, partially_received, received, cancelled, closed]
+        paymentStatus:
+          type: string
+          enum: [unpaid, partially_paid, paid, overdue]
+        subtotal:
+          type: number
+        discount:
+          type: number
+        tax:
+          type: number
+        total:
+          type: number
+        paid:
+          type: number
+        due:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseItem"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        createdByName:
+          type: ["string", "null"]
+      required:
+        - id
+        - reference
+        - supplierId
+        - supplierName
+        - branchId
+        - branchName
+        - status
+        - paymentStatus
+        - subtotal
+        - discount
+        - tax
+        - total
+        - paid
+        - due
+        - items
+        - createdAt
+
+    PurchaseItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        receivedQuantity:
+          type: number
+        unitCost:
+          type: number
+        total:
+          type: number
+      required:
+        - id
+        - productId
+        - productName
+        - quantity
+        - receivedQuantity
+        - unitCost
+        - total
+
+    CreatePurchaseBody:
+      type: object
+      properties:
+        supplierId:
+          type: integer
+        branchId:
+          type: integer
+        status:
+          type: string
+          enum: [draft, ordered]
+        discount:
+          type: number
+        tax:
+          type: number
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseItemInput"
+      required:
+        - supplierId
+        - branchId
+        - status
+        - items
+
+    UpdatePurchaseBody:
+      type: object
+      properties:
+        status:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    PurchaseItemInput:
+      type: object
+      properties:
+        productId:
+          type: integer
+        quantity:
+          type: number
+        unitCost:
+          type: number
+      required:
+        - productId
+        - quantity
+        - unitCost
+
+    ReceivePurchaseBody:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              purchaseItemId:
+                type: integer
+              receivedQuantity:
+                type: number
+            required:
+              - purchaseItemId
+              - receivedQuantity
+        notes:
+          type: ["string", "null"]
+      required:
+        - items
+
+    AddPaymentBody:
+      type: object
+      properties:
+        amount:
+          type: number
+        method:
+          type: string
+        date:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - amount
+        - method
+        - date
+
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        productId:
+          type: ["integer", "null"]
+        productName:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [finished, semi_finished]
+        yield:
+          type: number
+        yieldUnitId:
+          type: integer
+        yieldUnitName:
+          type: string
+        theoreticalCost:
+          type: number
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeIngredient"
+        steps:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - yield
+        - yieldUnitId
+        - yieldUnitName
+        - theoreticalCost
+        - ingredients
+        - createdAt
+
+    RecipeIngredient:
+      type: object
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitId:
+          type: integer
+        unitName:
+          type: string
+        wastageRate:
+          type: number
+        unitCost:
+          type: number
+        totalCost:
+          type: number
+      required:
+        - id
+        - productId
+        - productName
+        - quantity
+        - unitId
+        - unitName
+        - wastageRate
+        - unitCost
+        - totalCost
+
+    CreateRecipeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        productId:
+          type: ["integer", "null"]
+        type:
+          type: string
+          enum: [finished, semi_finished]
+        yield:
+          type: number
+        yieldUnitId:
+          type: integer
+        steps:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeIngredientInput"
+      required:
+        - name
+        - type
+        - yield
+        - yieldUnitId
+        - ingredients
+
+    UpdateRecipeBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        yield:
+          type: ["number", "null"]
+        steps:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        ingredients:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/RecipeIngredientInput"
+
+    RecipeIngredientInput:
+      type: object
+      properties:
+        productId:
+          type: integer
+        quantity:
+          type: number
+        unitId:
+          type: integer
+        wastageRate:
+          type: number
+      required:
+        - productId
+        - quantity
+        - unitId
+        - wastageRate
+
+    ProductionOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        recipeId:
+          type: integer
+        recipeName:
+          type: string
+        productId:
+          type: ["integer", "null"]
+        productName:
+          type: ["string", "null"]
+        plannedQuantity:
+          type: number
+        actualQuantity:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [draft, planned, launched, in_progress, completed, cancelled]
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        theoreticalCost:
+          type: number
+        actualCost:
+          type: ["number", "null"]
+        startedAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        createdByName:
+          type: ["string", "null"]
+      required:
+        - id
+        - reference
+        - recipeId
+        - recipeName
+        - plannedQuantity
+        - status
+        - branchId
+        - branchName
+        - theoreticalCost
+        - createdAt
+
+    CreateProductionOrderBody:
+      type: object
+      properties:
+        recipeId:
+          type: integer
+        plannedQuantity:
+          type: number
+        branchId:
+          type: integer
+        status:
+          type: string
+          enum: [draft, planned]
+        notes:
+          type: ["string", "null"]
+      required:
+        - recipeId
+        - plannedQuantity
+        - branchId
+        - status
+
+    UpdateProductionOrderBody:
+      type: object
+      properties:
+        status:
+          type: ["string", "null"]
+        plannedQuantity:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    CompleteProductionBody:
+      type: object
+      properties:
+        actualQuantity:
+          type: number
+        notes:
+          type: ["string", "null"]
+      required:
+        - actualQuantity
+
+    ProductionPlanningSuggestion:
+      type: object
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        currentStock:
+          type: number
+        alertQuantity:
+          type: number
+        suggestedQuantity:
+          type: number
+        recipeId:
+          type: ["integer", "null"]
+        recipeName:
+          type: ["string", "null"]
+        urgency:
+          type: string
+          enum: [low, medium, high, critical]
+      required:
+        - productId
+        - productName
+        - currentStock
+        - alertQuantity
+        - suggestedQuantity
+        - urgency
+
+    Sale:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        type:
+          type: string
+          enum: [sale, order, quotation, draft, return]
+        customerId:
+          type: ["integer", "null"]
+        customerName:
+          type: ["string", "null"]
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        status:
+          type: string
+          enum: [active, pending, approved, rejected, expired, converted, confirmed, in_preparation, ready, delivered, partially_fulfilled, cancelled, refunded, returned]
+        paymentStatus:
+          type: string
+          enum: [unpaid, partially_paid, paid]
+        fulfillmentType:
+          type: string
+          enum: [pos, pickup, delivery]
+        fulfillmentStatus:
+          type: string
+          enum: [pending, ready, done]
+        promisedDate:
+          type: ["string", "null"]
+        subtotal:
+          type: number
+        discount:
+          type: number
+        tax:
+          type: number
+        shippingFee:
+          type: number
+        total:
+          type: number
+        paid:
+          type: number
+        due:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleItem"
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalePayment"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        createdByName:
+          type: ["string", "null"]
+        convertedFromId:
+          type: ["integer", "null"]
+      required:
+        - id
+        - reference
+        - type
+        - branchId
+        - branchName
+        - status
+        - paymentStatus
+        - fulfillmentType
+        - fulfillmentStatus
+        - subtotal
+        - discount
+        - tax
+        - shippingFee
+        - total
+        - paid
+        - due
+        - items
+        - payments
+        - createdAt
+
+    SaleItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        discount:
+          type: number
+        total:
+          type: number
+      required:
+        - id
+        - productId
+        - productName
+        - quantity
+        - unitPrice
+        - discount
+        - total
+
+    SalePayment:
+      type: object
+      properties:
+        id:
+          type: integer
+        saleId:
+          type: integer
+        amount:
+          type: number
+        method:
+          type: string
+        date:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - saleId
+        - amount
+        - method
+        - date
+        - createdAt
+
+    CreateSaleBody:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [sale, order, quotation, draft]
+        customerId:
+          type: ["integer", "null"]
+        branchId:
+          type: integer
+        status:
+          type: string
+          enum: [draft, quotation, confirmed]
+        fulfillmentType:
+          type: string
+          enum: [pos, pickup, delivery]
+        promisedDate:
+          type: ["string", "null"]
+        discount:
+          type: number
+        tax:
+          type: number
+        shippingFee:
+          type: number
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleItemInput"
+      required:
+        - type
+        - branchId
+        - status
+        - fulfillmentType
+        - items
+
+    UpdateSaleBody:
+      type: object
+      properties:
+        status:
+          type: ["string", "null"]
+        fulfillmentStatus:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        promisedDate:
+          type: ["string", "null"]
+
+    SaleItemInput:
+      type: object
+      properties:
+        productId:
+          type: integer
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        discount:
+          type: number
+      required:
+        - productId
+        - quantity
+        - unitPrice
+        - discount
+
+    POSSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        userId:
+          type: integer
+        userName:
+          type: string
+        status:
+          type: string
+          enum: [open, closed]
+        openingCash:
+          type: number
+        countedCash:
+          type: ["number", "null"]
+        expectedCash:
+          type: ["number", "null"]
+        variance:
+          type: ["number", "null"]
+        totalSales:
+          type: number
+        totalCashSales:
+          type: number
+        totalCardSales:
+          type: number
+        salesCount:
+          type: integer
+        closureNotes:
+          type: ["string", "null"]
+        openedAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - branchId
+        - branchName
+        - userId
+        - userName
+        - status
+        - openingCash
+        - totalSales
+        - totalCashSales
+        - totalCardSales
+        - salesCount
+        - openedAt
+
+    POSSessionOrNull:
+      type: object
+      properties:
+        session:
+          oneOf:
+            - $ref: "#/components/schemas/POSSession"
+            - type: "null"
+      required:
+        - session
+
+    OpenPOSSessionBody:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        openingCash:
+          type: number
+      required:
+        - branchId
+        - openingCash
+
+    ClosePOSSessionBody:
+      type: object
+      properties:
+        countedCash:
+          type: number
+        closureNotes:
+          type: ["string", "null"]
+      required:
+        - countedCash
+
+    Transfer:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        sourceBranchId:
+          type: integer
+        sourceBranchName:
+          type: string
+        destinationBranchId:
+          type: integer
+        destinationBranchName:
+          type: string
+        status:
+          type: string
+          enum: [draft, sent, received, cancelled]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransferItem"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - reference
+        - sourceBranchId
+        - sourceBranchName
+        - destinationBranchId
+        - destinationBranchName
+        - status
+        - items
+        - createdAt
+
+    TransferItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitName:
+          type: string
+      required:
+        - id
+        - productId
+        - productName
+        - quantity
+        - unitName
+
+    CreateTransferBody:
+      type: object
+      properties:
+        sourceBranchId:
+          type: integer
+        destinationBranchId:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: integer
+              quantity:
+                type: number
+            required:
+              - productId
+              - quantity
+      required:
+        - sourceBranchId
+        - destinationBranchId
+        - items
+
+    Adjustment:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantityChange:
+          type: number
+        reason:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - reference
+        - branchId
+        - branchName
+        - productId
+        - productName
+        - quantityChange
+        - reason
+        - createdAt
+
+    CreateAdjustmentBody:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        productId:
+          type: integer
+        quantityChange:
+          type: number
+        reason:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - branchId
+        - productId
+        - quantityChange
+        - reason
+
+    AdjustmentsStatsReasonRow:
+      type: object
+      properties:
+        reason:
+          type: string
+        count:
+          type: integer
+        quantite:
+          type: number
+        valeur:
+          type: number
+      required: [reason, count, quantite, valeur]
+
+    AdjustmentsStats:
+      type: object
+      properties:
+        totalPerteQuantite:
+          type: number
+        totalPerteValeur:
+          type: number
+        countPertes:
+          type: integer
+        byReason:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdjustmentsStatsReasonRow"
+      required: [totalPerteQuantite, totalPerteValeur, countPertes, byReason]
+
+    Expense:
+      type: object
+      properties:
+        id:
+          type: integer
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        category:
+          type: string
+        amount:
+          type: number
+        date:
+          type: string
+        paymentMethod:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdByName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - branchId
+        - branchName
+        - category
+        - amount
+        - date
+        - paymentMethod
+        - createdAt
+
+    CreateExpenseBody:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        category:
+          type: string
+        amount:
+          type: number
+        date:
+          type: string
+        paymentMethod:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - branchId
+        - category
+        - amount
+        - date
+        - paymentMethod
+
+    DashboardSummary:
+      type: object
+      properties:
+        salesToday:
+          type: number
+        ordersToday:
+          type: integer
+        paymentsToday:
+          type: number
+        overduePayments:
+          type: number
+        lowStockCount:
+          type: integer
+        deliveriesToday:
+          type: integer
+        productionPending:
+          type: integer
+        purchasesDue:
+          type: number
+      required:
+        - salesToday
+        - ordersToday
+        - paymentsToday
+        - overduePayments
+        - lowStockCount
+        - deliveriesToday
+        - productionPending
+        - purchasesDue
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [stock, payment, production, delivery, order]
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        message:
+          type: string
+        entityId:
+          type: ["integer", "null"]
+        entityType:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - severity
+        - message
+        - createdAt
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        entityId:
+          type: ["integer", "null"]
+        entityType:
+          type: ["string", "null"]
+        userName:
+          type: ["string", "null"]
+        branchName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - description
+        - createdAt
+
+    SalesTrendPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        amount:
+          type: number
+        orders:
+          type: integer
+      required:
+        - date
+        - amount
+        - orders
+
+    TopProduct:
+      type: object
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        totalSold:
+          type: number
+        totalRevenue:
+          type: number
+        rank:
+          type: integer
+      required:
+        - productId
+        - productName
+        - totalSold
+        - totalRevenue
+        - rank
+
+    BranchPerformance:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        salesAmount:
+          type: number
+        ordersCount:
+          type: integer
+        growth:
+          type: number
+      required:
+        - branchId
+        - branchName
+        - salesAmount
+        - ordersCount
+        - growth
+
+    SalesReport:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+        totalOrders:
+          type: integer
+        totalPaid:
+          type: number
+        totalDue:
+          type: number
+        byBranch:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchPerformance"
+        byPaymentMethod:
+          type: array
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+              amount:
+                type: number
+            required:
+              - method
+              - amount
+        dailyTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesTrendPoint"
+      required:
+        - totalRevenue
+        - totalOrders
+        - totalPaid
+        - totalDue
+        - byBranch
+        - byPaymentMethod
+        - dailyTrend
+
+    PurchasesReport:
+      type: object
+      properties:
+        totalPurchases:
+          type: number
+        totalPaid:
+          type: number
+        totalDue:
+          type: number
+        bySupplier:
+          type: array
+          items:
+            type: object
+            properties:
+              supplierName:
+                type: string
+              amount:
+                type: number
+            required:
+              - supplierName
+              - amount
+        byProduct:
+          type: array
+          items:
+            type: object
+            properties:
+              productName:
+                type: string
+              quantity:
+                type: number
+              amount:
+                type: number
+            required:
+              - productName
+              - quantity
+              - amount
+      required:
+        - totalPurchases
+        - totalPaid
+        - totalDue
+        - bySupplier
+        - byProduct
+
+    StockValuationReport:
+      type: object
+      properties:
+        totalValue:
+          type: number
+        byBranch:
+          type: array
+          items:
+            type: object
+            properties:
+              branchName:
+                type: string
+              value:
+                type: number
+            required:
+              - branchName
+              - value
+        byCategory:
+          type: array
+          items:
+            type: object
+            properties:
+              categoryName:
+                type: string
+              value:
+                type: number
+              quantity:
+                type: number
+            required:
+              - categoryName
+              - value
+              - quantity
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockLevel"
+      required:
+        - totalValue
+        - byBranch
+        - byCategory
+        - items
+
+    ProductionReport:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        completed:
+          type: integer
+        inProgress:
+          type: integer
+        theoreticalCost:
+          type: number
+        actualCost:
+          type: number
+        byProduct:
+          type: array
+          items:
+            type: object
+            properties:
+              productName:
+                type: string
+              quantity:
+                type: number
+              orders:
+                type: integer
+            required:
+              - productName
+              - quantity
+              - orders
+      required:
+        - totalOrders
+        - completed
+        - inProgress
+        - theoreticalCost
+        - actualCost
+        - byProduct
+
+    CashSessionsReport:
+      type: object
+      properties:
+        totalSessions:
+          type: integer
+        totalSales:
+          type: number
+        totalCash:
+          type: number
+        totalCard:
+          type: number
+        totalVariance:
+          type: number
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/POSSession"
+      required:
+        - totalSessions
+        - totalSales
+        - totalCash
+        - totalCard
+        - totalVariance
+        - sessions
+
+    CompanySettings:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        currency:
+          type: string
+        currencySymbol:
+          type: string
+        defaultLanguage:
+          type: string
+          enum: [fr, ar]
+        taxRate:
+          type: number
+        invoicePrefix:
+          type: string
+        orderPrefix:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+      required:
+        - name
+        - currency
+        - currencySymbol
+        - defaultLanguage
+        - taxRate
+        - invoicePrefix
+        - orderPrefix
+
+    UpdateCompanySettingsBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        currency:
+          type: ["string", "null"]
+        currencySymbol:
+          type: ["string", "null"]
+        defaultLanguage:
+          type: ["string", "null"]
+        taxRate:
+          type: ["number", "null"]
+        invoicePrefix:
+          type: ["string", "null"]
+        orderPrefix:
+          type: ["string", "null"]
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [cash, card, transfer, check, credit]
+        isActive:
+          type: boolean
+      required:
+        - id
+        - name
+        - type
+        - isActive
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+
+    Attachment:
+      type: object
+      required: [id, entityType, entityId, originalFilename, objectPath, mimeType, sizeBytes, createdAt]
+      properties:
+        id:
+          type: integer
+        entityType:
+          type: string
+          enum: [expense, purchase, sale]
+        entityId:
+          type: integer
+        originalFilename:
+          type: string
+        objectPath:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        uploadedByUserId:
+          type: ["integer", "null"]
+        uploadedByName:
+          type: ["string", "null"]
+        branchId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateAttachmentBody:
+      type: object
+      required: [entityType, entityId, originalFilename, objectPath, mimeType, sizeBytes]
+      properties:
+        entityType:
+          type: string
+          enum: [expense, purchase, sale]
+        entityId:
+          type: integer
+        originalFilename:
+          type: string
+        objectPath:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        branchId:
+          type: ["integer", "null"]
+
+    InternalConsumption:
+      type: object
+      required: [id, reference, sourceBranchId, destinationBranchId, sourceBranchName, destinationBranchName, documentDate, status, totalCost, itemCount, createdAt]
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        sourceBranchId:
+          type: integer
+        destinationBranchId:
+          type: integer
+        sourceBranchName:
+          type: string
+        destinationBranchName:
+          type: string
+        documentDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, confirmed, cancelled]
+        totalCost:
+          type: number
+        itemCount:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        createdByUserId:
+          type: ["integer", "null"]
+        createdByName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalConsumptionItem"
+
+    InternalConsumptionItem:
+      type: object
+      required: [id, documentId, productId, productName, quantity, unitCost, totalCost]
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitId:
+          type: ["integer", "null"]
+        unitName:
+          type: string
+        unitCost:
+          type: number
+        totalCost:
+          type: number
+
+    CreateInternalConsumptionBody:
+      type: object
+      required: [sourceBranchId, destinationBranchId, items]
+      properties:
+        sourceBranchId:
+          type: integer
+        destinationBranchId:
+          type: integer
+        documentDate:
+          type: string
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId:
+                type: integer
+              quantity:
+                type: number
+              unitId:
+                type: ["integer", "null"]
+              unitCost:
+                type: number
+
+    InternalConsumptionReportSummary:
+      type: object
+      required: [totalCost, totalQty, docCount, byBranch, byProduct]
+      properties:
+        totalCost:
+          type: number
+        totalQty:
+          type: number
+        docCount:
+          type: integer
+        byBranch:
+          type: array
+          items:
+            type: object
+            properties:
+              branchId:
+                type: integer
+              branchName:
+                type: string
+              totalCost:
+                type: number
+              totalQty:
+                type: number
+              docCount:
+                type: integer
+        byProduct:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: integer
+              productName:
+                type: string
+              totalCost:
+                type: number
+              totalQty:
+                type: number

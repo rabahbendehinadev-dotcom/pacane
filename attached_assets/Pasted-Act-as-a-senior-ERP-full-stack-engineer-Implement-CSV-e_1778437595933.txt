@@ -1,0 +1,227 @@
+Act as a senior ERP full-stack engineer.
+
+Implement CSV export for the existing module:
+
+CONSOMMATION INTERNE / CESSION INTERNE DE CONSOMMABLES
+
+Context:
+The module is already audited and ready to use.
+The only known remaining limitation is:
+CSV export is not yet implemented.
+
+Goal:
+Add professional CSV export support to the internal consumption module so users can export documents and reporting data for spreadsheet analysis.
+
+==================================================
+BUSINESS REQUIREMENT
+==================================================
+
+Users need to export internal consumption data to CSV for:
+- Excel analysis
+- monthly branch review
+- consumable tracking
+- manager reporting
+- accounting follow-up
+
+This export must belong only to the internal consumption module.
+It must NOT mix with customer sales exports.
+
+==================================================
+SCOPE
+==================================================
+
+Implement CSV export in 2 places:
+
+1. Internal consumption LIST page
+- export filtered document rows
+
+2. Internal consumption REPORTS page
+- export the currently displayed report dataset
+
+==================================================
+EXPORT 1 — DOCUMENT LIST PAGE
+==================================================
+
+Add a visible button:
+"Exporter CSV"
+
+Location:
+- on the internal consumption list page toolbar/header
+- near filters/actions
+
+Behavior:
+Export ONLY the documents matching the current filters.
+
+Filters to respect:
+- date range
+- source branch
+- destination branch
+- status
+- any other active list filter
+
+CSV columns for document list export:
+- Référence
+- Date
+- Source
+- Destination
+- Statut
+- Nombre de lignes
+- Coût total
+- Créé par
+- Notes
+
+Optional additional columns if available:
+- created_at exact timestamp
+- updated_at exact timestamp
+
+Requirements:
+- French CSV headers
+- one row per document
+- totals must match UI
+- only authorized documents according to branch scope
+- drafts/cancelled/confirmed filtered exactly as in UI
+
+Filename example:
+CONSOMMATION_INTERNE_LISTE_2026-04-22.csv
+
+==================================================
+EXPORT 2 — REPORTS PAGE
+==================================================
+
+Add a visible button:
+"Exporter CSV"
+
+Location:
+- on the reports page toolbar/header
+
+Behavior:
+Export the current report result depending on the active report tab/view.
+
+Supported report views:
+1. Consommation par boutique
+2. Consommation par produit
+3. Consommation par période
+4. Classement boutiques
+5. Classement produits
+
+Export must reflect:
+- current active tab
+- current filters
+- current date range
+- current branch/product/category filters
+
+Suggested columns per report type:
+
+A. Report by boutique
+- Boutique
+- Nombre de documents
+- Quantité totale
+- Coût total
+
+B. Report by product
+- Produit
+- SKU
+- Unité
+- Quantité totale
+- Coût total
+
+C. Report by period
+- Période
+- Nombre de documents
+- Quantité totale
+- Coût total
+
+D. Ranking boutiques
+- Rang
+- Boutique
+- Quantité totale
+- Coût total
+
+E. Ranking products
+- Rang
+- Produit
+- SKU
+- Quantité totale
+- Coût total
+
+Use the exact displayed report data if possible.
+Do not export hidden or unfiltered data.
+
+Filename examples:
+- CONSOMMATION_INTERNE_RAPPORT_BOUTIQUES_2026-04-22.csv
+- CONSOMMATION_INTERNE_RAPPORT_PRODUITS_2026-04-22.csv
+
+==================================================
+PERMISSIONS / SECURITY
+==================================================
+
+Use the existing permission:
+internal_consumptions.export
+
+Requirements:
+- button visible only if user has export permission
+- backend endpoint must enforce permission
+- branch scope must be respected
+- non-admin users must only export documents/reports within their allowed branches
+
+==================================================
+BACKEND REQUIREMENTS
+==================================================
+
+Add backend export endpoints if not already present.
+
+Suggested endpoints:
+- GET /api/internal-consumptions/export
+- GET /api/internal-consumptions/reports/export
+
+Requirements:
+- respect all current filters
+- respect branch scope
+- return downloadable CSV
+- proper content-type and filename headers
+- no API 500 errors
+
+Use robust CSV generation:
+- quote fields when needed
+- support commas, accents, quotes, CRLF
+- preserve French headers
+
+==================================================
+FRONTEND REQUIREMENTS
+==================================================
+
+- add export buttons to both pages
+- pass current filters cleanly
+- show loading state while generating export
+- show error toast if export fails
+- do not full reload page
+- keep UI premium and consistent with existing ERP style
+
+==================================================
+TESTS
+==================================================
+
+Test:
+1. Export list with no filters
+2. Export list with date range filter
+3. Export list filtered by destination branch BEN OMAR
+4. Export list filtered by confirmed only
+5. Export reports for each report tab
+6. Confirm exported row counts match UI
+7. Confirm totals match UI
+8. Confirm French headers
+9. Confirm restricted user exports only own scope
+10. No console errors
+11. No API 500 errors
+
+==================================================
+DELIVERABLE FORMAT
+==================================================
+
+Return a concise French report:
+- endpoints added
+- pages updated
+- CSV columns supported
+- permission enforcement status
+- branch scope status
+- tests passed
