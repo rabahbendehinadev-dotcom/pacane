@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
-import { useLogout, useGetBranches } from "@workspace/api-client-react";
+import { useLogout } from "@workspace/api-client-react";
 import { Bell, Globe, LogOut, Menu, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,18 +18,9 @@ import { NotificationsDrawer } from "@/components/notifications/NotificationsDra
 
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const { t, language, setLanguage, isRtl } = useI18n();
-  const { user, activeBranchId, setActiveBranchId } = useAuth();
+  const { user } = useAuth();
   const logout = useLogout();
   const [notifOpen, setNotifOpen] = useState(false);
-
-  const { data: branches = [] } = useGetBranches({
-    query: {
-      queryKey: ["branches"],
-      enabled: !!user,
-    }
-  });
-
-  const activeBranch = branches.find(b => b.id === activeBranchId);
 
   const token = () => localStorage.getItem("erp_token") ?? "";
 
@@ -66,35 +57,6 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             <Menu className="h-5 w-5" />
           </Button>
           
-          {branches.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="hidden sm:flex gap-2">
-                  <span className="font-semibold">{activeBranch?.name || "Toutes les boutiques"}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align={isRtl ? "end" : "start"} className="w-[200px]">
-                <DropdownMenuLabel>{t("branches")}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setActiveBranchId(null)}
-                  className={activeBranchId === null ? "bg-accent font-medium" : ""}
-                >
-                  Toutes les boutiques
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {branches.map(branch => (
-                  <DropdownMenuItem 
-                    key={branch.id}
-                    onClick={() => setActiveBranchId(branch.id)}
-                    className={branch.id === activeBranchId ? "bg-accent" : ""}
-                  >
-                    {branch.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
