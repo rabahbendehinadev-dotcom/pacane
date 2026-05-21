@@ -39,6 +39,14 @@ async function runMigrations() {
         CONSTRAINT target_thu_sat_non_negative CHECK (target_thu_sat >= 0)
       );
     `);
+    // Add per-day target columns for fine-grained replenishment scheduling
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_dim NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_lun NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_mar NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_mer NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_jeu NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_ven NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE product_replenishment_rules ADD COLUMN IF NOT EXISTS target_sat NUMERIC(15,3) NOT NULL DEFAULT 0;`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS erp_alerts (
         id SERIAL PRIMARY KEY,

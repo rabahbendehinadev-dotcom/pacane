@@ -65,8 +65,9 @@ export default function Products() {
   const [imageUploading, setImageUploading] = useState(false);
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null);
   const [imageCleared, setImageCleared] = useState(false);
-  const [replenishmentRules, setReplenishmentRules] = useState<Record<number, { targetSunWed: string; targetThuSat: string }>>({});
+  const [replenishmentRules, setReplenishmentRules] = useState<Record<number, Record<string, string>>>({});
   const [enabledRepBranches, setEnabledRepBranches] = useState<Set<number>>(new Set());
+  const [enabledDays, setEnabledDays] = useState<Record<number, Set<number>>>({});
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkUnitOpen, setBulkUnitOpen] = useState(false);
   const [bulkUnitId, setBulkUnitId] = useState("none");
@@ -96,28 +97,32 @@ export default function Products() {
   const { data: branches = [] } = useGetBranches();
   const { data: allWorkers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchActiveWorkers });
   const pieceUnitId = units.find(u => !u.allowDecimals && (u.name.toLowerCase().includes("pièce") || u.abbreviation.toLowerCase() === "pcs"))?.id?.toString() ?? null;
-  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, { targetSunWed: string; targetThuSat: string }>) {
-    const payload = Object.entries(rules)
-      .map(([branchId, r]) => ({
-        branchId: parseInt(branchId),
-        targetSunWed: parseFloat(r.targetSunWed || "0") || 0,
-        targetThuSat: parseFloat(r.targetThuSat || "0") || 0,
-      }))
-      .filter(r => r.targetSunWed > 0 || r.targetThuSat > 0);
+  const DAY_KEYS = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"];
+
+  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, Record<string, string>>, activeBranches: Set<number>, activeDays: Record<number, Set<number>>) {
+    const payload = Array.from(activeBranches).map(branchId => {
+      const r = rules[branchId] ?? {};
+      const days = activeDays[branchId] ?? new Set<number>();
+      const dayValues: Record<string, number> = {};
+      DAY_KEYS.forEach((key, i) => {
+        dayValues[key] = days.has(i) ? (parseFloat(r[key] || "0") || 0) : 0;
+      });
+      return { branchId, ...dayValues };
+    });
     if (payload.length === 0) return;
     await customFetch(`/api/replenishment/rules/product/${productId}`, { method: "PUT", body: JSON.stringify({ rules: payload }) });
   }
 
   const createMutation = useCreateProduct({ mutation: {
     onSuccess: async (data: any) => {
-      try { await saveReplenishmentRulesFor(data.id, replenishmentRules); } catch {}
+      try { await saveReplenishmentRulesFor(data.id, replenishmentRules, enabledRepBranches, enabledDays); } catch {}
       qc.invalidateQueries({ queryKey: getGetProductsQueryKey() }); setDialogOpen(false); toast({ title: "Produit créé" });
     },
     onError: (err: any) => { toast({ title: "Erreur lors de la création", description: err?.message ?? "Une erreur est survenue", variant: "destructive" }); }
   }});
   const updateMutation = useUpdateProduct({ mutation: {
     onSuccess: async () => {
-      if (editing) { try { await saveReplenishmentRulesFor(editing.id, replenishmentRules); } catch {} }
+      if (editing) { try { await saveReplenishmentRulesFor(editing.id, replenishmentRules, enabledRepBranches, enabledDays); } catch {} }
       qc.invalidateQueries({ queryKey: getGetProductsQueryKey() }); setDialogOpen(false); toast({ title: "Produit mis à jour" });
     },
     onError: (err: any) => { toast({ title: "Erreur lors de la mise à jour", description: err?.message ?? "Une erreur est survenue", variant: "destructive" }); }
@@ -138,7 +143,7 @@ export default function Products() {
   }
 
   function resetImageState(cleared = false) { setImagePreview(null); setPendingImagePath(null); setImageCleared(cleared); if (imageInputRef.current) imageInputRef.current.value = ""; }
-  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setEnabledRepBranches(new Set()); setDialogOpen(true); }
+  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setEnabledRepBranches(new Set()); setEnabledDays({}); setDialogOpen(true); }
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
@@ -149,19 +154,29 @@ export default function Products() {
     setImageCleared(false);
     setReplenishmentRules({});
     setEnabledRepBranches(new Set());
+    setEnabledDays({});
     setDialogOpen(true);
     try {
-      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetSunWed: string; targetThuSat: string }>;
-      const map: Record<number, { targetSunWed: string; targetThuSat: string }> = {};
+      const dayKeysList = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"];
+      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<Record<string, any>>;
+      const map: Record<number, Record<string, string>> = {};
       const enabled = new Set<number>();
+      const daysMap: Record<number, Set<number>> = {};
       for (const r of rules) {
-        map[r.branchId] = { targetSunWed: r.targetSunWed ?? "0", targetThuSat: r.targetThuSat ?? "0" };
-        if (parseFloat(r.targetSunWed ?? "0") > 0 || parseFloat(r.targetThuSat ?? "0") > 0) {
-          enabled.add(r.branchId);
-        }
+        const row: Record<string, string> = {};
+        let hasAny = false;
+        const daySet = new Set<number>();
+        dayKeysList.forEach((key, i) => {
+          const val = r[key] ?? "0";
+          row[key] = val;
+          if (parseFloat(val) > 0) { daySet.add(i); hasAny = true; }
+        });
+        map[r.branchId] = row;
+        if (hasAny) { enabled.add(r.branchId); daysMap[r.branchId] = daySet; }
       }
       setReplenishmentRules(map);
       setEnabledRepBranches(enabled);
+      setEnabledDays(daysMap);
     } catch {}
   }
 
@@ -610,50 +625,76 @@ export default function Products() {
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Réapprovisionnement automatique</span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
-                <p className="text-xs text-muted-foreground">Cochez les boutiques à inclure dans le calcul automatique.</p>
-                <div className="space-y-1">
-                  {branches.map(b => {
-                    const isEnabled = enabledRepBranches.has(b.id);
-                    return (
-                      <div key={b.id} className={`rounded-md border px-3 py-2 transition-colors ${isEnabled ? "border-primary/30 bg-primary/5" : "border-border"}`}>
-                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                          <Checkbox
-                            checked={isEnabled}
-                            onCheckedChange={v => {
-                              setEnabledRepBranches(prev => {
-                                const next = new Set(prev);
-                                if (v) next.add(b.id); else next.delete(b.id);
-                                return next;
-                              });
-                              if (!v) {
-                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: "0", targetThuSat: "0" } }));
-                              }
-                            }}
-                          />
-                          <span className="text-sm font-medium flex-1">{b.name}</span>
-                          {isEnabled && (
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">Dim→Mer</span>
-                                <Input type="number" min="0" step="1" className="h-7 w-20 text-sm text-center"
-                                  placeholder="0"
-                                  value={replenishmentRules[b.id]?.targetSunWed ?? ""}
-                                  onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "" } }))} />
+                <p className="text-xs text-muted-foreground">Cochez les boutiques puis les jours à inclure dans le calcul automatique.</p>
+                {(() => {
+                  const DAY_LABELS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+                  const DAY_KEYS_LIST = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"];
+                  return (
+                    <div className="space-y-1">
+                      {branches.map(b => {
+                        const isEnabled = enabledRepBranches.has(b.id);
+                        const branchDays = enabledDays[b.id] ?? new Set<number>();
+                        return (
+                          <div key={b.id} className={`rounded-md border px-3 py-2 transition-colors ${isEnabled ? "border-primary/30 bg-primary/5" : "border-border"}`}>
+                            <label className="flex items-center gap-2 cursor-pointer select-none mb-1">
+                              <Checkbox
+                                checked={isEnabled}
+                                onCheckedChange={v => {
+                                  setEnabledRepBranches(prev => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(b.id); else next.delete(b.id);
+                                    return next;
+                                  });
+                                  if (!v) {
+                                    setEnabledDays(prev => { const n = { ...prev }; delete n[b.id]; return n; });
+                                  }
+                                }}
+                              />
+                              <span className="text-sm font-medium">{b.name}</span>
+                            </label>
+                            {isEnabled && (
+                              <div className="grid grid-cols-7 gap-1 mt-1">
+                                {DAY_LABELS.map((label, i) => {
+                                  const key = DAY_KEYS_LIST[i];
+                                  const dayOn = branchDays.has(i);
+                                  return (
+                                    <div key={i} className="flex flex-col items-center gap-1">
+                                      <label className="flex flex-col items-center gap-0.5 cursor-pointer select-none">
+                                        <Checkbox
+                                          checked={dayOn}
+                                          onCheckedChange={v => {
+                                            setEnabledDays(prev => {
+                                              const cur = new Set(prev[b.id] ?? []);
+                                              if (v) cur.add(i); else cur.delete(i);
+                                              return { ...prev, [b.id]: cur };
+                                            });
+                                          }}
+                                        />
+                                        <span className="text-[10px] text-muted-foreground">{label}</span>
+                                      </label>
+                                      {dayOn && (
+                                        <Input
+                                          type="number" min="0" step="1"
+                                          className="h-6 w-full text-xs text-center px-1"
+                                          placeholder="0"
+                                          value={replenishmentRules[b.id]?.[key] ?? ""}
+                                          onChange={e => setReplenishmentRules(prev => ({
+                                            ...prev,
+                                            [b.id]: { ...(prev[b.id] ?? {}), [key]: e.target.value }
+                                          }))}
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">Jeu→Sam</span>
-                                <Input type="number" min="0" step="1" className="h-7 w-20 text-sm text-center"
-                                  placeholder="0"
-                                  value={replenishmentRules[b.id]?.targetThuSat ?? ""}
-                                  onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "", targetThuSat: e.target.value } }))} />
-                              </div>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

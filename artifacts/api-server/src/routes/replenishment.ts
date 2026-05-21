@@ -7,13 +7,17 @@ import { P } from "../lib/permissions";
 
 const router = Router();
 
-function getWeekdayGroup(date: Date): "sun_wed" | "thu_sat" {
-  const day = date.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-  return day <= 3 ? "sun_wed" : "thu_sat";
+const DAY_COLS = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"] as const;
+type DayKey = typeof DAY_COLS[number];
+
+function getDayTarget(rule: Record<string, any>, dayOfWeek: number): number {
+  const key = DAY_COLS[dayOfWeek];
+  const val = parseFloat(rule[key] ?? "0");
+  return isNaN(val) ? 0 : val;
 }
 
-function getWeekdayGroupLabel(group: "sun_wed" | "thu_sat"): string {
-  return group === "sun_wed" ? "Dimanche → Mercredi" : "Jeudi → Samedi";
+function getDayLabel(day: number): string {
+  return ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"][day] ?? "";
 }
 
 // GET /replenishment/calculate
@@ -28,7 +32,8 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
   if (!assertBranchAccess(user, branchId, res)) return;
 
   const date = dateStr ? new Date(dateStr) : new Date();
-  const weekdayGroup = getWeekdayGroup(date);
+  const dayOfWeek = date.getDay(); // 0=Sun/Dim, 1=Mon/Lun, ..., 6=Sat/Sam
+  const dayLabel = getDayLabel(dayOfWeek);
 
   // Fetch branch info
   const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, branchId));
@@ -41,17 +46,20 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
       eq(productReplenishmentRulesTable.isActive, true)
     ));
 
-  if (rules.length === 0) {
+  // Filter rules: only those that have a target > 0 for today's day
+  const rulesForToday = rules.filter(r => getDayTarget(r, dayOfWeek) > 0);
+
+  if (rulesForToday.length === 0) {
     res.json({
       branchId, branchName: branch.name,
       date: date.toISOString().split("T")[0],
-      weekdayGroup, weekdayGroupLabel: getWeekdayGroupLabel(weekdayGroup),
+      dayOfWeek, dayLabel,
       items: [], stats: { totalProducts: 0, toOrderCount: 0, totalQuantityToOrder: 0, suppliersCount: 0 }
     });
     return;
   }
 
-  const productIds = rules.map(r => r.productId);
+  const productIds = rulesForToday.map(r => r.productId);
 
   // Fetch products with category, unit and worker
   const products = await db.select({
@@ -71,7 +79,7 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
     .leftJoin(workersTable, eq(productsTable.workerId, workersTable.id))
     .where(inArray(productsTable.id, productIds));
 
-  // Fetch last supplier per product from purchase history (distinct per product)
+  // Fetch last supplier per product from purchase history
   const lastPurchaseRows = await db.select({
     productId: purchaseItemsTable.productId,
     supplierId: contactsTable.id,
@@ -82,7 +90,6 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
     .where(inArray(purchaseItemsTable.productId, productIds))
     .orderBy(desc(purchasesTable.id));
 
-  // Keep only the most recent supplier per product
   const supplierMap = new Map<number, { supplierId: number; supplierName: string }>();
   for (const row of lastPurchaseRows) {
     if (!supplierMap.has(row.productId!) && row.supplierId && row.supplierName) {
@@ -103,11 +110,10 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
   }
 
   const ruleMap = new Map<number, typeof rules[0]>();
-  for (const r of rules) {
+  for (const r of rulesForToday) {
     ruleMap.set(r.productId, r);
   }
 
-  // Filter by category/worker if requested
   const categoryId = categoryIdStr ? parseInt(categoryIdStr, 10) : null;
   const workerIdFilter = workerIdStr && workerIdStr !== "all" ? (workerIdStr === "none" ? 0 : parseInt(workerIdStr, 10)) : null;
 
@@ -122,9 +128,7 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
       const rule = ruleMap.get(p.id);
       if (!rule) return null;
       const currentStock = stockMap.get(p.id) ?? 0;
-      const targetStock = weekdayGroup === "sun_wed"
-        ? parseFloat(rule.targetSunWed)
-        : parseFloat(rule.targetThuSat);
+      const targetStock = getDayTarget(rule, dayOfWeek);
       const quantityToOrder = Math.max(0, targetStock - currentStock);
       return {
         productId: p.id,
@@ -150,7 +154,10 @@ router.get("/replenishment/calculate", requireAuth, requirePermission(P.replenis
   res.json({
     branchId, branchName: branch.name,
     date: date.toISOString().split("T")[0],
-    weekdayGroup, weekdayGroupLabel: getWeekdayGroupLabel(weekdayGroup),
+    dayOfWeek, dayLabel,
+    // Keep weekdayGroup for backward compat with frontend replenishment page
+    weekdayGroup: dayOfWeek <= 3 ? "sun_wed" : "thu_sat",
+    weekdayGroupLabel: dayLabel,
     items,
     stats: {
       totalProducts: items.length,
@@ -170,8 +177,13 @@ router.get("/replenishment/rules/product/:productId", requireAuth, requirePermis
     id: productReplenishmentRulesTable.id,
     branchId: productReplenishmentRulesTable.branchId,
     branchName: branchesTable.name,
-    targetSunWed: productReplenishmentRulesTable.targetSunWed,
-    targetThuSat: productReplenishmentRulesTable.targetThuSat,
+    targetDim: productReplenishmentRulesTable.targetDim,
+    targetLun: productReplenishmentRulesTable.targetLun,
+    targetMar: productReplenishmentRulesTable.targetMar,
+    targetMer: productReplenishmentRulesTable.targetMer,
+    targetJeu: productReplenishmentRulesTable.targetJeu,
+    targetVen: productReplenishmentRulesTable.targetVen,
+    targetSat: productReplenishmentRulesTable.targetSat,
     isActive: productReplenishmentRulesTable.isActive,
   }).from(productReplenishmentRulesTable)
     .leftJoin(branchesTable, eq(productReplenishmentRulesTable.branchId, branchesTable.id))
@@ -186,20 +198,35 @@ router.put("/replenishment/rules/product/:productId", requireAuth, requirePermis
   if (isNaN(productId)) { res.status(400).json({ error: "productId invalide" }); return; }
 
   const { rules } = req.body as {
-    rules: Array<{ branchId: number; targetSunWed: number; targetThuSat: number }>
+    rules: Array<{
+      branchId: number;
+      targetDim: number; targetLun: number; targetMar: number; targetMer: number;
+      targetJeu: number; targetVen: number; targetSat: number;
+    }>
   };
 
   if (!Array.isArray(rules)) { res.status(400).json({ error: "rules doit être un tableau" }); return; }
 
   for (const rule of rules) {
     if (!assertBranchAccess(req.user!, rule.branchId, res)) return;
-    if (rule.targetSunWed < 0 || rule.targetThuSat < 0) {
+    const vals = [rule.targetDim, rule.targetLun, rule.targetMar, rule.targetMer, rule.targetJeu, rule.targetVen, rule.targetSat];
+    if (vals.some(v => v < 0)) {
       res.status(400).json({ error: "Les valeurs cibles ne peuvent pas être négatives" }); return;
     }
   }
 
-  // Upsert each rule
   for (const rule of rules) {
+    const dayData = {
+      targetDim: rule.targetDim.toString(),
+      targetLun: rule.targetLun.toString(),
+      targetMar: rule.targetMar.toString(),
+      targetMer: rule.targetMer.toString(),
+      targetJeu: rule.targetJeu.toString(),
+      targetVen: rule.targetVen.toString(),
+      targetSat: rule.targetSat.toString(),
+    };
+    const hasAnyTarget = Object.values(dayData).some(v => parseFloat(v) > 0);
+
     const existing = await db.select().from(productReplenishmentRulesTable)
       .where(and(
         eq(productReplenishmentRulesTable.productId, productId),
@@ -208,21 +235,16 @@ router.put("/replenishment/rules/product/:productId", requireAuth, requirePermis
 
     if (existing.length > 0) {
       await db.update(productReplenishmentRulesTable)
-        .set({
-          targetSunWed: rule.targetSunWed.toString(),
-          targetThuSat: rule.targetThuSat.toString(),
-          isActive: true,
-        })
+        .set({ ...dayData, isActive: hasAnyTarget })
         .where(and(
           eq(productReplenishmentRulesTable.productId, productId),
           eq(productReplenishmentRulesTable.branchId, rule.branchId)
         ));
-    } else {
+    } else if (hasAnyTarget) {
       await db.insert(productReplenishmentRulesTable).values({
         productId,
         branchId: rule.branchId,
-        targetSunWed: rule.targetSunWed.toString(),
-        targetThuSat: rule.targetThuSat.toString(),
+        ...dayData,
         isActive: true,
       });
     }
