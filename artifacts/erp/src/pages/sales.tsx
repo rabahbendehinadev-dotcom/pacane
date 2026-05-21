@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
-  useGetSales, useCreateSale, useGetContacts, useGetBranches, useGetProducts, useGetUnits,
+  useCreateSale, useGetContacts, useGetBranches, useGetProducts, useGetUnits,
   useGetCategories,
   useAddSalePayment, useConvertSaleDocument, useCancelSaleDocument,
   useDuplicateSaleDocument, useUpdateSale,
-  getGetSalesQueryKey, Sale
+  Sale
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -260,6 +260,8 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
   const [createOpen, setCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState<"type" | "form">("type");
   const [detailDoc, setDetailDoc] = useState<Sale | null>(null);
@@ -306,8 +308,63 @@ export default function Sales() {
   const [overrideReason, setOverrideReason] = useState("");
   const [pendingConvertType, setPendingConvertType] = useState<string | null>(null);
 
-  // ── Data fetching — always get all, filter client-side for tabs/counts
-  const { data: allSales = [], isLoading } = useGetSales({});
+  // ── Helper: token header
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("erp_token") ?? ""}` });
+
+  // ── Paginated sales list (server-side)
+  const salesQueryKey = ["sales-paginated", tab, statusFilter, branchFilter, search, page];
+  const { data: salesPage, isLoading } = useQuery<{ data: any[]; total: number; page: number; totalPages: number }>({
+    queryKey: salesQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (tab !== "all") params.set("type", tab);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (branchFilter !== "all") params.set("branchId", branchFilter);
+      if (search.trim()) params.set("search", search.trim());
+      const r = await fetch(`/api/sales?${params}`, { headers: authHeader() });
+      if (!r.ok) throw new Error("Erreur chargement ventes");
+      return r.json();
+    },
+    staleTime: 15_000,
+  });
+  const displayedSales = salesPage?.data ?? [];
+  const totalDocs = salesPage?.total ?? 0;
+  const totalPages = salesPage?.totalPages ?? 1;
+
+  // ── Tab counts (separate lightweight query)
+  const countsQueryKey = ["sales-counts", branchFilter];
+  const { data: counts = { all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 } } = useQuery<Record<string, number>>({
+    queryKey: countsQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (branchFilter !== "all") params.set("branchId", branchFilter);
+      const r = await fetch(`/api/sales/counts?${params}`, { headers: authHeader() });
+      if (!r.ok) return { all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 };
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["sales-paginated"] });
+    qc.invalidateQueries({ queryKey: ["sales-counts"] });
+  }
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [tab, statusFilter, branchFilter, search]);
+
+  // ── Fetch full sale detail on row click
+  const [detailLoading, setDetailLoading] = useState(false);
+  async function openDetail(s: any) {
+    setDetailLoading(true);
+    try {
+      const r = await fetch(`/api/sales/${s.id}`, { headers: authHeader() });
+      if (r.ok) setDetailDoc(await r.json());
+      else setDetailDoc(s);
+    } catch { setDetailDoc(s); }
+    finally { setDetailLoading(false); }
+  }
+
   const { data: customers = [] } = useGetContacts({ type: "customer" });
   const { data: branches = [] } = useGetBranches();
   const { data: products = [] } = useGetProducts({});
@@ -316,10 +373,6 @@ export default function Sales() {
   const unitDecimalsMap = useMemo(() => Object.fromEntries(units.map(u => [u.id, u.allowDecimals])), [units]);
   const selectedProduct = useMemo(() => products.find(p => p.id === parseInt(newItem.productId)), [products, newItem.productId]);
   const qtyAllowsDecimals = selectedProduct ? (unitDecimalsMap[(selectedProduct as any).unitId] ?? true) : true;
-
-  function invalidate() {
-    qc.invalidateQueries({ queryKey: getGetSalesQueryKey() });
-  }
 
   async function createQuickClient() {
     const firstName = quickClientFirstName.trim();
@@ -396,34 +449,6 @@ export default function Sales() {
   // ── Company settings (for PDF generation)
   const { data: companySettings } = useGetCompanySettings();
 
-  // ── Tab counts
-  const counts = useMemo(() => ({
-    all:       allSales.length,
-    draft:     allSales.filter(s => s.type === "draft").length,
-    quotation: allSales.filter(s => s.type === "quotation").length,
-    order:     allSales.filter(s => s.type === "order").length,
-    sale:      allSales.filter(s => s.type === "sale" && (s as any).fulfillmentType !== "pos").length,
-    comptoir:  allSales.filter(s => s.type === "sale" && (s as any).fulfillmentType === "pos").length,
-  }), [allSales]);
-
-  // ── Filtered list
-  const displayedSales = useMemo(() => {
-    let list = allSales;
-    if (tab === "comptoir") list = list.filter(s => s.type === "sale" && (s as any).fulfillmentType === "pos");
-    else if (tab === "sale") list = list.filter(s => s.type === "sale" && (s as any).fulfillmentType !== "pos");
-    else if (tab !== "all") list = list.filter(s => s.type === tab);
-    if (statusFilter !== "all") list = list.filter(s => s.status === statusFilter);
-    if (branchFilter !== "all") list = list.filter(s => s.branchId === parseInt(branchFilter));
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(s =>
-        s.reference.toLowerCase().includes(q) ||
-        (s.customerName ?? "").toLowerCase().includes(q) ||
-        (s.branchName ?? "").toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [allSales, tab, statusFilter, branchFilter, search]);
 
   // ── Mutations
   const createMutation = useCreateSale({ mutation: {
@@ -451,6 +476,7 @@ export default function Sales() {
   function changeTab(t: DocTab) {
     setTab(t);
     setStatusFilter("all");
+    setPage(1);
   }
 
   function openCreate(type: string) {
@@ -705,7 +731,7 @@ export default function Sales() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input className="pl-8 h-8 w-52 text-xs" placeholder="Réf., client..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">{displayedSales.length} doc{displayedSales.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{totalDocs} doc{totalDocs !== 1 ? "s" : ""}</span>
           </div>
         </div>
       </div>
@@ -755,7 +781,7 @@ export default function Sales() {
                 <TableRow
                   key={s.id}
                   className={`cursor-pointer hover:bg-muted/40 transition-colors ${s.status === "cancelled" ? "opacity-50" : ""}`}
-                  onClick={() => setDetailDoc(s)}
+                  onClick={() => openDetail(s)}
                 >
                   <TableCell className="font-mono text-xs font-semibold tracking-wide">{s.reference}</TableCell>
                   {tab === "all" && <TableCell><TypeBadge type={s.type} fulfillmentType={(s as any).fulfillmentType} /></TableCell>}
@@ -791,7 +817,7 @@ export default function Sales() {
                   )}
                   <TableCell onClick={e => e.stopPropagation()}>
                     <div className="flex gap-0.5 justify-end">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailDoc(s)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(s)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -802,6 +828,32 @@ export default function Sales() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            Page {page} / {totalPages} — {totalDocs} documents
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page <= 1} onClick={() => setPage(1)}>«</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Précédent</Button>
+            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 7) p = i + 1;
+              else if (page <= 4) p = i + 1;
+              else if (page >= totalPages - 3) p = totalPages - 6 + i;
+              else p = page - 3 + i;
+              return (
+                <Button key={p} variant={p === page ? "default" : "outline"} size="sm" className="h-7 w-7 p-0 text-xs"
+                  onClick={() => setPage(p)}>{p}</Button>
+              );
+            })}
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Suivant ›</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>»</Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Dialog ── */}
       <Dialog open={createOpen} onOpenChange={v => { setCreateOpen(v); if (!v) setCreateStep("type"); }}>

@@ -74,13 +74,46 @@ async function buildSaleResponse(sale: typeof salesTable.$inferSelect) {
   };
 }
 
-router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
-  const { branchId, type, status, customerId, search } = req.query as Record<string, string>;
+router.get("/sales/counts", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
+  const { branchId } = req.query as Record<string, string>;
   const user = req.user!;
   const conditions = [];
   const reqBranchId = branchId ? parseInt(branchId, 10) : null;
   if (!user.adminAccess) {
-    if (user.branchIds.length === 0) { res.json([]); return; }
+    if (user.branchIds.length === 0) { res.json({ all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 }); return; }
+    if (reqBranchId) {
+      if (!user.branchIds.includes(reqBranchId)) { res.status(403).json({ error: "Accès refusé" }); return; }
+      conditions.push(eq(salesTable.branchId, reqBranchId));
+    } else {
+      conditions.push(inArray(salesTable.branchId, user.branchIds));
+    }
+  } else if (reqBranchId) {
+    conditions.push(eq(salesTable.branchId, reqBranchId));
+  }
+  const where = conditions.length ? and(...conditions) : undefined;
+  const rows = where
+    ? await db.select().from(salesTable).where(where)
+    : await db.select().from(salesTable);
+  const all = rows.length;
+  const draft = rows.filter(r => r.type === "draft").length;
+  const quotation = rows.filter(r => r.type === "quotation").length;
+  const order = rows.filter(r => r.type === "order").length;
+  const sale = rows.filter(r => r.type === "sale" && r.fulfillmentType !== "pos").length;
+  const comptoir = rows.filter(r => r.type === "sale" && r.fulfillmentType === "pos").length;
+  res.json({ all, draft, quotation, order, sale, comptoir });
+});
+
+router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
+  const { branchId, type, status, customerId, search, page: pageStr, limit: limitStr } = req.query as Record<string, string>;
+  const user = req.user!;
+  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const limit = Math.min(200, Math.max(1, parseInt(limitStr || "50", 10)));
+  const offset = (page - 1) * limit;
+
+  const conditions = [];
+  const reqBranchId = branchId ? parseInt(branchId, 10) : null;
+  if (!user.adminAccess) {
+    if (user.branchIds.length === 0) { res.json({ data: [], total: 0, page, totalPages: 0 }); return; }
     if (reqBranchId) {
       if (!user.branchIds.includes(reqBranchId)) { res.status(403).json({ error: "Accès refusé à cette succursale", code: "BRANCH_ACCESS_DENIED" }); return; }
       conditions.push(eq(salesTable.branchId, reqBranchId));
@@ -90,15 +123,77 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
   } else if (reqBranchId) {
     conditions.push(eq(salesTable.branchId, reqBranchId));
   }
-  if (type) conditions.push(eq(salesTable.type, type));
-  if (status) conditions.push(eq(salesTable.status, status));
+  // type filter: 'comptoir' means sale + pos
+  if (type === "comptoir") {
+    conditions.push(eq(salesTable.type, "sale"));
+    conditions.push(eq(salesTable.fulfillmentType, "pos"));
+  } else if (type === "sale") {
+    conditions.push(eq(salesTable.type, "sale"));
+    conditions.push(sql`${salesTable.fulfillmentType} != 'pos'`);
+  } else if (type && type !== "all") {
+    conditions.push(eq(salesTable.type, type));
+  }
+  if (status && status !== "all") conditions.push(eq(salesTable.status, status));
   if (customerId) conditions.push(eq(salesTable.customerId, parseInt(customerId, 10)));
-  const sales = conditions.length
-    ? await db.select().from(salesTable).where(and(...conditions)).orderBy(sql`${salesTable.createdAt} DESC`)
-    : await db.select().from(salesTable).orderBy(sql`${salesTable.createdAt} DESC`);
-  let result = await Promise.all(sales.map(buildSaleResponse));
-  if (search) result = result.filter(s => s.reference.toLowerCase().includes(search.toLowerCase()) || (s.customerName ?? "").toLowerCase().includes(search.toLowerCase()));
-  res.json(result);
+  if (search) {
+    const like = `%${search}%`;
+    conditions.push(or(
+      sql`${salesTable.reference} ILIKE ${like}`,
+      sql`EXISTS (SELECT 1 FROM contacts c WHERE c.id = ${salesTable.customerId} AND c.display_name ILIKE ${like})`
+    ));
+  }
+  const where = conditions.length ? and(...conditions) : undefined;
+
+  const [countRow] = await db.select({ total: sql<number>`count(*)::int` }).from(salesTable).where(where);
+  const total = countRow?.total ?? 0;
+  const totalPages = Math.ceil(total / limit);
+
+  const rows = await db.select({
+    id: salesTable.id,
+    reference: salesTable.reference,
+    type: salesTable.type,
+    status: salesTable.status,
+    fulfillmentType: salesTable.fulfillmentType,
+    paymentStatus: salesTable.paymentStatus,
+    total: salesTable.total,
+    paid: salesTable.paid,
+    creditApplied: salesTable.creditApplied,
+    subtotal: salesTable.subtotal,
+    discount: salesTable.discount,
+    tax: salesTable.tax,
+    shippingFee: salesTable.shippingFee,
+    createdAt: salesTable.createdAt,
+    promisedDate: salesTable.promisedDate,
+    dueDate: salesTable.dueDate,
+    branchId: salesTable.branchId,
+    customerId: salesTable.customerId,
+    notes: salesTable.notes,
+    customerName: contactsTable.displayName,
+    branchName: branchesTable.name,
+    branchPhone: branchesTable.phone,
+    createdByName: usersTable.name,
+  }).from(salesTable)
+    .leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+    .leftJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
+    .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+    .where(where)
+    .orderBy(sql`${salesTable.createdAt} DESC`)
+    .limit(limit)
+    .offset(offset);
+
+  const data = rows.map(r => ({
+    ...r,
+    total: parseFloat(r.total as string),
+    paid: parseFloat(r.paid as string),
+    creditApplied: parseFloat((r.creditApplied ?? "0") as string),
+    subtotal: parseFloat(r.subtotal as string),
+    discount: parseFloat(r.discount as string),
+    tax: parseFloat(r.tax as string),
+    shippingFee: parseFloat(r.shippingFee as string),
+    due: Math.max(0, parseFloat(r.total as string) - parseFloat(r.paid as string) - parseFloat((r.creditApplied ?? "0") as string)),
+  }));
+
+  res.json({ data, total, page, totalPages });
 });
 
 router.post("/sales", requireAuth, async (req, res): Promise<void> => {
