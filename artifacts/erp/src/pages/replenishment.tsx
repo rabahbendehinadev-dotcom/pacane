@@ -143,6 +143,71 @@ export default function ReplenishmentPage() {
     a.click(); URL.revokeObjectURL(url);
   }
 
+  function printTicket() {
+    if (!result) return;
+    const dateLabel = format(new Date(result.date), "dd/MM/yyyy");
+    const now = format(new Date(), "dd/MM/yyyy HH:mm");
+
+    let groups: [string, ReplenishmentItem[]][];
+    if (groupByWorker) {
+      groups = Array.from(itemsByWorker().entries());
+    } else if (groupBySupplier) {
+      groups = Array.from(itemsBySupplier().entries());
+    } else {
+      groups = [["", displayItems]];
+    }
+
+    const lines: string[] = [];
+    const SEP = "--------------------------------";
+
+    lines.push("================================");
+    lines.push("   BON DE COMMANDE AUTOMATIQUE");
+    lines.push("================================");
+    lines.push(`Boutique : ${result.branchName}`);
+    lines.push(`Date     : ${dateLabel}`);
+    lines.push(`Objectif : ${result.weekdayGroupLabel}`);
+    lines.push(`Généré   : ${now}`);
+    lines.push(SEP);
+
+    for (const [groupName, items] of groups) {
+      if (groupName) {
+        lines.push(`>> ${groupName}`);
+        lines.push(SEP);
+      }
+      for (const item of items) {
+        const qty = `+${fmtQty(item.quantityToOrder)}`;
+        const name = item.productName.length > 20 ? item.productName.substring(0, 19) + "…" : item.productName;
+        const pad = 32 - name.length - qty.length;
+        lines.push(`${name}${" ".repeat(Math.max(1, pad))}${qty}`);
+        lines.push(`  [${item.unitName}]${item.supplierName ? "  " + item.supplierName : ""}`);
+      }
+      lines.push(SEP);
+    }
+
+    lines.push(`Total : ${displayItems.length} produits`);
+    lines.push(`Qté totale : ${fmtNum(result.stats.totalQuantityToOrder)}`);
+    lines.push("================================");
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Ticket commande</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  body { font-family: monospace; font-size: 11px; white-space: pre; margin: 0; padding: 0; }
+</style>
+</head>
+<body>${lines.join("\n")}</body>
+</html>`;
+
+    const w = window.open("", "_blank", "width=400,height=700");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.print(); };
+  }
+
   function exportPdf() {
     if (!result) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -234,6 +299,9 @@ export default function ReplenishmentPage() {
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
                   <Printer className="h-3.5 w-3.5" />Imprimer
+                </Button>
+                <Button variant="outline" size="sm" className="gap-2" onClick={printTicket}>
+                  <FileText className="h-3.5 w-3.5" />Ticket
                 </Button>
               </>
             )}
