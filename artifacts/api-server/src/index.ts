@@ -64,6 +64,9 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS branch_id;`);
     await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS date;`);
     await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS user_id;`);
+    // Fix internal_consumption_items: old column was consumption_id, new is document_id
+    await db.execute(sql`ALTER TABLE internal_consumption_items DROP COLUMN IF EXISTS consumption_id;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items DROP COLUMN IF EXISTS cost_price;`);
     // Recreate internal_consumptions tables with correct schema (idempotent via IF NOT EXISTS + ADD COLUMN IF NOT EXISTS)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS internal_consumptions (
