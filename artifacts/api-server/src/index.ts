@@ -62,6 +62,10 @@ async function runMigrations() {
     `);
     await db.execute(sql`
       ALTER TABLE internal_consumptions
+        ADD COLUMN IF NOT EXISTS reference TEXT;
+    `);
+    await db.execute(sql`
+      ALTER TABLE internal_consumptions
         ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
     `);
     await db.execute(sql`
