@@ -39,12 +39,19 @@ async function buildDocResponse(doc: typeof internalConsumptionsTable.$inferSele
   const itemCount = Number(itemCountRes[0]?.c ?? 0);
 
   if (!withItems) {
+    const productNamesRes = await db
+      .select({ name: productsTable.name })
+      .from(internalConsumptionItemsTable)
+      .leftJoin(productsTable, eq(internalConsumptionItemsTable.productId, productsTable.id))
+      .where(eq(internalConsumptionItemsTable.documentId, doc.id));
+    const productNames = productNamesRes.map(r => r.name ?? "").filter(Boolean);
     return {
       ...doc,
       sourceBranchName: src?.name ?? "",
       destinationBranchName: dst?.name ?? "",
       createdByName: creator?.name ?? null,
       itemCount,
+      productNames,
       totalCost: parseFloat(doc.totalCost as string),
     };
   }

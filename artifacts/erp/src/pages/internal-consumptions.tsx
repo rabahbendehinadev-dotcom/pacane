@@ -47,6 +47,7 @@ type ICDoc = {
   status: string;
   totalCost: number;
   itemCount: number;
+  productNames?: string[];
   notes: string | null;
   createdByName: string | null;
   createdAt: string;
@@ -478,7 +479,7 @@ export default function InternalConsumptions() {
                 <TableHead>Date</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Destination</TableHead>
-                <TableHead className="text-center">Articles</TableHead>
+                <TableHead>Produits</TableHead>
                 <TableHead className="text-right">Coût total</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead></TableHead>
@@ -498,7 +499,17 @@ export default function InternalConsumptions() {
                   <TableCell className="text-sm text-muted-foreground">{doc.documentDate ? format(new Date(doc.documentDate), "dd MMM yyyy", { locale: fr }) : "—"}</TableCell>
                   <TableCell className="text-sm">{doc.sourceBranchName}</TableCell>
                   <TableCell className="text-sm">{doc.destinationBranchName}</TableCell>
-                  <TableCell className="text-center text-sm">{doc.itemCount}</TableCell>
+                  <TableCell className="text-sm max-w-[220px]">
+                    {doc.productNames && doc.productNames.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {doc.productNames.map((name, i) => (
+                          <span key={i} className="inline-block px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground">{name}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">{doc.itemCount} article{doc.itemCount !== 1 ? "s" : ""}</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right text-sm font-medium">{formatDA(doc.totalCost)}</TableCell>
                   <TableCell><StatusBadge status={doc.status} /></TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
