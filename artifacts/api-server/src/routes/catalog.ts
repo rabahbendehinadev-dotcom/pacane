@@ -102,7 +102,7 @@ async function resolvePieceUnitId(): Promise<number | null> {
 }
 
 router.post("/products", requireAuth, requirePermission(P.products.create), async (req, res): Promise<void> => {
-  let { name, sku, barcode, type, categoryId, unitId, workerId, description, costPrice, sellingPrice, alertQuantity, shelfLifeDays, isManaged, isSellable, isPurchasable, isFabricated, branchIds, imageUrl } = req.body;
+  let { name, sku, barcode, type, categoryId, unitId, workerId, description, costPrice, sellingPrice, alertQuantity, shelfLifeDays, isManaged, isSellable, isPurchasable, isFabricated, isInternalConsumable, branchIds, imageUrl } = req.body;
   if (!name || !type || !unitId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   try {
     const [product] = await db.insert(productsTable).values({
@@ -110,6 +110,7 @@ router.post("/products", requireAuth, requirePermission(P.products.create), asyn
       costPrice: costPrice?.toString() ?? "0", sellingPrice: sellingPrice?.toString() ?? "0",
       alertQuantity: alertQuantity?.toString(), shelfLifeDays, isManaged: isManaged ?? true,
       isSellable: isSellable ?? true, isPurchasable: isPurchasable ?? false, isFabricated: isFabricated ?? false,
+      isInternalConsumable: isInternalConsumable ?? false,
       branchIds: Array.isArray(branchIds) ? branchIds : []
     }).returning();
     const [unit] = await db.select().from(unitsTable).where(eq(unitsTable.id, product.unitId));
@@ -165,7 +166,7 @@ router.get("/products/:id", requireAuth, requirePermission(P.products.view), asy
 
 router.patch("/products/:id", requireAuth, requirePermission(P.products.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const allowed = ["name", "sku", "barcode", "type", "categoryId", "unitId", "workerId", "description", "costPrice", "sellingPrice", "alertQuantity", "isManaged", "isSellable", "isPurchasable", "isFabricated", "branchIds", "imageUrl"];
+  const allowed = ["name", "sku", "barcode", "type", "categoryId", "unitId", "workerId", "description", "costPrice", "sellingPrice", "alertQuantity", "isManaged", "isSellable", "isPurchasable", "isFabricated", "isInternalConsumable", "branchIds", "imageUrl"];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
