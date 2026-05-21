@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetBranches, useGetProducts, useGetCompanySettings } from "@workspace/api-client-react";
+import { useGetBranches, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateInternalConsumptionPdf } from "@/lib/pdf-generator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,8 +170,10 @@ export default function InternalConsumptions() {
   });
 
   const { data: branches = [] } = useGetBranches();
-  const { data: allProducts = [] } = useGetProducts({});
-  const products = allProducts.filter((p: any) => p.isInternalConsumable === true);
+  const { data: products = [] } = useQuery<any[]>({
+    queryKey: ["products-for-ic"],
+    queryFn: () => apiCall("/products"),
+  });
   const { data: companySettings } = useGetCompanySettings();
 
   // Auto-open edit dialog after detail loads when pencil was clicked from table row

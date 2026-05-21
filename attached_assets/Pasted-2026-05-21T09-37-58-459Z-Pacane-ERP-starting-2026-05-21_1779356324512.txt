@@ -1,0 +1,23 @@
+2026-05-21T09:37:58.459Z ==> Pacane ERP — starting...
+2026-05-21T09:37:58.459Z ==> Seeding initial data (idempotent)...
+2026-05-21T09:37:58.559Z ✓ Roles seeded
+2026-05-21T09:37:58.561Z ✓ Branches seeded
+2026-05-21T09:37:58.567Z ✓ Users seeded
+2026-05-21T09:37:58.569Z ✓ Company settings seeded
+2026-05-21T09:37:58.569Z ✓ Payment methods already exist — skipped
+2026-05-21T09:37:58.569Z ==> Seed complete.
+2026-05-21T09:37:58.580Z ==> Starting API server on port 8080...
+2026-05-21T09:37:59.150Z {"level":30,"time":1779356279149,"pid":1,"hostname":"7ef20fd12724","distDir":"/app/frontend-dist","msg":"Serving frontend static files"}
+2026-05-21T09:37:59.236Z {"level":30,"time":1779356279235,"pid":1,"hostname":"7ef20fd12724","msg":"DB migrations applied"}
+2026-05-21T09:37:59.246Z [migration] importCsvProducts: already imported, skipping.
+2026-05-21T09:37:59.248Z {"level":30,"time":1779356279248,"pid":1,"hostname":"7ef20fd12724","port":8080,"msg":"Server listening"}
+2026-05-21T09:38:11.328Z {"level":30,"time":1779356291327,"pid":1,"hostname":"7ef20fd12724","req":{"id":1,"method":"GET","url":"/api/notifications/badge"},"res":{"statusCode":304},"responseTime":23,"msg":"request completed"}
+2026-05-21T09:38:28.761Z {"level":30,"time":1779356308761,"pid":1,"hostname":"7ef20fd12724","req":{"id":2,"method":"GET","url":"/api/notifications/badge"},"res":{"statusCode":304},"responseTime":20,"msg":"request completed"}
+2026-05-21T09:38:30.825Z {"level":30,"time":1779356310825,"pid":1,"hostname":"7ef20fd12724","req":{"id":3,"method":"GET","url":"/api/notifications/badge"},"res":{"statusCode":304},"responseTime":4,"msg":"request completed"}
+2026-05-21T09:38:30.836Z {"level":30,"time":1779356310835,"pid":1,"hostname":"7ef20fd12724","req":{"id":4,"method":"GET","url":"/api/internal-consumptions"},"res":{"statusCode":304},"responseTime":8,"msg":"request completed"}
+2026-05-21T09:38:30.849Z {"level":30,"time":1779356310847,"pid":1,"hostname":"7ef20fd12724","req":{"id":5,"method":"GET","url":"/api/branches"},"res":{"statusCode":304},"responseTime":17,"msg":"request completed"}
+2026-05-21T09:38:30.850Z {"level":30,"time":1779356310850,"pid":1,"hostname":"7ef20fd12724","req":{"id":6,"method":"GET","url":"/api/auth/me"},"res":{"statusCode":304},"responseTime":17,"msg":"request completed"}
+2026-05-21T09:38:30.853Z {"level":30,"time":1779356310853,"pid":1,"hostname":"7ef20fd12724","req":{"id":7,"method":"GET","url":"/api/settings/company"},"res":{"statusCode":304},"responseTime":19,"msg":"request completed"}
+2026-05-21T09:38:30.905Z {"level":30,"time":1779356310905,"pid":1,"hostname":"7ef20fd12724","req":{"id":8,"method":"GET","url":"/api/products"},"res":{"statusCode":304},"responseTime":69,"msg":"request completed"}
+2026-05-21T09:38:30.938Z {"level":30,"time":1779356310937,"pid":1,"hostname":"7ef20fd12724","req":{"id":9,"method":"GET","url":"/api/branches"},"res":{"statusCode":304},"responseTime":3,"msg":"request completed"}
+2026-05-21T09:38:40.194Z {"level":30,"time":1779356320193,"pid":1,"hostname":"7ef20fd12724","req":{"id":10,"method":"GET","url":"/api/notifications/badge"},"res":{"statusCode":304},"responseTime":4,"msg":"request completed"}
