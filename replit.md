@@ -30,8 +30,7 @@ A full ERP system for Pacane — imported from https://github.com/unlock-gab/pac
 ## Architecture decisions
 
 - Frontend served at root `/`, API at `/api` — path-based routing via Replit proxy.
-- The ERP frontend workflow is a manually-configured workflow named "Pacane ERP" (not the artifact-managed `artifacts/erp-app: web` workflow). The artifact-managed workflow consistently fails on port detection due to a Replit platform issue; `configureWorkflow` is the workaround.
-- Dev command: `PORT=23023 BASE_PATH=/ pnpm --filter @workspace/erp-app run dev`
+- Frontend is served by the artifact-managed workflow `artifacts/erp-app: web` on port 23023 at path `/`.
 
 ## Product
 
@@ -43,7 +42,6 @@ _Populate as you build._
 
 ## Gotchas
 
-- **Always use the "Pacane ERP" manual workflow** (not `artifacts/erp-app: web`) for the frontend — the artifact-managed workflow fails on port detection in this environment.
 - The API server requires `DATABASE_URL` env var to start. Without it, the backend will fail on startup.
 - `SESSION_SECRET` env var is already set.
 
