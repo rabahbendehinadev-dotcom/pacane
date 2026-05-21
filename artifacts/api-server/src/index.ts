@@ -60,6 +60,8 @@ async function runMigrations() {
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
     `);
+    // Fix old branch_id column in internal_consumptions (replaced by source_branch_id / destination_branch_id)
+    await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS branch_id;`);
     // Recreate internal_consumptions tables with correct schema (idempotent via IF NOT EXISTS + ADD COLUMN IF NOT EXISTS)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS internal_consumptions (
