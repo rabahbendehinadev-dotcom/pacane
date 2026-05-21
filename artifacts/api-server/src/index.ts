@@ -60,22 +60,51 @@ async function runMigrations() {
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
     `);
+    // Recreate internal_consumptions tables with correct schema (idempotent via IF NOT EXISTS + ADD COLUMN IF NOT EXISTS)
     await db.execute(sql`
-      ALTER TABLE internal_consumptions
-        ADD COLUMN IF NOT EXISTS reference TEXT;
+      CREATE TABLE IF NOT EXISTS internal_consumptions (
+        id SERIAL PRIMARY KEY,
+        reference TEXT,
+        source_branch_id INTEGER NOT NULL DEFAULT 0,
+        destination_branch_id INTEGER NOT NULL DEFAULT 0,
+        document_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        status TEXT NOT NULL DEFAULT 'draft',
+        total_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_by_user_id INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
     `);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS reference TEXT;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS source_branch_id INTEGER NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS destination_branch_id INTEGER NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS document_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS notes TEXT;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
+    await db.execute(sql`ALTER TABLE internal_consumptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
     await db.execute(sql`
-      ALTER TABLE internal_consumptions
-        ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS internal_consumption_items (
+        id SERIAL PRIMARY KEY,
+        document_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity NUMERIC(15,3) NOT NULL DEFAULT 0,
+        unit_id INTEGER,
+        unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+        total_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
     `);
-    await db.execute(sql`
-      ALTER TABLE internal_consumption_items
-        ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
-    `);
-    await db.execute(sql`
-      ALTER TABLE internal_consumption_items
-        ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;
-    `);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS document_id INTEGER NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS product_id INTEGER NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS quantity NUMERIC(15,3) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS unit_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
