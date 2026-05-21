@@ -171,7 +171,7 @@ export default function InternalConsumptions() {
 
   const { data: branches = [] } = useGetBranches();
   const { data: allProducts = [] } = useGetProducts({});
-  const products = allProducts.filter((p: any) => p.isInternalConsumable === true);
+  const products = allProducts.filter((p: any) => p.isInternalConsumable === true || p.type === "consumable");
   const { data: companySettings } = useGetCompanySettings();
 
   // Auto-open edit dialog after detail loads when pencil was clicked from table row

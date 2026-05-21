@@ -28,7 +28,7 @@ function ProductThumb({ url, name }: { url: string | null; name: string }) {
 
 function formatDA(n: number) { return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA"; }
 
-const EMPTY = { name: "", type: "finished", sku: "", categoryId: "none", unitId: "none", workerId: "none", costPrice: "", sellingPrice: "", alertQuantity: "", isSellable: true, isPurchasable: true, isFabricated: false, description: "" };
+const EMPTY = { name: "", type: "finished", sku: "", categoryId: "none", unitId: "none", workerId: "none", costPrice: "", sellingPrice: "", alertQuantity: "", isSellable: true, isPurchasable: true, isFabricated: false, isInternalConsumable: false, description: "" };
 
 interface WorkerOption { id: number; name: string; isActive: boolean; }
 async function fetchActiveWorkers(): Promise<WorkerOption[]> {
@@ -141,7 +141,7 @@ export default function Products() {
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
-    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, workerId: (p as any).workerId?.toString() ?? "none", costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.sellingPrice?.toString() ?? "", alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, description: p.description ?? "" });
+    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, workerId: (p as any).workerId?.toString() ?? "none", costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.sellingPrice?.toString() ?? "", alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, isInternalConsumable: (p as any).isInternalConsumable ?? false, description: p.description ?? "" });
     setSelectedBranchIds((p as any).branchIds ?? []);
     setImagePreview(p.imageUrl ?? null);
     setPendingImagePath(null);
@@ -197,7 +197,7 @@ export default function Products() {
       imageUrl,
     };
     if (editing) { updateMutation.mutate({ id: editing.id, data: { ...data } as any }); }
-    else { createMutation.mutate({ data: { name: data.name, type: data.type as any, sku: data.sku || null, categoryId: data.categoryId, unitId: data.unitId ?? 1, description: data.description || null, costPrice: data.costPrice ?? 0, sellingPrice: data.sellingPrice ?? 0, alertQuantity: data.alertQuantity, isManaged: true, isSellable: data.isSellable, isPurchasable: data.isPurchasable, isFabricated: data.isFabricated, branchIds: selectedBranchIds, imageUrl } as any }); }
+    else { createMutation.mutate({ data: { name: data.name, type: data.type as any, sku: data.sku || null, categoryId: data.categoryId, unitId: data.unitId ?? 1, description: data.description || null, costPrice: data.costPrice ?? 0, sellingPrice: data.sellingPrice ?? 0, alertQuantity: data.alertQuantity, isManaged: true, isSellable: data.isSellable, isPurchasable: data.isPurchasable, isFabricated: data.isFabricated, isInternalConsumable: (data as any).isInternalConsumable ?? false, branchIds: selectedBranchIds, imageUrl } as any }); }
   }
 
   async function runPreview() {
@@ -590,6 +590,7 @@ export default function Products() {
               <label className="flex items-center gap-2 text-sm cursor-pointer"><Checkbox checked={form.isSellable} onCheckedChange={v => setForm(f => ({ ...f, isSellable: !!v }))} />Vendable</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer"><Checkbox checked={form.isPurchasable} onCheckedChange={v => setForm(f => ({ ...f, isPurchasable: !!v }))} />Achetable</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer"><Checkbox checked={form.isFabricated} onCheckedChange={v => setForm(f => ({ ...f, isFabricated: !!v }))} />Fabriqué</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><Checkbox checked={(form as any).isInternalConsumable} onCheckedChange={v => setForm(f => ({ ...f, isInternalConsumable: !!v }))} />Consommable interne</label>
             </div>
             <div><Label>Description</Label><Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
 
