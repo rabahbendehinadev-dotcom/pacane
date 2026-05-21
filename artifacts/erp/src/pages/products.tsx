@@ -66,6 +66,7 @@ export default function Products() {
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null);
   const [imageCleared, setImageCleared] = useState(false);
   const [replenishmentRules, setReplenishmentRules] = useState<Record<number, { targetSunWed: string; targetThuSat: string }>>({});
+  const [enabledRepBranches, setEnabledRepBranches] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkUnitOpen, setBulkUnitOpen] = useState(false);
   const [bulkUnitId, setBulkUnitId] = useState("none");
@@ -137,7 +138,7 @@ export default function Products() {
   }
 
   function resetImageState(cleared = false) { setImagePreview(null); setPendingImagePath(null); setImageCleared(cleared); if (imageInputRef.current) imageInputRef.current.value = ""; }
-  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setDialogOpen(true); }
+  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setEnabledRepBranches(new Set()); setDialogOpen(true); }
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
@@ -147,12 +148,20 @@ export default function Products() {
     setPendingImagePath(null);
     setImageCleared(false);
     setReplenishmentRules({});
+    setEnabledRepBranches(new Set());
     setDialogOpen(true);
     try {
       const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetSunWed: string; targetThuSat: string }>;
       const map: Record<number, { targetSunWed: string; targetThuSat: string }> = {};
-      for (const r of rules) { map[r.branchId] = { targetSunWed: r.targetSunWed ?? "0", targetThuSat: r.targetThuSat ?? "0" }; }
+      const enabled = new Set<number>();
+      for (const r of rules) {
+        map[r.branchId] = { targetSunWed: r.targetSunWed ?? "0", targetThuSat: r.targetThuSat ?? "0" };
+        if (parseFloat(r.targetSunWed ?? "0") > 0 || parseFloat(r.targetThuSat ?? "0") > 0) {
+          enabled.add(r.branchId);
+        }
+      }
       setReplenishmentRules(map);
+      setEnabledRepBranches(enabled);
     } catch {}
   }
 
@@ -601,29 +610,49 @@ export default function Products() {
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Réapprovisionnement automatique</span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
-                <p className="text-xs text-muted-foreground">Ces valeurs servent au calcul automatique du bon de commande selon le jour de la semaine.</p>
-                <div className="space-y-2">
-                  {branches.map(b => (
-                    <div key={b.id} className="rounded-md border p-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">{b.name}</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Dim → Mer</Label>
-                          <Input type="number" min="0" step="1" className="h-8 text-sm"
-                            placeholder="0"
-                            value={replenishmentRules[b.id]?.targetSunWed ?? ""}
-                            onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "" } }))} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Jeu → Sam</Label>
-                          <Input type="number" min="0" step="1" className="h-8 text-sm"
-                            placeholder="0"
-                            value={replenishmentRules[b.id]?.targetThuSat ?? ""}
-                            onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "", targetThuSat: e.target.value } }))} />
-                        </div>
+                <p className="text-xs text-muted-foreground">Cochez les boutiques à inclure dans le calcul automatique.</p>
+                <div className="space-y-1">
+                  {branches.map(b => {
+                    const isEnabled = enabledRepBranches.has(b.id);
+                    return (
+                      <div key={b.id} className={`rounded-md border px-3 py-2 transition-colors ${isEnabled ? "border-primary/30 bg-primary/5" : "border-border"}`}>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <Checkbox
+                            checked={isEnabled}
+                            onCheckedChange={v => {
+                              setEnabledRepBranches(prev => {
+                                const next = new Set(prev);
+                                if (v) next.add(b.id); else next.delete(b.id);
+                                return next;
+                              });
+                              if (!v) {
+                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: "0", targetThuSat: "0" } }));
+                              }
+                            }}
+                          />
+                          <span className="text-sm font-medium flex-1">{b.name}</span>
+                          {isEnabled && (
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">Dim→Mer</span>
+                                <Input type="number" min="0" step="1" className="h-7 w-20 text-sm text-center"
+                                  placeholder="0"
+                                  value={replenishmentRules[b.id]?.targetSunWed ?? ""}
+                                  onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "" } }))} />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">Jeu→Sam</span>
+                                <Input type="number" min="0" step="1" className="h-7 w-20 text-sm text-center"
+                                  placeholder="0"
+                                  value={replenishmentRules[b.id]?.targetThuSat ?? ""}
+                                  onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "", targetThuSat: e.target.value } }))} />
+                              </div>
+                            </div>
+                          )}
+                        </label>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
