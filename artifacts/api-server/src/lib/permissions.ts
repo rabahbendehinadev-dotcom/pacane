@@ -24,6 +24,8 @@ export const P = {
   replenishment:   { view: "replenishment.view", create: "replenishment.create", print: "replenishment.print", export: "replenishment.export" },
   internalConsumptions: { view: "internal_consumptions.view", create: "internal_consumptions.create", confirm: "internal_consumptions.confirm", cancel: "internal_consumptions.cancel", export: "internal_consumptions.export" },
   workers:         { view: "workers.view", create: "workers.create", edit: "workers.edit", deactivate: "workers.deactivate" },
+  preparationOrders: { view: "preparation_orders.view", create: "preparation_orders.create", send: "preparation_orders.send", cancel: "preparation_orders.cancel", print: "preparation_orders.print" },
+  myPreparations:  { view: "my_preparations.view", updateStatus: "my_preparations.update_status" },
 } as const;
 
 export function hasPermission(permissions: string[], permission: string): boolean {
@@ -84,6 +86,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "replenishment.*",
     "internal_consumptions.*",
     "workers.*",
+    "preparation_orders.*",
+    "my_preparations.*",
   ],
 
   "Caissier": [

@@ -24,3 +24,4 @@ export { purchaseReturnsTable, purchaseReturnItemsTable } from "./purchases";
 export * from "./replenishment";
 export * from "./internal-consumptions";
 export * from "./workers";
+export * from "./preparation-orders";

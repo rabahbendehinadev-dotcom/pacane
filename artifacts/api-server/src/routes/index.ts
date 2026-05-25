@@ -39,6 +39,7 @@ import replenishmentRouter from "./replenishment";
 import internalConsumptionsRouter from "./internal-consumptions";
 import receptionsRouter from "./receptions";
 import workersRouter from "./workers";
+import preparationOrdersRouter from "./preparation-orders";
 
 const router: IRouter = Router();
 
@@ -83,5 +84,6 @@ router.use(replenishmentRouter);
 router.use(internalConsumptionsRouter);
 router.use(receptionsRouter);
 router.use(workersRouter);
+router.use(preparationOrdersRouter);
 
 export default router;

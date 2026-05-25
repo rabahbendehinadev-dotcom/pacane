@@ -8,12 +8,16 @@ import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 
+const prefixFilter = (value: string, search: string): number =>
+  !search || value.toLowerCase().startsWith(search.toLowerCase()) ? 1 : 0
+
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
->(({ className, ...props }, ref) => (
+>(({ className, filter = prefixFilter, ...props }, ref) => (
   <CommandPrimitive
     ref={ref}
+    filter={filter}
     className={cn(
       "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
       className
@@ -57,10 +61,11 @@ CommandInput.displayName = CommandPrimitive.Input.displayName
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+    className={cn("max-h-[300px] overflow-y-scroll overflow-x-hidden", className)}
+    style={{ WebkitOverflowScrolling: "touch", ...style } as React.CSSProperties}
     {...props}
   />
 ))

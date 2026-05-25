@@ -60,7 +60,7 @@ router.get("/users/:id", requireAuth, requirePermission(P.users.view), async (re
 
 router.patch("/users/:id", requireAuth, requirePermission(P.users.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, email, phone, status, language, roleId, branchIds, posAccess, adminAccess } = req.body;
+  const { name, email, phone, status, language, roleId, workerId, branchIds, posAccess, adminAccess } = req.body;
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = name;
   if (email != null) updates.email = email;
@@ -68,6 +68,7 @@ router.patch("/users/:id", requireAuth, requirePermission(P.users.edit), async (
   if (status != null) updates.status = status;
   if (language != null) updates.language = language;
   if (roleId !== undefined) updates.roleId = roleId;
+  if (workerId !== undefined) updates.workerId = workerId;
   if (branchIds != null) updates.branchIds = branchIds;
   if (posAccess != null) updates.posAccess = posAccess;
   if (adminAccess != null) updates.adminAccess = adminAccess;

@@ -1,0 +1,2 @@
+- [JSX multi-root return fix](jsx-multi-root-fix.md) — React component returning two sibling elements needs Fragment wrapper `<>...</>` around BOTH elements; placing `<>` only at one side causes silent parser confusion when a second function follows.
+- [ERP replenishment send flow](erp-replenishment-send.md) — Dialog for "Envoyer aux ouvriers" must live inside the same function body that declares `sendModalOpen`/`sending` state; placing it after a sibling function definition breaks JSX parsing.

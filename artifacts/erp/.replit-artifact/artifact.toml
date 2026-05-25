@@ -2,7 +2,7 @@ kind = "web"
 previewPath = "/"
 title = "Pacane ERP"
 version = "1.0.0"
-id = "artifacts/erp"
+id = "artifacts/erp-app"
 router = "path"
 
 [[integratedSkills]]
@@ -14,18 +14,9 @@ name = "web"
 paths = [ "/" ]
 localPort = 18996
 
-[services.development]
-run = "pnpm --filter @workspace/erp run dev"
-
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/erp", "run", "build" ]
-publicDir = "artifacts/erp/dist/public"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
-
 [services.env]
 PORT = "18996"
 BASE_PATH = "/"
+
+[services.development]
+run = "pnpm --filter @workspace/erp run dev"

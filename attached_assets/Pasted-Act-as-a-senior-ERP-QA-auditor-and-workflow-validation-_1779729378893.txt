@@ -1,0 +1,379 @@
+Act as a senior ERP QA auditor and workflow validation expert.
+
+Your task is to perform a COMPLETE QA AUDIT of the new feature:
+
+ENVOI DE LA COMMANDE AUTOMATIQUE VERS LES OUVRIERS / CHEFS
++ ORDRES DE PRÉPARATION
++ MES PRÉPARATIONS
+
+This is not a coding-first task.
+This is a deep business, workflow, RBAC, and consistency audit.
+
+You must verify whether the implementation is truly correct for a real multi-branch ERP.
+
+==================================================
+BUSINESS CONTEXT
+==================================================
+
+We already have:
+- products
+- workers / responsables de préparation
+- product -> worker assignment
+- automatic replenishment / bon de commande page
+- branch-specific replenishment calculations
+
+New expected workflow:
+1. Manager calculates automatic replenishment.
+2. Products are grouped by worker.
+3. Manager clicks "Envoyer aux ouvriers".
+4. ERP creates preparation orders, one per worker.
+5. Each worker logs in and sees only their own assigned orders in "Mes préparations".
+6. Worker can update order status:
+   - Nouveau
+   - Vu
+   - En cours
+   - Terminé
+
+Important:
+This is a WORK ORDER workflow only.
+It must NOT:
+- move stock
+- create production stock movements
+- change replenishment math
+- affect sales or revenue
+
+==================================================
+AUDIT OBJECTIVE
+==================================================
+
+Determine whether this feature is:
+- functionally correct
+- worker-safe
+- RBAC-safe
+- branch-safe
+- operationally usable
+- non-destructive to stock logic
+- launch-ready
+
+Be strict, precise, and explicit.
+
+==================================================
+AUDIT CHECKLIST
+==================================================
+
+1. PRODUCT → WORKER ASSIGNMENT
+Verify:
+- products can be linked to one worker
+- worker assignment loads correctly in product edit form
+- saving assignment works
+- editing product later preserves assignment
+- products without worker are handled correctly
+- inactive workers are not selectable for new assignment
+- previously assigned inactive workers do not break product view/history
+
+2. WORKERS PAGE
+Verify:
+- workers list loads correctly
+- create worker works
+- edit worker works
+- activate/deactivate works
+- linked product count is correct
+- duplicate naming/code rules behave correctly
+- no broken actions in table
+- no console errors
+
+3. USER ↔ WORKER LINK
+Verify:
+- users can be linked to workers safely
+- user edit form saves worker_id correctly if implemented
+- login with worker-linked user behaves correctly
+- user without worker_id does not get fake worker orders
+- no existing users are broken by the nullable worker relation
+
+4. COMMANDE AUTOMATIQUE PAGE — SEND LOGIC
+Verify:
+- "Envoyer aux ouvriers" button appears only when calculation result exists
+- button is visible only to authorized roles
+- sending uses current filters correctly:
+  - branch
+  - date
+  - category
+  - worker
+  - afficher uniquement les produits à commander
+- only products with quantity_to_order > 0 are sent
+- products are grouped correctly by worker before sending
+- if worker filter selected, only selected worker order(s) are created
+
+5. UNASSIGNED PRODUCT PROTECTION
+Verify:
+- if a product to prepare has no worker assigned, sending is blocked
+- clear warning is shown
+- warning identifies the issue well enough for manager action
+- no partial send occurs silently
+- no orphan order is created without worker
+
+6. PREPARATION ORDER CREATION
+Verify:
+- one preparation order is created per worker
+- each order contains only the products assigned to that worker
+- line counts are correct
+- product snapshots are saved correctly
+- unit snapshots are saved correctly
+- branch/date/source context saved correctly
+- created_by and sent_at are saved correctly
+- reference format is correct
+
+7. DUPLICATE SEND SAFETY
+Verify the exact implemented rule:
+- does the system block exact duplicate sends?
+- or allow intentional multiple sends?
+Whatever rule is implemented, verify it is consistent and safe.
+
+Check:
+- same branch + same date + same worker + same pending context
+- no accidental duplicate work orders created by repeated clicks
+- no race condition from double-clicking send button
+
+8. MANAGER PAGE — ORDRES DE PRÉPARATION
+Verify:
+- list page loads correctly
+- filters work:
+  - date range
+  - branch
+  - worker
+  - status
+- columns are correct:
+  - reference
+  - date
+  - branch
+  - worker
+  - line count
+  - total quantity if shown
+  - status
+  - created by
+- detail page/drawer works
+- print/PDF action works if implemented
+- cancelled logic works if implemented
+
+9. WORKER PAGE — MES PRÉPARATIONS
+Verify:
+- worker sees only their own orders
+- worker does NOT see other workers’ orders
+- list/cards load correctly
+- statuses display correctly
+- detail page is clear and minimal
+- worker can open assigned order
+- worker without orders gets correct empty state
+- non-worker user does not gain unintended access
+
+10. STATUS WORKFLOW
+Verify exact transitions:
+- new -> viewed
+- viewed -> in_progress
+- in_progress -> completed
+
+Check:
+- opening order sets viewed if designed that way
+- starting order sets started_at
+- completing order sets completed_at
+- invalid backward transitions are blocked
+- worker cannot arbitrarily edit status outside allowed transitions
+- manager/admin visibility remains correct
+
+11. RBAC / PERMISSIONS
+Verify permissions on backend, not UI only.
+
+Check:
+- preparation_orders.view
+- preparation_orders.create
+- preparation_orders.send
+- preparation_orders.cancel
+- preparation_orders.print
+- my_preparation_orders.view
+- my_preparation_orders.update_status
+- my_preparation_orders.print
+
+Verify:
+- unauthorized users get 403
+- hidden buttons align with backend permission checks
+- worker can only touch own orders
+- manager/admin can act only within branch scope
+- no permission leakage
+
+12. BRANCH ISOLATION
+Verify:
+- manager can create/send orders only for allowed branches
+- worker can see orders only where assigned AND within safe logic
+- direct detail access by ID to another branch/worker is blocked
+- no cross-branch leakage in list, detail, or reports
+- source data from automatic replenishment respects selected branch only
+
+13. STOCK SAFETY
+Very important:
+This feature must NOT move stock.
+
+Verify:
+- sending orders creates NO stock movement
+- worker viewing/starting/completing orders creates NO stock movement
+- stock levels remain unchanged by this module
+- no production stock movement occurs accidentally
+- replenishment math remains unchanged
+
+14. REPLENISHMENT INTEGRITY
+Verify this new feature does NOT corrupt the existing automatic replenishment module:
+- same calculations as before
+- same quantities as before
+- filtering by worker does not alter stock formula
+- grouping by worker does not alter stock formula
+- print/send layers are only execution/assignment layers
+
+15. PDF / PRINT
+If implemented, verify:
+- manager print works
+- worker print works if allowed
+- document title is correct
+- worker name appears correctly
+- branch/date/reference correct
+- item lines correct
+- no undefined/null values visible
+
+16. EDGE CASES
+Test these scenarios:
+A. Product assigned to Rabah only -> send creates Rabah order only
+B. Product assigned to Ghanou only -> send creates Ghanou order only
+C. One product without worker -> send blocked
+D. Worker opens order -> status updates to viewed
+E. Worker completes order -> status updates correctly
+F. User without worker_id -> cannot access Mes préparations improperly
+G. Double-click send -> no duplicate accidental orders
+H. Same worker has multiple products -> one order with multiple lines
+I. Cancelled or completed orders do not behave like active new orders
+J. No console errors
+K. No API 500 errors
+
+==================================================
+REQUIRED LIVE TEST SCENARIOS
+==================================================
+
+Run at least these exact scenarios:
+
+Scenario 1:
+Workers:
+- Rabah
+- Ghanou
+
+Products:
+- Product A -> Rabah
+- Product B -> Rabah
+- Product C -> Ghanou
+
+Replenishment calculation:
+- Product A qty 4
+- Product B qty 2
+- Product C qty 5
+
+Manager clicks "Envoyer aux ouvriers"
+
+Expected:
+- one order for Rabah with 2 lines
+- one order for Ghanou with 1 line
+
+Scenario 2:
+Login as worker Rabah
+Expected:
+- sees only Rabah orders
+- sees not a single Ghanou order
+
+Scenario 3:
+Open Rabah order
+Expected:
+- status becomes viewed
+- viewed_at filled
+
+Scenario 4:
+Mark Rabah order "En cours"
+Expected:
+- status updated
+- started_at filled
+
+Scenario 5:
+Mark Rabah order "Terminé"
+Expected:
+- status updated
+- completed_at filled
+
+Scenario 6:
+Try sending with one unassigned product in result
+Expected:
+- sending blocked
+- clear warning shown
+- no partial order creation
+
+Scenario 7:
+Verify stock before and after send
+Expected:
+- identical stock
+- no movement rows created by this feature
+
+==================================================
+OUTPUT FORMAT
+==================================================
+
+Return the audit in this exact structure:
+
+1. Executive verdict
+- Ready / Partial / Not ready
+
+2. What is solid
+- bullet list
+
+3. What is weak or incomplete
+- bullet list
+
+4. Functional bugs found
+For each:
+- severity
+- module/page
+- cause
+- impact
+
+5. Worker isolation verdict
+- safe / risky
+- with explanation
+
+6. Branch isolation verdict
+- safe / risky
+- with explanation
+
+7. Permissions verdict
+- safe / partial / risky
+
+8. Stock safety verdict
+- safe / risky
+- with explanation
+
+9. Workflow usability verdict
+- smooth / partial / confusing
+
+10. Final recommendation
+Choose one:
+- ready to use
+- fix a few issues first
+- do not use yet
+
+11. If issues exist, propose exact next fixes in priority order
+
+==================================================
+IMPORTANT RULES
+==================================================
+
+- Do not assume it is correct because the UI looks good
+- Verify backend behavior too
+- Verify no stock mutation occurs
+- Verify exact worker isolation
+- Verify exact branch isolation
+- Verify duplicate-send safety
+- Verify status transitions carefully
+- Be precise, not generic
+- If it is good, say it clearly
+- If it is risky, say it clearly

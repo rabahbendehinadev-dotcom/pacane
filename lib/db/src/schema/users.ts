@@ -12,6 +12,7 @@ export const usersTable = pgTable("users", {
   status: text("status").notNull().default("active"),
   language: text("language").notNull().default("fr"),
   roleId: integer("role_id"),
+  workerId: integer("worker_id"),
   branchIds: integer("branch_ids").array().notNull().default([]),
   defaultBranchId: integer("default_branch_id"),
   posAccess: boolean("pos_access").notNull().default(false),
