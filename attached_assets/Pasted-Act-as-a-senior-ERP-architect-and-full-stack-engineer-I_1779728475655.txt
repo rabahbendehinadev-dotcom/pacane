@@ -1,0 +1,549 @@
+Act as a senior ERP architect and full-stack engineer.
+
+Implement a new production-dispatch workflow in Pacane ERP:
+
+ENVOI DE LA COMMANDE AUTOMATIQUE VERS LES OUVRIERS / CHEFS
+
+This feature must transform the automatic replenishment / bon de commande calculation into real assigned preparation work orders for workers.
+
+==================================================
+BUSINESS CONTEXT
+==================================================
+
+We already have:
+- products
+- workers / responsables de préparation
+- product -> worker assignment
+- automatic replenishment / bon de commande page
+- branch-specific stock target logic
+- grouping/filtering by worker on the automatic replenishment page
+
+Current limitation:
+The automatic replenishment page only calculates needs and optionally groups them by worker.
+But it does not yet create actual work orders for the assigned worker/chef.
+
+Business need:
+When the manager or responsible user calculates the "Commande automatique", they must be able to click:
+
+"Envoyer aux ouvriers"
+
+This action must create real preparation orders for each worker based on the calculated product needs.
+
+Then:
+- each worker / chef logs into the ERP with their own account
+- they immediately see what they need to prepare
+- they see only their own assigned preparation orders
+- they can track progress with statuses
+
+This turns the automatic replenishment system into a real operational dispatch workflow.
+
+==================================================
+CORE BUSINESS GOAL
+==================================================
+
+Build the following flow:
+
+1. Automatic replenishment is calculated for a branch/date.
+2. Products are grouped by responsible worker.
+3. Manager clicks:
+   "Envoyer aux ouvriers"
+4. ERP creates one preparation order per worker.
+5. Each worker sees only their own orders in a dedicated page.
+6. Worker can update order status:
+   - Nouveau
+   - Vu
+   - En cours
+   - Terminé
+
+IMPORTANT:
+In this first version:
+- these preparation orders are WORK ORDERS only
+- they do NOT directly move stock
+- they do NOT directly create production entries
+- they do NOT change the replenishment math
+- they are an assignment / execution layer above the automatic command page
+
+==================================================
+PHASE 1 — DATA MODEL
+==================================================
+
+Create dedicated tables:
+
+preparation_orders
+- id
+- reference
+- branch_id
+- worker_id
+- source_replenishment_date
+- source_weekday_group nullable
+- source_context nullable (optional snapshot info)
+- status
+- notes nullable
+- created_by_user_id
+- sent_at nullable
+- viewed_at nullable
+- started_at nullable
+- completed_at nullable
+- created_at
+- updated_at
+
+preparation_order_items
+- id
+- order_id
+- product_id
+- product_name_snapshot
+- sku_snapshot nullable
+- unit_snapshot
+- quantity_to_prepare
+- notes nullable
+- created_at
+
+Suggested statuses:
+- new
+- viewed
+- in_progress
+- completed
+- cancelled
+
+Reference format example:
+OP-2026-0001
+
+Important:
+Use product snapshot fields in items so later product edits do not alter old work orders.
+
+==================================================
+PHASE 2 — LINK USERS TO WORKERS
+==================================================
+
+To allow each worker/chef to log in and see their own preparation orders,
+add a safe nullable relation:
+
+users.worker_id nullable -> workers.id
+
+Business rule:
+- one user account can optionally be linked to one worker
+- a worker may or may not have a user account
+- this allows:
+  - manager/admin to create/send orders
+  - worker/chef to see only their own assigned work
+
+Requirements:
+- add this field safely
+- do not break existing users
+- optionally expose this in user edit form:
+  "Ouvrier lié"
+
+==================================================
+PHASE 3 — COMMANDE AUTOMATIQUE PAGE ENHANCEMENT
+==================================================
+
+Enhance the existing automatic replenishment page.
+
+Add a new primary action button:
+"Envoyer aux ouvriers"
+
+Button behavior:
+- visible only if calculation result exists
+- visible only to authorized roles
+- sends only products with quantity_to_order > 0
+- must use current filters:
+  - branch
+  - date
+  - category if applied
+  - worker if applied
+  - "Afficher uniquement les produits à commander"
+  - grouping options
+
+Important rules:
+1. Products must already be assigned to a worker
+2. If any calculated product with quantity > 0 has no worker assigned:
+   block sending and show a clear warning:
+   "Certains produits à préparer ne sont affectés à aucun ouvrier. Veuillez compléter l'affectation avant l'envoi."
+3. If worker filter is selected:
+   only create orders for that worker
+4. If no worker filter:
+   create one order per worker from the current result set
+5. Products with quantity_to_order = 0 must not be sent
+
+==================================================
+PHASE 4 — SEND ACTION / ORDER GENERATION LOGIC
+==================================================
+
+When clicking "Envoyer aux ouvriers":
+
+1. Recompute or verify the current calculation server-side
+2. Group lines by worker_id
+3. Create one preparation order per worker
+4. Create preparation order items for that worker only
+5. Save:
+   - branch
+   - worker
+   - selected date
+   - created_by
+   - sent_at
+   - initial status = new
+
+Do NOT:
+- move stock
+- create production stock entries
+- mark replenishment as completed
+- create purchase documents
+- create sales documents
+
+This is only an execution/assignment workflow.
+
+If duplicate sending is a risk:
+- either allow multiple sends intentionally as separate orders
+OR
+- block exact duplicate send for same branch/date/worker/current result set
+
+Recommended safe first version:
+Before creating orders, detect if a non-cancelled preparation order already exists for:
+- same branch
+- same worker
+- same source_replenishment_date
+- same status not completed/cancelled
+If so, show warning:
+"Un ordre de préparation existe déjà pour cet ouvrier à cette date."
+Offer either:
+- cancel send
+- or create anyway if business wants
+For first version, safest is to block duplicates unless explicitly forced.
+
+==================================================
+PHASE 5 — NEW PAGE FOR MANAGERS: ORDRES DE PRÉPARATION
+==================================================
+
+Create a new module/page in sidebar:
+ORDRES DE PRÉPARATION
+
+This is the management view.
+
+List columns:
+- Référence
+- Date
+- Boutique
+- Ouvrier
+- Nombre de lignes
+- Quantité totale
+- Statut
+- Créé par
+- Envoyé le
+- Actions
+
+Filters:
+- date range
+- branch
+- worker
+- status
+
+Actions:
+- Voir
+- Imprimer
+- Marquer annulé if allowed
+- optional duplicate / relancer later
+
+Detail page/drawer:
+- reference
+- branch
+- worker
+- status
+- sent_at
+- viewed_at
+- started_at
+- completed_at
+- created_by
+- notes
+- lines:
+  - product
+  - quantity_to_prepare
+  - unit
+  - notes
+
+==================================================
+PHASE 6 — NEW PAGE FOR WORKERS: MES PRÉPARATIONS
+==================================================
+
+Create a dedicated worker-facing page:
+MES PRÉPARATIONS
+
+This is what the worker/chef sees after login.
+
+Behavior:
+- if logged-in user has worker_id
+  show only preparation orders assigned to that worker
+- if user has no worker_id
+  show empty state or no access depending on role design
+
+Display sections:
+- Nouveau
+- Vu
+- En cours
+- Terminé
+
+Or a list with status filters.
+
+Columns/cards:
+- Référence
+- Date
+- Boutique
+- Nombre de produits
+- Quantité totale
+- Statut
+- Action "Voir"
+
+When worker opens the order:
+- if status = new, automatically update to viewed
+- show detail lines clearly
+- allow actions:
+  - Marquer en cours
+  - Marquer terminé
+
+Worker detail view must be very clean and simple:
+- branch
+- date
+- products to prepare
+- quantities
+- unit
+- notes
+
+No extra clutter.
+
+==================================================
+PHASE 7 — STATUS WORKFLOW
+==================================================
+
+Status transitions:
+
+new -> viewed
+viewed -> in_progress
+in_progress -> completed
+
+Optional:
+new/viewed/in_progress -> cancelled (manager only)
+
+Rules:
+- worker can only change their own assigned orders
+- manager/admin can view all according to scope
+- worker cannot edit product lines or branch
+- worker cannot reassign order
+- worker cannot create order manually in this first version
+
+Timestamps:
+- first open sets viewed_at if empty
+- "En cours" sets started_at if empty
+- "Terminé" sets completed_at
+
+==================================================
+PHASE 8 — UI IN COMMANDE AUTOMATIQUE
+==================================================
+
+On the automatic replenishment page:
+- keep all existing filters/calculation intact
+- add "Envoyer aux ouvriers"
+- if grouped by worker is enabled, visually make it obvious what will be sent to each worker
+- optionally show summary before send:
+  - Rabah: 8 lines / 24 qty
+  - Ghanou: 5 lines / 11 qty
+
+Before confirm send, show modal:
+"Envoyer les besoins calculés aux ouvriers ?"
+
+Modal summary:
+- branch
+- date
+- workers concerned
+- total lines
+- warning for unassigned products if any
+
+If unassigned products exist:
+- block confirm
+- show them explicitly
+
+==================================================
+PHASE 9 — PRINT / PDF
+==================================================
+
+Add print/PDF support for preparation orders.
+
+Document title:
+"Ordre de préparation"
+
+PDF/print must include:
+- Company header
+- Branch
+- Worker
+- Date
+- Reference
+- Status
+- Product lines:
+  - Produit
+  - Quantité
+  - Unité
+- Notes
+- Created by
+- Sent at
+
+Filename examples:
+- ORDRE_PREPARATION_RABAH_OP-2026-0001.pdf
+- ORDRE_PREPARATION_GHANOU_OP-2026-0002.pdf
+
+Manager can print any allowed order.
+Worker can print their own order if permissions allow.
+
+==================================================
+PHASE 10 — PERMISSIONS / RBAC
+==================================================
+
+Add clean permissions such as:
+
+For manager/admin side:
+- preparation_orders.view
+- preparation_orders.create
+- preparation_orders.send
+- preparation_orders.cancel
+- preparation_orders.print
+
+For worker side:
+- my_preparation_orders.view
+- my_preparation_orders.update_status
+- my_preparation_orders.print
+
+Requirements:
+- backend enforcement mandatory
+- branch scope respected
+- worker can only access orders where order.worker_id == user.worker_id
+- manager/admin can access according to branch scope
+
+==================================================
+PHASE 11 — IMPORTANT NON-GOALS
+==================================================
+
+In this first version, DO NOT:
+- move stock on order send
+- move stock on worker completion
+- automatically create production entries
+- automatically close replenishment records
+- modify automatic replenishment math
+- make worker assignment branch-specific
+- allow multiple workers per product
+
+Keep it simple and operational.
+
+==================================================
+PHASE 12 — TEST SCENARIOS
+==================================================
+
+Verify these exact scenarios:
+
+Scenario 1:
+Workers:
+- Rabah
+- Ghanou
+
+Products:
+- Product A -> Rabah
+- Product B -> Rabah
+- Product C -> Ghanou
+
+Automatic replenishment result:
+- Product A qty 4
+- Product B qty 2
+- Product C qty 5
+
+Click "Envoyer aux ouvriers"
+
+Expected:
+- one preparation order for Rabah with 2 lines
+- one preparation order for Ghanou with 1 line
+
+Scenario 2:
+Worker Rabah logs in
+Expected:
+- sees only Rabah orders
+- does not see Ghanou orders
+
+Scenario 3:
+Worker opens new order
+Expected:
+- status becomes viewed
+
+Scenario 4:
+Worker marks order "En cours"
+Expected:
+- status updates, started_at filled
+
+Scenario 5:
+Worker marks order "Terminé"
+Expected:
+- status updates, completed_at filled
+
+Scenario 6:
+A product in calculation has no assigned worker
+Expected:
+- send action blocked with clear warning
+
+Scenario 7:
+Manager branch scope restricted
+Expected:
+- can only send/create/view orders for allowed branches
+
+Scenario 8:
+No stock movement is created by sending orders
+Expected:
+- stock remains unchanged
+
+Scenario 9:
+Print/PDF works for order detail
+
+Scenario 10:
+No API 500 errors
+No console errors
+No RBAC leakage
+
+==================================================
+PHASE 13 — UI / UX QUALITY
+==================================================
+
+French UI only.
+
+Suggested labels:
+- Envoyer aux ouvriers
+- Ordres de préparation
+- Mes préparations
+- Ouvrier
+- Responsable
+- Nouveau
+- Vu
+- En cours
+- Terminé
+- Non affecté
+
+Design requirements:
+- premium and clean ERP design
+- worker page must be simple and focused
+- manager page more complete
+- use current app design language
+
+==================================================
+PHASE 14 — DELIVERABLE FORMAT
+==================================================
+
+At the end, return a concise French report with:
+1. DB tables added
+2. user-worker link added
+3. pages/modules added
+4. commande automatique page changes
+5. send logic implemented
+6. status workflow implemented
+7. permissions added
+8. print/PDF support status
+9. tests passed
+10. any future improvements recommended
+
+IMPORTANT:
+- Keep existing automatic replenishment logic intact
+- This feature is an execution layer, not a stock layer
+- Safe migrations only
+- French labels only
+- Do not break workers page already created
