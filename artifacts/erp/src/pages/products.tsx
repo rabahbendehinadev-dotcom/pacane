@@ -65,7 +65,7 @@ export default function Products() {
   const [imageUploading, setImageUploading] = useState(false);
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null);
   const [imageCleared, setImageCleared] = useState(false);
-  const [replenishmentRules, setReplenishmentRules] = useState<Record<number, { targetSunWed: string; targetThuSat: string }>>({});
+  const [replenishmentRules, setReplenishmentRules] = useState<Record<number, { targetDim: string; targetLun: string; targetMar: string; targetMer: string; targetJeu: string; targetVen: string; targetSat: string }>>({});
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkUnitOpen, setBulkUnitOpen] = useState(false);
   const [bulkUnitId, setBulkUnitId] = useState("none");
@@ -95,14 +95,23 @@ export default function Products() {
   const { data: branches = [] } = useGetBranches();
   const { data: allWorkers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchActiveWorkers });
   const pieceUnitId = units.find(u => !u.allowDecimals && (u.name.toLowerCase().includes("pièce") || u.abbreviation.toLowerCase() === "pcs"))?.id?.toString() ?? null;
-  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, { targetSunWed: string; targetThuSat: string }>) {
+  const EMPTY_DAYS = { targetDim: "", targetLun: "", targetMar: "", targetMer: "", targetJeu: "", targetVen: "", targetSat: "" };
+  const DAY_KEYS = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"] as const;
+  type DayKey = typeof DAY_KEYS[number];
+
+  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, typeof EMPTY_DAYS>) {
     const payload = Object.entries(rules)
       .map(([branchId, r]) => ({
         branchId: parseInt(branchId),
-        targetSunWed: parseFloat(r.targetSunWed || "0") || 0,
-        targetThuSat: parseFloat(r.targetThuSat || "0") || 0,
+        targetDim: parseFloat(r.targetDim || "0") || 0,
+        targetLun: parseFloat(r.targetLun || "0") || 0,
+        targetMar: parseFloat(r.targetMar || "0") || 0,
+        targetMer: parseFloat(r.targetMer || "0") || 0,
+        targetJeu: parseFloat(r.targetJeu || "0") || 0,
+        targetVen: parseFloat(r.targetVen || "0") || 0,
+        targetSat: parseFloat(r.targetSat || "0") || 0,
       }))
-      .filter(r => r.targetSunWed > 0 || r.targetThuSat > 0);
+      .filter(r => DAY_KEYS.some(k => r[k] > 0));
     if (payload.length === 0) return;
     await customFetch(`/api/replenishment/rules/product/${productId}`, { method: "PUT", body: JSON.stringify({ rules: payload }) });
   }
@@ -149,9 +158,14 @@ export default function Products() {
     setReplenishmentRules({});
     setDialogOpen(true);
     try {
-      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetSunWed: string; targetThuSat: string }>;
-      const map: Record<number, { targetSunWed: string; targetThuSat: string }> = {};
-      for (const r of rules) { map[r.branchId] = { targetSunWed: r.targetSunWed ?? "0", targetThuSat: r.targetThuSat ?? "0" }; }
+      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetDim: string; targetLun: string; targetMar: string; targetMer: string; targetJeu: string; targetVen: string; targetSat: string }>;
+      const map: Record<number, typeof EMPTY_DAYS> = {};
+      for (const r of rules) {
+        map[r.branchId] = {
+          targetDim: r.targetDim ?? "0", targetLun: r.targetLun ?? "0", targetMar: r.targetMar ?? "0",
+          targetMer: r.targetMer ?? "0", targetJeu: r.targetJeu ?? "0", targetVen: r.targetVen ?? "0", targetSat: r.targetSat ?? "0",
+        };
+      }
       setReplenishmentRules(map);
     } catch {}
   }
@@ -595,59 +609,71 @@ export default function Products() {
             <div><Label>Description</Label><Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
 
             {/* Replenishment Rules */}
-            {branches.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center gap-2">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Réapprovisionnement automatique</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-                <p className="text-xs text-muted-foreground">Cochez les boutiques où ce produit doit être réapprovisionné automatiquement.</p>
-                <div className="space-y-2">
-                  {branches.map(b => {
-                    const rule = replenishmentRules[b.id];
-                    const enabled = !!(rule && (rule.targetSunWed || rule.targetThuSat));
-                    return (
-                      <div key={b.id} className="rounded-md border overflow-hidden">
-                        <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/40 select-none">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 accent-amber-600"
-                            checked={enabled}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed || "0", targetThuSat: prev[b.id]?.targetThuSat || "0" } }));
-                              } else {
-                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: "", targetThuSat: "" } }));
-                              }
-                            }}
-                          />
-                          <span className="text-sm font-medium">{b.name}</span>
-                        </label>
-                        {enabled && (
-                          <div className="grid grid-cols-2 gap-3 px-3 pb-3 pt-1 border-t bg-muted/20">
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Dim → Mer</Label>
-                              <Input type="number" min="0" step="1" className="h-8 text-sm"
-                                placeholder="0"
-                                value={rule.targetSunWed}
-                                onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "0" } }))} />
+            {branches.length > 0 && (() => {
+              const DAYS: { key: DayKey; label: string }[] = [
+                { key: "targetDim", label: "Dim" },
+                { key: "targetLun", label: "Lun" },
+                { key: "targetMar", label: "Mar" },
+                { key: "targetMer", label: "Mer" },
+                { key: "targetJeu", label: "Jeu" },
+                { key: "targetVen", label: "Ven" },
+                { key: "targetSat", label: "Sam" },
+              ];
+              return (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Réapprovisionnement automatique</span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Cochez les boutiques et définissez la cible par jour.</p>
+                  <div className="space-y-2">
+                    {branches.map(b => {
+                      const rule = replenishmentRules[b.id];
+                      const enabled = !!(rule && DAYS.some(d => parseFloat(rule[d.key] || "0") > 0));
+                      return (
+                        <div key={b.id} className="rounded-md border overflow-hidden">
+                          <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/40 select-none">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 accent-amber-600"
+                              checked={enabled}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setReplenishmentRules(prev => ({ ...prev, [b.id]: { ...EMPTY_DAYS, ...Object.fromEntries(DAYS.map(d => [d.key, prev[b.id]?.[d.key] || "0"])) } }));
+                                } else {
+                                  setReplenishmentRules(prev => ({ ...prev, [b.id]: { ...EMPTY_DAYS } }));
+                                }
+                              }}
+                            />
+                            <span className="text-sm font-medium">{b.name}</span>
+                          </label>
+                          {enabled && (
+                            <div className="border-t bg-muted/20 px-3 py-2 space-y-1">
+                              {DAYS.map(d => (
+                                <div key={d.key} className="flex items-center gap-3">
+                                  <span className="w-8 text-xs font-semibold text-muted-foreground">{d.label}</span>
+                                  <Input
+                                    type="number" min="0" step="1"
+                                    className="h-7 text-sm flex-1"
+                                    placeholder="0"
+                                    value={rule?.[d.key] ?? "0"}
+                                    onChange={e => setReplenishmentRules(prev => ({
+                                      ...prev,
+                                      [b.id]: { ...(prev[b.id] ?? EMPTY_DAYS), [d.key]: e.target.value }
+                                    }))}
+                                  />
+                                </div>
+                              ))}
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Jeu → Sam</Label>
-                              <Input type="number" min="0" step="1" className="h-8 text-sm"
-                                placeholder="0"
-                                value={rule.targetThuSat}
-                                onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "0", targetThuSat: e.target.value } }))} />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
