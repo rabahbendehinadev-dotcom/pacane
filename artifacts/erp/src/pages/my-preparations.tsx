@@ -137,16 +137,16 @@ function CameraDialog({
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
-    // Resize to max 900px wide to keep DB size small (~80–120 KB as base64)
-    const MAX_W = 900;
+    // Resize to max 480px wide — keeps base64 under ~25 KB in DB
+    const MAX_W = 480;
     const ratio = Math.min(1, MAX_W / (video.videoWidth || 1280));
     canvas.width = Math.round((video.videoWidth || 1280) * ratio);
     canvas.height = Math.round((video.videoHeight || 720) * ratio);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    // Store as base64 data URL — persists in DB, no filesystem needed
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+    // Quality 0.5 → ~20–30 KB as base64, sufficient for confirmation proof
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.50);
     stopCamera();
     setPreviewUrl(dataUrl);
     setStep("preview");

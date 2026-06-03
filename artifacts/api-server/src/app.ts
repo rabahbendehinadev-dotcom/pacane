@@ -6,6 +6,8 @@ import fs from "fs";
 import router from "./routes";
 import { getUploadDir } from "./routes/upload";
 import { logger } from "./lib/logger";
+import { db, preparationOrdersTable } from "@workspace/db";
+import { sql, lte, isNotNull } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -59,6 +61,27 @@ if (process.env.NODE_ENV === "production") {
     logger.warn({ distDir }, "Frontend dist directory not found — API-only mode");
   }
 }
+
+// ── Auto-cleanup: delete completion photos older than 30 days ──────────────
+async function cleanupOldPhotos() {
+  try {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const result = await db.update(preparationOrdersTable)
+      .set({ completionPhotoUrl: null })
+      .where(
+        sql`${preparationOrdersTable.completedAt} < ${cutoff} AND ${preparationOrdersTable.completionPhotoUrl} IS NOT NULL`
+      )
+      .returning({ id: preparationOrdersTable.id });
+    if (result.length > 0) {
+      logger.info({ count: result.length }, "Cleaned up completion photos older than 30 days");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to clean up old photos");
+  }
+}
+// Run once at startup then every 24 hours
+cleanupOldPhotos();
+setInterval(cleanupOldPhotos, 24 * 60 * 60 * 1000);
 
 // ── Global JSON error handler ──────────────────────────────────────────────
 // Must be last middleware — catches any unhandled error and returns JSON
