@@ -55,7 +55,7 @@ interface OrderItem {
   quantityToPrepare: string;
   notes: string | null;
 }
-interface OrderDetail extends PreparationOrder { items: OrderItem[]; }
+interface OrderDetail extends PreparationOrder { items: OrderItem[]; completionPhotoUrl?: string | null; }
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   const cfg: Record<OrderStatus, { label: string; className: string; Icon: any }> = {
@@ -363,6 +363,22 @@ export default function PreparationOrdersPage() {
                   </Table>
                 </div>
               </div>
+              {/* Completion photo */}
+              {selected.completionPhotoUrl && (
+                <div>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                    <span>📷</span> Photo de confirmation
+                  </h4>
+                  <div className="rounded-lg overflow-hidden border bg-black">
+                    <img
+                      src={selected.completionPhotoUrl}
+                      alt="Photo de confirmation"
+                      className="w-full max-h-64 object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-2 flex-wrap">
                 {selected.status === "completed" && (
                   <Button

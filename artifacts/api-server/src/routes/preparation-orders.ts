@@ -92,6 +92,8 @@ router.get("/preparation-orders/:id", requireAuth, requirePermission(P.preparati
     viewedAt: preparationOrdersTable.viewedAt,
     startedAt: preparationOrdersTable.startedAt,
     completedAt: preparationOrdersTable.completedAt,
+    completionPhotoUrl: preparationOrdersTable.completionPhotoUrl,
+    validatedAt: preparationOrdersTable.validatedAt,
     createdAt: preparationOrdersTable.createdAt,
     updatedAt: preparationOrdersTable.updatedAt,
   })
