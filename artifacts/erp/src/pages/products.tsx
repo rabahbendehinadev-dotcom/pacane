@@ -66,6 +66,7 @@ export default function Products() {
   const [pendingImagePath, setPendingImagePath] = useState<string | null>(null);
   const [imageCleared, setImageCleared] = useState(false);
   const [replenishmentRules, setReplenishmentRules] = useState<Record<number, { targetDim: string; targetLun: string; targetMar: string; targetMer: string; targetJeu: string; targetVen: string; targetSat: string }>>({});
+  const [enabledReplenishBranches, setEnabledReplenishBranches] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkUnitOpen, setBulkUnitOpen] = useState(false);
   const [bulkUnitId, setBulkUnitId] = useState("none");
@@ -99,33 +100,36 @@ export default function Products() {
   const DAY_KEYS = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"] as const;
   type DayKey = typeof DAY_KEYS[number];
 
-  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, typeof EMPTY_DAYS>) {
-    const payload = Object.entries(rules)
-      .map(([branchId, r]) => ({
-        branchId: parseInt(branchId),
-        targetDim: parseFloat(r.targetDim || "0") || 0,
-        targetLun: parseFloat(r.targetLun || "0") || 0,
-        targetMar: parseFloat(r.targetMar || "0") || 0,
-        targetMer: parseFloat(r.targetMer || "0") || 0,
-        targetJeu: parseFloat(r.targetJeu || "0") || 0,
-        targetVen: parseFloat(r.targetVen || "0") || 0,
-        targetSat: parseFloat(r.targetSat || "0") || 0,
-      }))
-      .filter(r => DAY_KEYS.some(k => r[k] > 0));
+  async function saveReplenishmentRulesFor(productId: number, rules: Record<number, typeof EMPTY_DAYS>, enabledBranches: Set<number>) {
+    const allBranchIds = new Set([...Object.keys(rules).map(Number), ...Array.from(enabledBranches)]);
+    const payload = Array.from(allBranchIds).map(branchId => {
+      const r = rules[branchId] ?? EMPTY_DAYS;
+      const isEnabled = enabledBranches.has(branchId);
+      return {
+        branchId,
+        targetDim: isEnabled ? (parseFloat(r.targetDim || "0") || 0) : 0,
+        targetLun: isEnabled ? (parseFloat(r.targetLun || "0") || 0) : 0,
+        targetMar: isEnabled ? (parseFloat(r.targetMar || "0") || 0) : 0,
+        targetMer: isEnabled ? (parseFloat(r.targetMer || "0") || 0) : 0,
+        targetJeu: isEnabled ? (parseFloat(r.targetJeu || "0") || 0) : 0,
+        targetVen: isEnabled ? (parseFloat(r.targetVen || "0") || 0) : 0,
+        targetSat: isEnabled ? (parseFloat(r.targetSat || "0") || 0) : 0,
+      };
+    });
     if (payload.length === 0) return;
     await customFetch(`/api/replenishment/rules/product/${productId}`, { method: "PUT", body: JSON.stringify({ rules: payload }) });
   }
 
   const createMutation = useCreateProduct({ mutation: {
     onSuccess: async (data: any) => {
-      try { await saveReplenishmentRulesFor(data.id, replenishmentRules); } catch {}
+      try { await saveReplenishmentRulesFor(data.id, replenishmentRules, enabledReplenishBranches); } catch {}
       qc.invalidateQueries({ queryKey: getGetProductsQueryKey() }); setDialogOpen(false); toast({ title: "Produit créé" });
     },
     onError: (err: any) => { toast({ title: "Erreur lors de la création", description: err?.message ?? "Une erreur est survenue", variant: "destructive" }); }
   }});
   const updateMutation = useUpdateProduct({ mutation: {
     onSuccess: async () => {
-      if (editing) { try { await saveReplenishmentRulesFor(editing.id, replenishmentRules); } catch {} }
+      if (editing) { try { await saveReplenishmentRulesFor(editing.id, replenishmentRules, enabledReplenishBranches); } catch {} }
       qc.invalidateQueries({ queryKey: getGetProductsQueryKey() }); setDialogOpen(false); toast({ title: "Produit mis à jour" });
     },
     onError: (err: any) => { toast({ title: "Erreur lors de la mise à jour", description: err?.message ?? "Une erreur est survenue", variant: "destructive" }); }
@@ -146,7 +150,7 @@ export default function Products() {
   }
 
   function resetImageState(cleared = false) { setImagePreview(null); setPendingImagePath(null); setImageCleared(cleared); if (imageInputRef.current) imageInputRef.current.value = ""; }
-  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setDialogOpen(true); }
+  function openNew() { setEditing(null); setForm({ ...EMPTY, unitId: pieceUnitId ?? "none" }); setSelectedBranchIds([]); resetImageState(); setReplenishmentRules({}); setEnabledReplenishBranches(new Set()); setDialogOpen(true); }
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
@@ -156,17 +160,21 @@ export default function Products() {
     setPendingImagePath(null);
     setImageCleared(false);
     setReplenishmentRules({});
+    setEnabledReplenishBranches(new Set());
     setDialogOpen(true);
     try {
-      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetDim: string; targetLun: string; targetMar: string; targetMer: string; targetJeu: string; targetVen: string; targetSat: string }>;
+      const rules = await customFetch(`/api/replenishment/rules/product/${p.id}`) as Array<{ branchId: number; targetDim: string; targetLun: string; targetMar: string; targetMer: string; targetJeu: string; targetVen: string; targetSat: string; isActive: boolean }>;
       const map: Record<number, typeof EMPTY_DAYS> = {};
+      const enabledIds = new Set<number>();
       for (const r of rules) {
         map[r.branchId] = {
           targetDim: r.targetDim ?? "0", targetLun: r.targetLun ?? "0", targetMar: r.targetMar ?? "0",
           targetMer: r.targetMer ?? "0", targetJeu: r.targetJeu ?? "0", targetVen: r.targetVen ?? "0", targetSat: r.targetSat ?? "0",
         };
+        if (r.isActive) enabledIds.add(r.branchId);
       }
       setReplenishmentRules(map);
+      setEnabledReplenishBranches(enabledIds);
     } catch {}
   }
 
@@ -629,8 +637,8 @@ export default function Products() {
                   <p className="text-xs text-muted-foreground">Cochez les boutiques et définissez la cible par jour.</p>
                   <div className="space-y-2">
                     {branches.map(b => {
-                      const rule = replenishmentRules[b.id];
-                      const enabled = !!(rule && DAYS.some(d => parseFloat(rule[d.key] || "0") > 0));
+                      const rule = replenishmentRules[b.id] ?? EMPTY_DAYS;
+                      const enabled = enabledReplenishBranches.has(b.id);
                       return (
                         <div key={b.id} className="rounded-md border overflow-hidden">
                           <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/40 select-none">
@@ -639,9 +647,14 @@ export default function Products() {
                               className="h-4 w-4 rounded border-gray-300 accent-amber-600"
                               checked={enabled}
                               onChange={e => {
-                                if (e.target.checked) {
-                                  setReplenishmentRules(prev => ({ ...prev, [b.id]: { ...EMPTY_DAYS, ...Object.fromEntries(DAYS.map(d => [d.key, prev[b.id]?.[d.key] || "0"])) } }));
-                                } else {
+                                setEnabledReplenishBranches(prev => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(b.id); else next.delete(b.id);
+                                  return next;
+                                });
+                                if (!e.target.checked) {
+                                  setReplenishmentRules(prev => ({ ...prev, [b.id]: { ...EMPTY_DAYS } }));
+                                } else if (!replenishmentRules[b.id]) {
                                   setReplenishmentRules(prev => ({ ...prev, [b.id]: { ...EMPTY_DAYS } }));
                                 }
                               }}
@@ -657,7 +670,7 @@ export default function Products() {
                                     type="number" min="0" step="1"
                                     className="h-7 text-sm flex-1"
                                     placeholder="0"
-                                    value={rule?.[d.key] ?? "0"}
+                                    value={rule[d.key]}
                                     onChange={e => setReplenishmentRules(prev => ({
                                       ...prev,
                                       [b.id]: { ...(prev[b.id] ?? EMPTY_DAYS), [d.key]: e.target.value }
