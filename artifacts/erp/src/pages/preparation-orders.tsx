@@ -100,6 +100,7 @@ export default function PreparationOrdersPage() {
   const [cancelTarget, setCancelTarget] = useState<PreparationOrder | null>(null);
   const [validateTarget, setValidateTarget] = useState<OrderDetail | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
 
   const { data: workers = [] } = useQuery<WorkerOption[]>({
     queryKey: ["workers"],
@@ -369,11 +370,15 @@ export default function PreparationOrdersPage() {
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
                     <span>📷</span> Photo de confirmation
                   </h4>
-                  <div className="rounded-lg overflow-hidden border bg-black">
+                  <div
+                    className="rounded-lg overflow-hidden border bg-black cursor-zoom-in"
+                    onClick={() => setZoomedPhoto(selected.completionPhotoUrl!)}
+                    title="Cliquer pour agrandir"
+                  >
                     <img
                       src={selected.completionPhotoUrl}
                       alt="Photo de confirmation"
-                      className="w-full max-h-64 object-contain"
+                      className="w-full max-h-64 object-contain hover:opacity-90 transition-opacity"
                     />
                   </div>
                 </div>
@@ -445,6 +450,20 @@ export default function PreparationOrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Photo lightbox */}
+      {zoomedPhoto && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center cursor-zoom-out"
+          onClick={() => setZoomedPhoto(null)}
+        >
+          <img
+            src={zoomedPhoto}
+            alt="Photo agrandie"
+            className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg shadow-2xl"
+          />
+        </div>
+      )}
 
       {/* Cancel confirmation */}
       <AlertDialog open={!!cancelTarget} onOpenChange={() => setCancelTarget(null)}>
