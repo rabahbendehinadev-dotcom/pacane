@@ -146,4 +146,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "analytics.view",
     "settings.view",
   ],
+
+  "Ouvrier": [
+    "my_preparations.view",
+    "my_preparations.update_status",
+  ],
 };

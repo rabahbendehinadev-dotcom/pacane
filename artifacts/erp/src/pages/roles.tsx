@@ -13,7 +13,8 @@ import {
   Building2, Users, Key, UserCircle, Package, Warehouse,
   ShoppingCart, ShoppingBag, Monitor, BookOpen, Factory,
   Receipt, BarChart2, Settings, ArrowLeftRight, SlidersHorizontal,
-  RotateCcw, Wallet, TrendingUp, LayoutDashboard
+  RotateCcw, Wallet, TrendingUp, LayoutDashboard,
+  HardHat, ClipboardList, ClipboardCheck, Repeat2
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -206,6 +207,55 @@ const MODULES = [
       { key: "settings.view", label: "Consulter les paramètres", sub: "Voir la configuration" },
       { key: "settings.edit", label: "Modifier les paramètres",  sub: "Changer la configuration de l'entreprise" },
       { key: "settings.*",    label: "Accès complet",             sub: "Toutes les actions paramètres" },
+    ],
+  },
+  {
+    label: "Réapprovisionnement automatique", icon: Repeat2,
+    permissions: [
+      { key: "replenishment.view",   label: "Consulter",       sub: "Voir le bon de commande automatique" },
+      { key: "replenishment.create", label: "Créer / Envoyer", sub: "Lancer le calcul et envoyer aux ouvriers" },
+      { key: "replenishment.print",  label: "Imprimer",        sub: "Imprimer le bon de commande" },
+      { key: "replenishment.export", label: "Exporter",        sub: "Télécharger en CSV / PDF" },
+      { key: "replenishment.*",      label: "Accès complet",   sub: "Toutes les actions réapprovisionnement" },
+    ],
+  },
+  {
+    label: "Ouvriers", icon: HardHat,
+    permissions: [
+      { key: "workers.view",       label: "Consulter",   sub: "Voir la liste des ouvriers" },
+      { key: "workers.create",     label: "Créer",        sub: "Ajouter de nouveaux ouvriers" },
+      { key: "workers.edit",       label: "Modifier",     sub: "Mettre à jour les fiches ouvriers" },
+      { key: "workers.deactivate", label: "Désactiver",   sub: "Désactiver un ouvrier" },
+      { key: "workers.*",          label: "Accès complet",sub: "Toutes les actions ouvriers" },
+    ],
+  },
+  {
+    label: "Ordres de préparation", icon: ClipboardList,
+    permissions: [
+      { key: "preparation_orders.view",   label: "Consulter",      sub: "Voir tous les ordres de préparation" },
+      { key: "preparation_orders.create", label: "Créer",           sub: "Créer des ordres manuellement" },
+      { key: "preparation_orders.send",   label: "Envoyer",         sub: "Envoyer des ordres aux ouvriers" },
+      { key: "preparation_orders.cancel", label: "Annuler",         sub: "Annuler un ordre de préparation" },
+      { key: "preparation_orders.print",  label: "Imprimer",        sub: "Imprimer un ordre de préparation" },
+      { key: "preparation_orders.*",      label: "Accès complet",   sub: "Toutes les actions ordres de préparation" },
+    ],
+  },
+  {
+    label: "Mes préparations (ouvrier)", icon: ClipboardCheck,
+    permissions: [
+      { key: "my_preparations.view",          label: "Voir mes tâches",      sub: "L'ouvrier voit ses ordres assignés" },
+      { key: "my_preparations.update_status", label: "Mettre à jour statut", sub: "Marquer En cours / Terminé" },
+      { key: "my_preparations.*",             label: "Accès complet",        sub: "Consulter et mettre à jour ses préparations" },
+    ],
+  },
+  {
+    label: "Consommations internes", icon: ClipboardList,
+    permissions: [
+      { key: "internal_consumptions.view",    label: "Consulter",    sub: "Voir les consommations enregistrées" },
+      { key: "internal_consumptions.create",  label: "Créer",         sub: "Enregistrer une consommation" },
+      { key: "internal_consumptions.confirm", label: "Confirmer",     sub: "Valider une consommation" },
+      { key: "internal_consumptions.cancel",  label: "Annuler",       sub: "Annuler une consommation" },
+      { key: "internal_consumptions.*",       label: "Accès complet", sub: "Toutes les actions consommations" },
     ],
   },
 ];
