@@ -94,10 +94,8 @@ function CameraDialog({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [step, setStep] = useState<CameraStep>("capture");
-  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
@@ -125,7 +123,6 @@ function CameraDialog({
   useEffect(() => {
     if (open) {
       setStep("capture");
-      setCapturedBlob(null);
       setPreviewUrl(null);
       setCameraError(null);
       startCamera();
@@ -140,46 +137,31 @@ function CameraDialog({
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    // Resize to max 900px wide to keep DB size small (~80–120 KB as base64)
+    const MAX_W = 900;
+    const ratio = Math.min(1, MAX_W / (video.videoWidth || 1280));
+    canvas.width = Math.round((video.videoWidth || 1280) * ratio);
+    canvas.height = Math.round((video.videoHeight || 720) * ratio);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      stopCamera();
-      setCapturedBlob(blob);
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl(url);
-      setStep("preview");
-    }, "image/jpeg", 0.88);
+    // Store as base64 data URL — persists in DB, no filesystem needed
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+    stopCamera();
+    setPreviewUrl(dataUrl);
+    setStep("preview");
   }
 
   function retake() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setCapturedBlob(null);
     setPreviewUrl(null);
     setStep("capture");
     startCamera();
   }
 
   async function confirm() {
-    if (!capturedBlob) { onConfirm(null); return; }
-    setUploading(true);
-    setStep("uploading");
-    try {
-      const fd = new FormData();
-      fd.append("photo", capturedBlob, "completion.jpg");
-      const r = await fetch("/api/upload/preparation-photo", { method: "POST", headers: AUTH(), body: fd });
-      if (!r.ok) throw new Error("Erreur upload");
-      const { photoUrl } = await r.json();
-      onConfirm(photoUrl);
-    } catch {
-      toast({ title: "Erreur lors de l'upload de la photo", variant: "destructive" });
-      setStep("preview");
-    } finally {
-      setUploading(false);
-    }
+    if (!previewUrl) { onConfirm(null); return; }
+    // Pass base64 data URL directly — saved in DB column, no upload server needed
+    onConfirm(previewUrl);
   }
 
   function skipPhoto() {
@@ -232,11 +214,6 @@ function CameraDialog({
               </button>
             </div>
           </div>
-        ) : step === "uploading" ? (
-          <div className="flex flex-col items-center gap-3 px-4 pb-6 pt-2">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            <p className="text-sm text-muted-foreground">Envoi de la photo…</p>
-          </div>
         ) : (
           <div className="space-y-0">
             {previewUrl && (
@@ -245,16 +222,15 @@ function CameraDialog({
               </div>
             )}
             <div className="flex gap-2 px-4 py-3">
-              <Button variant="outline" className="flex-1 gap-2" onClick={retake} disabled={uploading}>
+              <Button variant="outline" className="flex-1 gap-2" onClick={retake}>
                 <RotateCcw className="h-4 w-4" />
                 Reprendre
               </Button>
               <Button
                 className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={confirm}
-                disabled={uploading}
               >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                <Check className="h-4 w-4" />
                 Confirmer
               </Button>
             </div>
