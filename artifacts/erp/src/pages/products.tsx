@@ -602,29 +602,49 @@ export default function Products() {
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Réapprovisionnement automatique</span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
-                <p className="text-xs text-muted-foreground">Ces valeurs servent au calcul automatique du bon de commande selon le jour de la semaine.</p>
+                <p className="text-xs text-muted-foreground">Cochez les boutiques où ce produit doit être réapprovisionné automatiquement.</p>
                 <div className="space-y-2">
-                  {branches.map(b => (
-                    <div key={b.id} className="rounded-md border p-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">{b.name}</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Dim → Mer</Label>
-                          <Input type="number" min="0" step="1" className="h-8 text-sm"
-                            placeholder="0"
-                            value={replenishmentRules[b.id]?.targetSunWed ?? ""}
-                            onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "" } }))} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Jeu → Sam</Label>
-                          <Input type="number" min="0" step="1" className="h-8 text-sm"
-                            placeholder="0"
-                            value={replenishmentRules[b.id]?.targetThuSat ?? ""}
-                            onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "", targetThuSat: e.target.value } }))} />
-                        </div>
+                  {branches.map(b => {
+                    const rule = replenishmentRules[b.id];
+                    const enabled = !!(rule && (rule.targetSunWed || rule.targetThuSat));
+                    return (
+                      <div key={b.id} className="rounded-md border overflow-hidden">
+                        <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/40 select-none">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 accent-amber-600"
+                            checked={enabled}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed || "0", targetThuSat: prev[b.id]?.targetThuSat || "0" } }));
+                              } else {
+                                setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: "", targetThuSat: "" } }));
+                              }
+                            }}
+                          />
+                          <span className="text-sm font-medium">{b.name}</span>
+                        </label>
+                        {enabled && (
+                          <div className="grid grid-cols-2 gap-3 px-3 pb-3 pt-1 border-t bg-muted/20">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Dim → Mer</Label>
+                              <Input type="number" min="0" step="1" className="h-8 text-sm"
+                                placeholder="0"
+                                value={rule.targetSunWed}
+                                onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: e.target.value, targetThuSat: prev[b.id]?.targetThuSat ?? "0" } }))} />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Jeu → Sam</Label>
+                              <Input type="number" min="0" step="1" className="h-8 text-sm"
+                                placeholder="0"
+                                value={rule.targetThuSat}
+                                onChange={e => setReplenishmentRules(prev => ({ ...prev, [b.id]: { targetSunWed: prev[b.id]?.targetSunWed ?? "0", targetThuSat: e.target.value } }))} />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
