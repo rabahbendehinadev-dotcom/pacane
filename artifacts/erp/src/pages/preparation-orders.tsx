@@ -15,8 +15,8 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
   ClipboardList, Eye, Ban, Printer, RefreshCw, Loader2,
-  HardHat, Building2, Calendar, User, Package, Hash,
-  CheckCircle2, Clock, PlayCircle, XCircle, AlertTriangle
+  HardHat, Building2, Calendar, User, Package,
+  CheckCircle2, Clock, PlayCircle, XCircle, ShieldCheck
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -24,7 +24,7 @@ import { useGetBranches } from "@workspace/api-client-react";
 
 const AUTH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
 
-type OrderStatus = "new" | "viewed" | "in_progress" | "completed" | "cancelled";
+type OrderStatus = "new" | "viewed" | "in_progress" | "completed" | "cancelled" | "validated";
 
 interface WorkerOption { id: number; name: string; isActive: boolean; }
 interface PreparationOrder {
@@ -64,6 +64,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     in_progress:{ label: "En cours", className: "bg-amber-100 text-amber-700",  Icon: PlayCircle },
     completed: { label: "Terminé",  className: "bg-emerald-100 text-emerald-700", Icon: CheckCircle2 },
     cancelled: { label: "Annulé",   className: "bg-red-100 text-red-700",       Icon: XCircle },
+    validated: { label: "Validé → Stock", className: "bg-teal-100 text-teal-700", Icon: ShieldCheck },
   };
   const { label, className, Icon } = cfg[status] ?? cfg.new;
   return (
@@ -97,6 +98,8 @@ export default function PreparationOrdersPage() {
   const [filterTo, setFilterTo] = useState("");
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PreparationOrder | null>(null);
+  const [validateTarget, setValidateTarget] = useState<OrderDetail | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const { data: workers = [] } = useQuery<WorkerOption[]>({
     queryKey: ["workers"],
@@ -127,6 +130,22 @@ export default function PreparationOrdersPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["preparation-orders"] }); setCancelTarget(null); toast({ title: "Ordre annulé" }); },
     onError: (e: any) => { toast({ title: e.message, variant: "destructive" }); },
   });
+
+  async function validateToStock(order: OrderDetail) {
+    setIsValidating(true);
+    try {
+      const r = await fetch(`/api/preparation-orders/${order.id}/validate-stock`, { method: "POST", headers: AUTH() });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Erreur"); }
+      qc.invalidateQueries({ queryKey: ["preparation-orders"] });
+      setValidateTarget(null);
+      setSelected(null);
+      toast({ title: "✅ Stock mis à jour", description: `Les produits de l'ordre ${order.reference} ont été ajoutés au stock de la boutique.` });
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setIsValidating(false);
+    }
+  }
 
   async function openDetail(order: PreparationOrder) {
     const r = await fetch(`/api/preparation-orders/${order.id}`, { headers: AUTH() });
@@ -214,6 +233,7 @@ export default function PreparationOrdersPage() {
                 <SelectItem value="viewed">Vu</SelectItem>
                 <SelectItem value="in_progress">En cours</SelectItem>
                 <SelectItem value="completed">Terminé</SelectItem>
+                <SelectItem value="validated">Validé → Stock</SelectItem>
                 <SelectItem value="cancelled">Annulé</SelectItem>
               </SelectContent>
             </Select>
@@ -343,7 +363,16 @@ export default function PreparationOrdersPage() {
                   </Table>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 flex-wrap">
+                {selected.status === "completed" && (
+                  <Button
+                    size="sm"
+                    className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+                    onClick={() => setValidateTarget(selected)}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />Valider vers stock
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => printOrder(selected)} className="gap-2">
                   <Printer className="h-3.5 w-3.5" />Imprimer
                 </Button>
@@ -352,6 +381,54 @@ export default function PreparationOrdersPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Validate to stock confirmation */}
+      <AlertDialog open={!!validateTarget} onOpenChange={(o) => { if (!o && !isValidating) setValidateTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-teal-600" />
+              Valider vers le stock ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Les quantités suivantes seront ajoutées au stock de la boutique <strong>{validateTarget?.branchName}</strong> :</p>
+                <div className="rounded border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold">Produit</th>
+                        <th className="text-right px-3 py-2 font-semibold">Quantité</th>
+                        <th className="text-left px-3 py-2 font-semibold">Unité</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validateTarget?.items.map(item => (
+                        <tr key={item.id} className="border-t">
+                          <td className="px-3 py-2">{item.productNameSnapshot}</td>
+                          <td className="px-3 py-2 text-right font-bold text-teal-700">{fmtQty(item.quantityToPrepare)}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{item.unitSnapshot}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground">Cette action est irréversible. L'ordre passera au statut "Validé → Stock".</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isValidating}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+              disabled={isValidating}
+              onClick={(e) => { e.preventDefault(); validateTarget && validateToStock(validateTarget); }}
+            >
+              {isValidating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Validation…</> : <><ShieldCheck className="h-4 w-4 mr-2" />Confirmer et entrer en stock</>}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cancel confirmation */}
       <AlertDialog open={!!cancelTarget} onOpenChange={() => setCancelTarget(null)}>

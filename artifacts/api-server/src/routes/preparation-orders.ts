@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, preparationOrdersTable, preparationOrderItemsTable, branchesTable, workersTable, usersTable, productsTable, unitsTable } from "@workspace/db";
+import { db, preparationOrdersTable, preparationOrderItemsTable, branchesTable, workersTable, usersTable, productsTable, unitsTable, stockLevelsTable, stockMovementsTable } from "@workspace/db";
 import { eq, and, inArray, desc, sql, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess } from "../middlewares/permissions";
@@ -297,6 +297,57 @@ router.get("/my-preparations/:id", requireAuth, async (req, res): Promise<void> 
   }
 
   res.json({ ...order, items });
+});
+
+// POST /preparation-orders/:id/validate-stock — manager validates and adds to stock
+router.post("/preparation-orders/:id/validate-stock", requireAuth, requirePermission(P.stock.adjust), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const [order] = await db.select().from(preparationOrdersTable).where(eq(preparationOrdersTable.id, id));
+  if (!order) { res.status(404).json({ error: "Ordre introuvable" }); return; }
+  if (order.status !== "completed") { res.status(400).json({ error: "L'ordre doit être terminé avant validation" }); return; }
+  if (order.status === "validated" as any) { res.status(400).json({ error: "Ordre déjà validé" }); return; }
+
+  if (!assertBranchAccess(req.user!, order.branchId, res)) return;
+
+  const items = await db.select().from(preparationOrderItemsTable).where(eq(preparationOrderItemsTable.orderId, id));
+  if (items.length === 0) { res.status(400).json({ error: "Aucun produit dans l'ordre" }); return; }
+
+  const userId = req.user!.id;
+  const branchId = order.branchId;
+
+  for (const item of items) {
+    const qty = parseFloat(item.quantityToPrepare);
+    if (isNaN(qty) || qty <= 0) continue;
+
+    const [existing] = await db.select().from(stockLevelsTable)
+      .where(and(eq(stockLevelsTable.productId, item.productId), eq(stockLevelsTable.branchId, branchId)));
+
+    if (existing) {
+      const newQty = parseFloat(existing.quantity) + qty;
+      await db.update(stockLevelsTable).set({ quantity: newQty.toString() })
+        .where(and(eq(stockLevelsTable.productId, item.productId), eq(stockLevelsTable.branchId, branchId)));
+    } else {
+      await db.insert(stockLevelsTable).values({ productId: item.productId, branchId, quantity: qty.toString() });
+    }
+
+    await db.insert(stockMovementsTable).values({
+      productId: item.productId,
+      branchId,
+      type: "in",
+      quantity: qty.toString(),
+      reason: `Validation ordre de préparation ${order.reference}`,
+      userId,
+    } as any);
+  }
+
+  const [updated] = await db.update(preparationOrdersTable)
+    .set({ status: "validated" as any, validatedAt: new Date(), validatedByUserId: userId })
+    .where(eq(preparationOrdersTable.id, id))
+    .returning();
+
+  res.json(updated);
 });
 
 // PATCH /my-preparations/:id/status — worker updates status

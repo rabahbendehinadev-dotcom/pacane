@@ -18,6 +18,8 @@ export const preparationOrdersTable = pgTable("preparation_orders", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   completionPhotoUrl: text("completion_photo_url"),
+  validatedAt: timestamp("validated_at", { withTimezone: true }),
+  validatedByUserId: integer("validated_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
