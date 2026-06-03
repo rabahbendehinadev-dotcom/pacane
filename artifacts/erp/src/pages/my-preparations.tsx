@@ -1,9 +1,7 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
@@ -11,13 +9,15 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
   ClipboardCheck, Eye, PlayCircle, CheckCircle2, Clock,
-  XCircle, Loader2, Building2, Package, RefreshCw, Printer
+  XCircle, Loader2, Building2, Package, RefreshCw, Printer,
+  Camera, RotateCcw, Check, AlertTriangle
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useAuth } from "@/lib/auth";
 
-const AUTH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
+const AUTH = () => ({ Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
+const AUTH_JSON = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
 
 type OrderStatus = "new" | "viewed" | "in_progress" | "completed" | "cancelled";
 
@@ -31,6 +31,7 @@ interface MyOrder {
   viewedAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  completionPhotoUrl: string | null;
   itemCount: number;
   totalQty: number;
 }
@@ -51,11 +52,11 @@ interface OrderDetail extends MyOrder {
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   const cfg: Record<OrderStatus, { label: string; className: string; Icon: any }> = {
-    new:        { label: "Nouveau",  className: "bg-blue-100 text-blue-700",     Icon: Clock },
-    viewed:     { label: "Vu",       className: "bg-purple-100 text-purple-700", Icon: Eye },
-    in_progress:{ label: "En cours", className: "bg-amber-100 text-amber-700",   Icon: PlayCircle },
+    new:        { label: "Nouveau",  className: "bg-blue-100 text-blue-700",       Icon: Clock },
+    viewed:     { label: "Vu",       className: "bg-purple-100 text-purple-700",   Icon: Eye },
+    in_progress:{ label: "En cours", className: "bg-amber-100 text-amber-700",     Icon: PlayCircle },
     completed:  { label: "Terminé",  className: "bg-emerald-100 text-emerald-700", Icon: CheckCircle2 },
-    cancelled:  { label: "Annulé",   className: "bg-red-100 text-red-700",       Icon: XCircle },
+    cancelled:  { label: "Annulé",   className: "bg-red-100 text-red-700",         Icon: XCircle },
   };
   const { label, className, Icon } = cfg[status] ?? cfg.new;
   return (
@@ -78,46 +79,252 @@ function fmtDateTime(d: string | null) {
   try { return format(new Date(d), "dd/MM/yyyy HH:mm", { locale: fr }); } catch { return d; }
 }
 
+type CameraStep = "capture" | "preview" | "uploading";
+
+function CameraDialog({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (photoUrl: string | null) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [step, setStep] = useState<CameraStep>("capture");
+  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch {
+      setCameraError("Impossible d'accéder à la caméra. Vérifiez les autorisations.");
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setStep("capture");
+      setCapturedBlob(null);
+      setPreviewUrl(null);
+      setCameraError(null);
+      startCamera();
+    } else {
+      stopCamera();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    }
+    return () => { stopCamera(); };
+  }, [open]);
+
+  function capture() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      stopCamera();
+      setCapturedBlob(blob);
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setStep("preview");
+    }, "image/jpeg", 0.88);
+  }
+
+  function retake() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setCapturedBlob(null);
+    setPreviewUrl(null);
+    setStep("capture");
+    startCamera();
+  }
+
+  async function confirm() {
+    if (!capturedBlob) { onConfirm(null); return; }
+    setUploading(true);
+    setStep("uploading");
+    try {
+      const fd = new FormData();
+      fd.append("photo", capturedBlob, "completion.jpg");
+      const r = await fetch("/api/upload/preparation-photo", { method: "POST", headers: AUTH(), body: fd });
+      if (!r.ok) throw new Error("Erreur upload");
+      const { photoUrl } = await r.json();
+      onConfirm(photoUrl);
+    } catch {
+      toast({ title: "Erreur lors de l'upload de la photo", variant: "destructive" });
+      setStep("preview");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function skipPhoto() {
+    stopCamera();
+    onConfirm(null);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) { stopCamera(); onClose(); } }}>
+      <DialogContent className="max-w-sm p-0 overflow-hidden">
+        <DialogHeader className="px-4 pt-4 pb-2">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Camera className="h-4 w-4" />
+            Photo de confirmation
+          </DialogTitle>
+        </DialogHeader>
+
+        {cameraError ? (
+          <div className="px-4 pb-4 space-y-3">
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">{cameraError}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={onClose}>Annuler</Button>
+              <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={skipPhoto}>
+                Terminer sans photo
+              </Button>
+            </div>
+          </div>
+        ) : step === "capture" ? (
+          <div className="space-y-0">
+            <div className="relative bg-black aspect-video w-full overflow-hidden">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            </div>
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="flex gap-2 px-4 py-3">
+              <Button variant="outline" className="flex-1" onClick={onClose}>Annuler</Button>
+              <Button
+                className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={capture}
+              >
+                <Camera className="h-4 w-4" />
+                Prendre la photo
+              </Button>
+            </div>
+            <div className="px-4 pb-3 text-center">
+              <button onClick={skipPhoto} className="text-xs text-muted-foreground underline underline-offset-2">
+                Continuer sans photo
+              </button>
+            </div>
+          </div>
+        ) : step === "uploading" ? (
+          <div className="flex flex-col items-center gap-3 px-4 pb-6 pt-2">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <p className="text-sm text-muted-foreground">Envoi de la photo…</p>
+          </div>
+        ) : (
+          <div className="space-y-0">
+            {previewUrl && (
+              <div className="bg-black aspect-video w-full overflow-hidden">
+                <img src={previewUrl} alt="Aperçu" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex gap-2 px-4 py-3">
+              <Button variant="outline" className="flex-1 gap-2" onClick={retake} disabled={uploading}>
+                <RotateCcw className="h-4 w-4" />
+                Reprendre
+              </Button>
+              <Button
+                className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={confirm}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Confirmer
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MyPreparationsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   const { data: orders = [], isLoading, refetch } = useQuery<MyOrder[]>({
     queryKey: ["my-preparations"],
     queryFn: async () => {
-      const r = await fetch("/api/my-preparations", { headers: AUTH() });
+      const r = await fetch("/api/my-preparations", { headers: AUTH_JSON() });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
   });
 
   async function openDetail(order: MyOrder) {
-    const r = await fetch(`/api/my-preparations/${order.id}`, { headers: AUTH() });
+    const r = await fetch(`/api/my-preparations/${order.id}`, { headers: AUTH_JSON() });
     if (!r.ok) { toast({ title: "Erreur de chargement", variant: "destructive" }); return; }
     const data = await r.json();
     setSelected(data);
     qc.invalidateQueries({ queryKey: ["my-preparations"] });
   }
 
-  async function updateStatus(id: number, status: string) {
+  async function updateStatus(id: number, status: string, completionPhotoUrl?: string | null) {
     setUpdating(true);
     try {
+      const body: Record<string, any> = { status };
+      if (completionPhotoUrl) body.completionPhotoUrl = completionPhotoUrl;
       const r = await fetch(`/api/my-preparations/${id}/status`, {
         method: "PATCH",
-        headers: AUTH(),
-        body: JSON.stringify({ status }),
+        headers: AUTH_JSON(),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error((await r.json()).error ?? "Erreur");
       const updated = await r.json();
-      setSelected(prev => prev ? { ...prev, status: updated.status, startedAt: updated.startedAt, completedAt: updated.completedAt } : null);
+      setSelected(prev => prev ? {
+        ...prev,
+        status: updated.status,
+        startedAt: updated.startedAt,
+        completedAt: updated.completedAt,
+        completionPhotoUrl: updated.completionPhotoUrl ?? null,
+      } : null);
       qc.invalidateQueries({ queryKey: ["my-preparations"] });
       toast({ title: status === "completed" ? "Ordre marqué terminé ✓" : "Ordre démarré" });
     } catch (e: any) {
       toast({ title: e.message, variant: "destructive" });
     } finally {
       setUpdating(false);
+    }
+  }
+
+  function handleMarkCompleted() {
+    setShowCamera(true);
+  }
+
+  async function handleCameraConfirm(photoUrl: string | null) {
+    setShowCamera(false);
+    if (selected) {
+      await updateStatus(selected.id, "completed", photoUrl);
     }
   }
 
@@ -205,6 +412,13 @@ export default function MyPreparationsPage() {
         )}
       </div>
 
+      {/* Camera dialog */}
+      <CameraDialog
+        open={showCamera}
+        onClose={() => setShowCamera(false)}
+        onConfirm={handleCameraConfirm}
+      />
+
       {/* Detail Dialog */}
       {selected && (
         <Dialog open onOpenChange={() => setSelected(null)}>
@@ -229,6 +443,21 @@ export default function MyPreparationsPage() {
                 {selected.startedAt && <span>Démarré : {fmtDateTime(selected.startedAt)}</span>}
                 {selected.completedAt && <span>Terminé : {fmtDateTime(selected.completedAt)}</span>}
               </div>
+
+              {/* Completion photo */}
+              {selected.completionPhotoUrl && (
+                <div className="rounded-lg overflow-hidden border">
+                  <div className="px-3 py-1.5 bg-emerald-50 border-b flex items-center gap-2">
+                    <Camera className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-xs font-medium text-emerald-700">Photo de confirmation</span>
+                  </div>
+                  <img
+                    src={selected.completionPhotoUrl}
+                    alt="Photo de confirmation"
+                    className="w-full object-cover max-h-56"
+                  />
+                </div>
+              )}
 
               <Separator />
 
@@ -262,8 +491,12 @@ export default function MyPreparationsPage() {
                       Marquer en cours
                     </Button>
                   )}
-                  <Button onClick={() => updateStatus(selected.id, "completed")} disabled={updating} className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                    {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  <Button
+                    onClick={handleMarkCompleted}
+                    disabled={updating}
+                    className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                     Marquer terminé
                   </Button>
                 </div>
@@ -292,11 +525,11 @@ function OrderSection({ title, orders, onOpen }: { title: string; orders: MyOrde
     return isNaN(v) ? "0" : (v % 1 === 0 ? v.toString() : v.toFixed(3).replace(/\.?0+$/, ""));
   }
   const cfg: Record<string, { label: string; className: string; Icon: any }> = {
-    new:        { label: "Nouveau",  className: "bg-blue-100 text-blue-700",     Icon: Clock },
-    viewed:     { label: "Vu",       className: "bg-purple-100 text-purple-700", Icon: Eye },
-    in_progress:{ label: "En cours", className: "bg-amber-100 text-amber-700",   Icon: PlayCircle },
+    new:        { label: "Nouveau",  className: "bg-blue-100 text-blue-700",       Icon: Clock },
+    viewed:     { label: "Vu",       className: "bg-purple-100 text-purple-700",   Icon: Eye },
+    in_progress:{ label: "En cours", className: "bg-amber-100 text-amber-700",     Icon: PlayCircle },
     completed:  { label: "Terminé",  className: "bg-emerald-100 text-emerald-700", Icon: CheckCircle2 },
-    cancelled:  { label: "Annulé",   className: "bg-red-100 text-red-700",       Icon: XCircle },
+    cancelled:  { label: "Annulé",   className: "bg-red-100 text-red-700",         Icon: XCircle },
   };
 
   return (

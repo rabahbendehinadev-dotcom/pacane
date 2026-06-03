@@ -17,35 +17,46 @@ function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination(_req, _file, cb) {
-    const dir = path.join(getUploadDir(), "products");
-    ensureDir(dir);
-    cb(null, dir);
-  },
-  filename(_req, file, cb) {
-    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-    cb(null, `${randomUUID()}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
+function makeMulter(subdir: string) {
+  const storage = multer.diskStorage({
+    destination(_req, _file, cb) {
+      const dir = path.join(getUploadDir(), subdir);
+      ensureDir(dir);
+      cb(null, dir);
+    },
+    filename(_req, file, cb) {
+      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  });
+  return multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter(_req, file, cb) {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Type de fichier non valide"));
-  },
-});
+  }});
+}
+
+const productUpload = makeMulter("products");
+const preparationUpload = makeMulter("preparations");
 
 router.post(
   "/upload/product-image",
   requireAuth,
-  upload.single("image"),
+  productUpload.single("image"),
   (req: Request, res: Response) => {
     if (!req.file) { res.status(400).json({ error: "Aucun fichier reçu" }); return; }
     const imageUrl = `/uploads/products/${req.file.filename}`;
     res.json({ imageUrl });
+  },
+);
+
+router.post(
+  "/upload/preparation-photo",
+  requireAuth,
+  preparationUpload.single("photo"),
+  (req: Request, res: Response) => {
+    if (!req.file) { res.status(400).json({ error: "Aucune photo reçue" }); return; }
+    const photoUrl = `/uploads/preparations/${req.file.filename}`;
+    res.json({ photoUrl });
   },
 );
 

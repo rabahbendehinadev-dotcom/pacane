@@ -306,7 +306,7 @@ router.patch("/my-preparations/:id/status", requireAuth, async (req, res): Promi
   const user = req.user!;
   if (!user.workerId) { res.status(403).json({ error: "Aucun ouvrier lié à votre compte" }); return; }
 
-  const { status } = req.body as { status: string };
+  const { status, completionPhotoUrl } = req.body as { status: string; completionPhotoUrl?: string };
   const allowed = ["in_progress", "completed"];
   if (!allowed.includes(status)) { res.status(400).json({ error: "Statut invalide" }); return; }
 
@@ -320,7 +320,10 @@ router.patch("/my-preparations/:id/status", requireAuth, async (req, res): Promi
 
   const updates: Record<string, unknown> = { status };
   if (status === "in_progress" && !order.startedAt) updates.startedAt = new Date();
-  if (status === "completed") updates.completedAt = new Date();
+  if (status === "completed") {
+    updates.completedAt = new Date();
+    if (completionPhotoUrl) updates.completionPhotoUrl = completionPhotoUrl;
+  }
 
   const [updated] = await db.update(preparationOrdersTable).set(updates as any).where(eq(preparationOrdersTable.id, id)).returning();
   res.json(updated);
