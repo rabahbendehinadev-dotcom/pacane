@@ -34,8 +34,8 @@ export default function Adjustments() {
   const reasonDropdownRef = useRef<HTMLDivElement>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [productFilter, setProductFilter] = useState("");
-  const [productInputText, setProductInputText] = useState("");
+  const [productFilters, setProductFilters] = useState<string[]>([]); // array of product IDs
+  const [productInputText, setProductInputText] = useState(""); // search inside dropdown
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
@@ -95,10 +95,10 @@ export default function Adjustments() {
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
 
-  // ── Sales context for loss comparison (only when a product is selected exactly)
+  // ── Sales context for loss comparison (only when exactly one product is selected)
   const selectedFilterProduct = useMemo(
-    () => products.find(p => p.name.toLowerCase() === productFilter.toLowerCase()),
-    [products, productFilter]
+    () => productFilters.length === 1 ? products.find(p => String(p.id) === productFilters[0]) : undefined,
+    [products, productFilters]
   );
   const salesContextParams = useMemo(() => {
     if (!selectedFilterProduct) return null;
@@ -110,14 +110,14 @@ export default function Adjustments() {
     return p;
   }, [selectedFilterProduct, branchFilters, dateFrom, dateTo]);
 
-  const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
+  const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || productFilters.length > 0 || quantityTypeFilter !== "all";
 
   function resetFilters() {
     setBranchFilters([]);
     setReasonFilters([]);
     setDateFrom("");
     setDateTo("");
-    setProductFilter("");
+    setProductFilters([]);
     setProductInputText("");
     setQuantityTypeFilter("all");
     setSortBy("date");
@@ -132,6 +132,10 @@ export default function Adjustments() {
     setReasonFilters(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
   }
 
+  function toggleProduct(id: string) {
+    setProductFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
   // ── Client-side filtering + sorting
   const displayedAdjustments = useMemo(() => {
     let list = [...adjustments];
@@ -142,9 +146,8 @@ export default function Adjustments() {
     if (reasonFilters.length > 0) {
       list = list.filter(a => reasonFilters.includes(a.reason));
     }
-    if (productFilter) {
-      const q = productFilter.toLowerCase();
-      list = list.filter(a => a.productName.toLowerCase().includes(q));
+    if (productFilters.length > 0) {
+      list = list.filter(a => productFilters.includes(String(a.productId)));
     }
     if (quantityTypeFilter === "positive") list = list.filter(a => a.quantityChange > 0);
     if (quantityTypeFilter === "negative") list = list.filter(a => a.quantityChange < 0);
@@ -167,7 +170,7 @@ export default function Adjustments() {
       }
     });
     return list;
-  }, [adjustments, reasonFilters, productFilter, quantityTypeFilter, sortBy, sortDir]);
+  }, [adjustments, reasonFilters, productFilters, quantityTypeFilter, sortBy, sortDir]);
 
   // ── Batch sold quantities per product for table rows (must come after displayedAdjustments)
   const uniqueProductIds = useMemo(
@@ -295,7 +298,7 @@ export default function Adjustments() {
               ...(reasonFilters.length === 1 ? { reason: reasonFilters[0] } : {}),
               ...(dateFrom                  ? { dateFrom } : {}),
               ...(dateTo                    ? { dateTo } : {}),
-              ...(productFilter             ? { productSearch: productFilter } : {}),
+              ...(productFilters.length > 0  ? { productIds: productFilters.join(",") } : {}),
             }}
           />
           <Button
@@ -419,57 +422,71 @@ export default function Adjustments() {
             )}
           </div>
 
-          {/* Produit – autocomplete */}
-          <div className="space-y-1" ref={productDropdownRef}>
+          {/* Produit – multi-select avec recherche */}
+          <div className="space-y-1 relative" ref={productDropdownRef}>
             <label className="text-xs font-medium text-muted-foreground">Produit</label>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                className="h-9 pl-8 pr-7 text-sm"
-                placeholder="Rechercher un produit..."
-                value={productInputText}
-                onChange={e => {
-                  setProductInputText(e.target.value);
-                  setProductFilter(e.target.value);
-                  setProductDropdownOpen(true);
-                }}
-                onFocus={() => setProductDropdownOpen(true)}
-              />
-              {productFilter && (
-                <button
-                  onClick={() => { setProductFilter(""); setProductInputText(""); setProductDropdownOpen(false); }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2"
-                >
-                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                </button>
-              )}
-              {productDropdownOpen && productInputText && (
-                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-52 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setProductDropdownOpen(o => !o)}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-sm hover:bg-accent transition-colors"
+            >
+              <span className={productFilters.length === 0 ? "text-muted-foreground" : "font-medium"}>
+                {productFilters.length === 0
+                  ? "Tous les produits"
+                  : productFilters.length === 1
+                    ? products.find(p => String(p.id) === productFilters[0])?.name ?? "1 produit"
+                    : `${productFilters.length} produits sélectionnés`}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", productDropdownOpen && "rotate-180")} />
+            </button>
+            {productDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg overflow-hidden">
+                {/* Search inside dropdown */}
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      className="h-8 pl-8 text-sm"
+                      placeholder="Rechercher..."
+                      value={productInputText}
+                      onChange={e => setProductInputText(e.target.value)}
+                      onMouseDown={e => e.stopPropagation()}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="max-h-56 overflow-y-auto p-1">
+                  <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                    <input
+                      type="checkbox"
+                      checked={productFilters.length === 0}
+                      onChange={() => { setProductFilters([]); setProductInputText(""); }}
+                      className="h-4 w-4 rounded"
+                    />
+                    <span className="font-medium">Tous les produits</span>
+                  </label>
+                  <div className="my-1 border-t" />
                   {products
-                    .filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase()))
-                    .slice(0, 15)
+                    .filter(p => !productInputText || p.name.toLowerCase().includes(productInputText.toLowerCase()))
+                    .slice(0, 40)
                     .map(p => (
-                      <button
-                        key={p.id}
-                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                        onMouseDown={e => {
-                          e.preventDefault();
-                          setProductFilter(p.name);
-                          setProductInputText(p.name);
-                          setProductDropdownOpen(false);
-                        }}
-                      >
-                        <span className="font-medium">{p.name}</span>
-                        {p.sku && <span className="text-xs text-muted-foreground ml-auto shrink-0">{p.sku}</span>}
-                      </button>
-                    ))
-                  }
-                  {products.filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase())).length === 0 && (
+                      <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                        <input
+                          type="checkbox"
+                          checked={productFilters.includes(String(p.id))}
+                          onChange={() => toggleProduct(String(p.id))}
+                          className="h-4 w-4 rounded"
+                        />
+                        <span className="flex-1 truncate">{p.name}</span>
+                        {p.sku && <span className="text-xs text-muted-foreground shrink-0">{p.sku}</span>}
+                      </label>
+                    ))}
+                  {products.filter(p => !productInputText || p.name.toLowerCase().includes(productInputText.toLowerCase())).length === 0 && (
                     <p className="px-3 py-2 text-sm text-muted-foreground">Aucun produit trouvé</p>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Date de */}
@@ -541,12 +558,15 @@ export default function Adjustments() {
                 <button onClick={() => setDateTo("")}><X className="h-3 w-3" /></button>
               </span>
             )}
-            {productFilter && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 text-violet-800 px-2.5 py-0.5 text-xs font-medium">
-                Produit : {productFilter}
-                <button onClick={() => setProductFilter("")}><X className="h-3 w-3" /></button>
-              </span>
-            )}
+            {productFilters.map(pid => {
+              const p = products.find(pr => String(pr.id) === pid);
+              return p ? (
+                <span key={pid} className="inline-flex items-center gap-1 rounded-full bg-violet-100 text-violet-800 px-2.5 py-0.5 text-xs font-medium">
+                  {p.name}
+                  <button onClick={() => toggleProduct(pid)}><X className="h-3 w-3" /></button>
+                </span>
+              ) : null;
+            })}
             {quantityTypeFilter !== "all" && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-0.5 text-xs font-medium">
                 {quantityTypeFilter === "positive" ? "Entrées +" : "Sorties −"}
