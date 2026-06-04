@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, salesTable, saleItemsTable, salePaymentsTable, contactsTable, branchesTable, productsTable, usersTable, posSessionsTable, stockLevelsTable } from "@workspace/db";
-import { eq, and, sql, inArray, or } from "drizzle-orm";
+import { eq, and, sql, inArray, or, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
@@ -104,7 +104,7 @@ router.get("/sales/counts", requireAuth, requirePermission(P.sales.view), async 
 });
 
 router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
-  const { branchId, type, status, customerId, search, page: pageStr, limit: limitStr } = req.query as Record<string, string>;
+  const { branchId, type, status, customerId, search, productId, dateFrom, dateTo, page: pageStr, limit: limitStr } = req.query as Record<string, string>;
   const user = req.user!;
   const page = Math.max(1, parseInt(pageStr || "1", 10));
   const limit = Math.min(200, Math.max(1, parseInt(limitStr || "50", 10)));
@@ -141,6 +141,20 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
       sql`${salesTable.reference} ILIKE ${like}`,
       sql`EXISTS (SELECT 1 FROM contacts c WHERE c.id = ${salesTable.customerId} AND c.display_name ILIKE ${like})`
     ));
+  }
+  if (productId) {
+    const pid = parseInt(productId, 10);
+    if (!isNaN(pid)) {
+      conditions.push(sql`EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = ${salesTable.id} AND si.product_id = ${pid})`);
+    }
+  }
+  if (dateFrom) {
+    const d = new Date(dateFrom);
+    if (!isNaN(d.getTime())) conditions.push(gte(salesTable.createdAt, d));
+  }
+  if (dateTo) {
+    const d = new Date(dateTo);
+    if (!isNaN(d.getTime())) { d.setHours(23, 59, 59, 999); conditions.push(lte(salesTable.createdAt, d)); }
   }
   const where = conditions.length ? and(...conditions) : undefined;
 

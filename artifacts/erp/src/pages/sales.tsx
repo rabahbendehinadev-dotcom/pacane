@@ -272,6 +272,12 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+  const [productInputText, setProductInputText] = useState("");
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState<"type" | "form">("type");
   const [detailDoc, setDetailDoc] = useState<Sale | null>(null);
@@ -328,12 +334,23 @@ export default function Sales() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Close product dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target as Node)) {
+        setProductDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   // Reset page when tab / filters change
-  useEffect(() => { setPage(1); }, [tab, statusFilter, branchFilter]);
+  useEffect(() => { setPage(1); }, [tab, statusFilter, branchFilter, productFilter, dateFrom, dateTo]);
 
   // ── Server-side paginated sales list
   const { data: salesPage, isLoading } = useQuery<{ data: any[]; total: number; page: number; totalPages: number }>({
-    queryKey: ["sales-paginated", page, tab, statusFilter, branchFilter, debouncedSearch],
+    queryKey: ["sales-paginated", page, tab, statusFilter, branchFilter, debouncedSearch, productFilter, dateFrom, dateTo],
     queryFn: async () => {
       const token = localStorage.getItem("erp_token") ?? "";
       const params = new URLSearchParams({ page: String(page), limit: "50" });
@@ -341,6 +358,9 @@ export default function Sales() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (branchFilter !== "all") params.set("branchId", branchFilter);
       if (debouncedSearch) params.set("search", debouncedSearch);
+      if (productFilter) params.set("productId", productFilter);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
       const r = await fetch(`/api/sales?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error("Erreur chargement des ventes");
       return r.json();
@@ -721,7 +741,56 @@ export default function Sales() {
               ))}
             </div>
           )}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            {/* Product autocomplete filter */}
+            <div className="relative" ref={productDropdownRef}>
+              <div className={`flex items-center h-8 rounded-md border text-xs bg-background transition-colors ${productFilter ? "border-primary ring-1 ring-primary/30" : "border-input"}`} style={{ minWidth: 160 }}>
+                <Package className="h-3.5 w-3.5 text-muted-foreground ml-2 shrink-0" />
+                <input
+                  className="flex-1 px-2 h-full bg-transparent outline-none text-xs placeholder:text-muted-foreground"
+                  placeholder="Filtrer par produit..."
+                  value={productInputText}
+                  onChange={e => { setProductInputText(e.target.value); setProductDropdownOpen(true); if (!e.target.value) { setProductFilter(""); } }}
+                  onFocus={() => setProductDropdownOpen(true)}
+                />
+                {productFilter && (
+                  <button className="mr-1.5 text-muted-foreground hover:text-foreground" onMouseDown={e => { e.preventDefault(); setProductFilter(""); setProductInputText(""); setProductDropdownOpen(false); }}>
+                    <XIcon className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {productDropdownOpen && (
+                <div className="absolute z-50 mt-1 w-64 rounded-md border bg-popover shadow-md">
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {products.filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase())).slice(0, 15).length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">Aucun produit trouvé</div>
+                    ) : products.filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase())).slice(0, 15).map(p => (
+                      <button
+                        key={p.id}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors ${productFilter === String(p.id) ? "bg-accent font-medium" : ""}`}
+                        onMouseDown={e => { e.preventDefault(); setProductFilter(String(p.id)); setProductInputText(p.name); setProductDropdownOpen(false); }}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Date range */}
+            <div className="flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <Input type="date" className="h-8 w-32 text-xs px-2" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Du" />
+              <span className="text-xs text-muted-foreground">–</span>
+              <Input type="date" className="h-8 w-32 text-xs px-2" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Au" />
+              {(dateFrom || dateTo) && (
+                <button className="text-muted-foreground hover:text-foreground" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                  <XIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
             {/* Branch filter */}
             <Select value={branchFilter} onValueChange={setBranchFilter}>
               <SelectTrigger className="h-8 w-40 text-xs gap-1">
@@ -736,7 +805,7 @@ export default function Sales() {
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input className="pl-8 h-8 w-52 text-xs" placeholder="Réf., client..." value={search} onChange={e => setSearch(e.target.value)} />
+              <Input className="pl-8 h-8 w-44 text-xs" placeholder="Réf., client..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <span className="text-xs text-muted-foreground whitespace-nowrap">{totalDocs} doc{totalDocs !== 1 ? "s" : ""}</span>
           </div>
