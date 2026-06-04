@@ -179,16 +179,22 @@ router.get("/adjustments/sold-quantities", requireAuth, requirePermission(P.adju
   res.json(result);
 });
 
-// ── Sales context: sold qty for a product in a period (for loss comparison)
+// ── Sales context: sold qty for one or more products in a period (for loss comparison)
 router.get("/adjustments/sales-context", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
-  const { productId, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;
-  if (!productId) { res.json({ soldQty: 0, soldValue: 0 }); return; }
+  const { productId, productIds: productIdsRaw, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;
+
+  // Accept either a single productId or a comma-separated productIds list
+  const ids: number[] = productIdsRaw
+    ? productIdsRaw.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean)
+    : productId ? [parseInt(productId, 10)] : [];
+
+  if (ids.length === 0) { res.json({ soldQty: 0, soldValue: 0 }); return; }
 
   const scope = visibleBranchIds(req.user!);
   if (scope !== null && scope.length === 0) { res.json({ soldQty: 0, soldValue: 0 }); return; }
 
   const conds: any[] = [
-    eq(saleItemsTable.productId, parseInt(productId, 10)),
+    ids.length === 1 ? eq(saleItemsTable.productId, ids[0]) : inArray(saleItemsTable.productId, ids),
     // Only confirmed sales (not drafts/quotations)
     sql`${salesTable.type} IN ('order', 'sale')`,
   ];

@@ -95,20 +95,20 @@ export default function Adjustments() {
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
 
-  // ── Sales context for loss comparison (only when exactly one product is selected)
+  // ── Sales context for loss comparison (shown when ≥1 product selected)
   const selectedFilterProduct = useMemo(
     () => productFilters.length === 1 ? products.find(p => String(p.id) === productFilters[0]) : undefined,
     [products, productFilters]
   );
   const salesContextParams = useMemo(() => {
-    if (!selectedFilterProduct) return null;
-    const p: Record<string, string> = { productId: String(selectedFilterProduct.id) };
+    if (productFilters.length === 0) return null;
+    const p: Record<string, string> = { productIds: productFilters.join(",") };
     if (branchFilters.length === 1) p.branchId = branchFilters[0];
     else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
     if (dateFrom) p.dateFrom = dateFrom;
     if (dateTo) p.dateTo = dateTo;
     return p;
-  }, [selectedFilterProduct, branchFilters, dateFrom, dateTo]);
+  }, [productFilters, branchFilters, dateFrom, dateTo]);
 
   const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || productFilters.length > 0 || quantityTypeFilter !== "all";
 
@@ -618,11 +618,13 @@ export default function Adjustments() {
             </div>
           </div>
 
-          {/* ── Loss vs Sales comparison (shown when a product is selected) */}
-          {salesCtx && selectedFilterProduct && (
+          {/* ── Loss vs Sales comparison (shown when ≥1 product selected) */}
+          {salesCtx && productFilters.length > 0 && (
             <div className="rounded-lg border border-orange-200 bg-orange-50/60 px-4 py-3">
               <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">
-                Comparaison ventes / pertes — {selectedFilterProduct.name}
+                {productFilters.length === 1 && selectedFilterProduct
+                  ? `Comparaison ventes / pertes — ${selectedFilterProduct.name}`
+                  : `Comparaison ventes / pertes — ${productFilters.length} produits sélectionnés`}
               </div>
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <div className="flex items-center gap-1.5">
