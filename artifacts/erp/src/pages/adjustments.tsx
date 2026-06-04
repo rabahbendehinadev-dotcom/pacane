@@ -32,6 +32,9 @@ export default function Adjustments() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [productFilter, setProductFilter] = useState("");
+  const [productInputText, setProductInputText] = useState("");
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
   const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
   const [sortByQuantity, setSortByQuantity] = useState<"none" | "asc" | "desc">("none");
   const [sortByDate, setSortByDate] = useState<"none" | "asc" | "desc">("none");
@@ -40,6 +43,9 @@ export default function Adjustments() {
     function handleOutside(e: MouseEvent) {
       if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
         setBranchDropdownOpen(false);
+      }
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target as Node)) {
+        setProductDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleOutside);
@@ -91,6 +97,7 @@ export default function Adjustments() {
     setDateFrom("");
     setDateTo("");
     setProductFilter("");
+    setProductInputText("");
     setQuantityTypeFilter("all");
     setSortByQuantity("none");
     setSortByDate("none");
@@ -291,21 +298,55 @@ export default function Adjustments() {
             </Select>
           </div>
 
-          {/* Produit */}
-          <div className="space-y-1">
+          {/* Produit – autocomplete */}
+          <div className="space-y-1" ref={productDropdownRef}>
             <label className="text-xs font-medium text-muted-foreground">Produit</label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
-                className="h-9 pl-8 text-sm"
+                className="h-9 pl-8 pr-7 text-sm"
                 placeholder="Rechercher un produit..."
-                value={productFilter}
-                onChange={e => setProductFilter(e.target.value)}
+                value={productInputText}
+                onChange={e => {
+                  setProductInputText(e.target.value);
+                  setProductFilter(e.target.value);
+                  setProductDropdownOpen(true);
+                }}
+                onFocus={() => setProductDropdownOpen(true)}
               />
               {productFilter && (
-                <button onClick={() => setProductFilter("")} className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  onClick={() => { setProductFilter(""); setProductInputText(""); setProductDropdownOpen(false); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                >
                   <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
                 </button>
+              )}
+              {productDropdownOpen && productInputText && (
+                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-52 overflow-y-auto">
+                  {products
+                    .filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase()))
+                    .slice(0, 15)
+                    .map(p => (
+                      <button
+                        key={p.id}
+                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          setProductFilter(p.name);
+                          setProductInputText(p.name);
+                          setProductDropdownOpen(false);
+                        }}
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        {p.sku && <span className="text-xs text-muted-foreground ml-auto shrink-0">{p.sku}</span>}
+                      </button>
+                    ))
+                  }
+                  {products.filter(p => p.name.toLowerCase().includes(productInputText.toLowerCase())).length === 0 && (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">Aucun produit trouvé</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
