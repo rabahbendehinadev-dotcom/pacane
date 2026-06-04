@@ -709,10 +709,10 @@ export default function InternalConsumptions() {
                         <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 ml-1" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0" align="start">
+                    <PopoverContent className="w-72 p-0" align="start" side="bottom">
                       <Command>
                         <CommandInput placeholder="Rechercher..." />
-                        <CommandList>
+                        <CommandList className="max-h-52 overflow-y-auto overscroll-contain">
                           <CommandEmpty>Aucun produit trouvé</CommandEmpty>
                           <CommandGroup>
                             {products.map(p => (
