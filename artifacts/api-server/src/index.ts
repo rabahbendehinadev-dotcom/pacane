@@ -120,6 +120,9 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
     await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
     await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
+    await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS photo_data TEXT;`);
+    // Rename legacy reason value
+    await db.execute(sql`UPDATE adjustments SET reason = 'DLC' WHERE reason = 'Perte / Casse';`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
