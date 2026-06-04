@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, useGetAdjustmentsStats, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateAdjustmentPdf } from "@/lib/pdf-generator";
 import { ExportButton } from "@/components/ExportButton";
-import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +93,32 @@ export default function Adjustments() {
   });
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
+
+  // ── Sales context for loss comparison (only when a product is selected exactly)
+  const selectedFilterProduct = useMemo(
+    () => products.find(p => p.name.toLowerCase() === productFilter.toLowerCase()),
+    [products, productFilter]
+  );
+  const salesContextParams = useMemo(() => {
+    if (!selectedFilterProduct) return null;
+    const p: Record<string, string> = { productId: String(selectedFilterProduct.id) };
+    if (branchFilters.length === 1) p.branchId = branchFilters[0];
+    else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
+    if (dateFrom) p.dateFrom = dateFrom;
+    if (dateTo) p.dateTo = dateTo;
+    return p;
+  }, [selectedFilterProduct, branchFilters, dateFrom, dateTo]);
+
+  const { data: salesCtx } = useQuery<{ soldQty: number; soldValue: number }>({
+    queryKey: ["adjustments-sales-ctx", salesContextParams],
+    queryFn: async () => {
+      if (!salesContextParams) return { soldQty: 0, soldValue: 0 };
+      const qs = new URLSearchParams(salesContextParams).toString();
+      return customFetch(`/api/adjustments/sales-context?${qs}`);
+    },
+    enabled: !!salesContextParams,
+    staleTime: 60_000,
+  });
 
   const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
 
@@ -542,6 +568,52 @@ export default function Adjustments() {
               <div className="text-xs text-muted-foreground">ajustements négatifs</div>
             </div>
           </div>
+
+          {/* ── Loss vs Sales comparison (shown when a product is selected) */}
+          {salesCtx && selectedFilterProduct && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50/60 px-4 py-3">
+              <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">
+                Comparaison ventes / pertes — {selectedFilterProduct.name}
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-400" />
+                  <span className="text-muted-foreground">Vendu :</span>
+                  <span className="font-bold text-blue-700">{fmt(salesCtx.soldQty)} unités</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400" />
+                  <span className="text-muted-foreground">Perdu :</span>
+                  <span className="font-bold text-red-600">{fmt(computedStats.totalPerteQuantite)} unités</span>
+                </div>
+                {salesCtx.soldQty > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <span className="text-muted-foreground">Taux de perte :</span>
+                    <span className={`font-bold ${
+                      (computedStats.totalPerteQuantite / salesCtx.soldQty) > 0.05
+                        ? "text-red-600"
+                        : "text-amber-600"
+                    }`}>
+                      {((computedStats.totalPerteQuantite / salesCtx.soldQty) * 100).toFixed(1)} %
+                    </span>
+                  </div>
+                )}
+                {salesCtx.soldQty === 0 && (
+                  <span className="text-xs text-muted-foreground italic">Aucune vente enregistrée sur la période</span>
+                )}
+              </div>
+              {/* Mini progress bar */}
+              {salesCtx.soldQty > 0 && (
+                <div className="mt-2 h-2 w-full rounded-full bg-blue-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-red-400 transition-all"
+                    style={{ width: `${Math.min(100, (computedStats.totalPerteQuantite / (salesCtx.soldQty + computedStats.totalPerteQuantite)) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Breakdown by reason */}
           {computedStats.byReason.length > 0 && (

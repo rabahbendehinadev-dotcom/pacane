@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, adjustmentsTable, branchesTable, productsTable, usersTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, adjustmentsTable, branchesTable, productsTable, usersTable, saleItemsTable, salesTable } from "@workspace/db";
+import { eq, sql, and, gte, lte, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
@@ -126,6 +126,48 @@ router.post("/adjustments", requireAuth, requirePermission(P.adjustments.create)
   const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, branchId));
   const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
   res.status(201).json({ ...adj, branchName: branch?.name ?? "", productName: product?.name ?? "", quantityChange: parseFloat(adj.quantityChange as string) });
+});
+
+// ── Sales context: sold qty for a product in a period (for loss comparison)
+router.get("/adjustments/sales-context", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
+  const { productId, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;
+  if (!productId) { res.json({ soldQty: 0, soldValue: 0 }); return; }
+
+  const scope = visibleBranchIds(req.user!);
+  if (scope !== null && scope.length === 0) { res.json({ soldQty: 0, soldValue: 0 }); return; }
+
+  const conds: any[] = [
+    eq(saleItemsTable.productId, parseInt(productId, 10)),
+    // Only confirmed sales (not drafts/quotations)
+    sql`${salesTable.type} IN ('order', 'sale')`,
+  ];
+
+  if (scope !== null) conds.push(inArray(salesTable.branchId, scope));
+
+  if (branchIds) {
+    const ids = branchIds.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean);
+    const allowed = scope !== null ? ids.filter(id => scope.includes(id)) : ids;
+    if (allowed.length > 0) conds.push(inArray(salesTable.branchId, allowed));
+  } else if (branchId) {
+    conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  }
+
+  if (dateFrom) conds.push(gte(salesTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
+    conds.push(lte(salesTable.createdAt, d));
+  }
+
+  const [row] = await db
+    .select({
+      soldQty:   sql<number>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+      soldValue: sql<number>`COALESCE(SUM(${saleItemsTable.quantity}::numeric * ${saleItemsTable.unitPrice}::numeric), 0)`,
+    })
+    .from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .where(and(...conds));
+
+  res.json({ soldQty: Number(row?.soldQty ?? 0), soldValue: Number(row?.soldValue ?? 0) });
 });
 
 router.delete("/adjustments/:id", requireAuth, requirePermission(P.adjustments.create), async (req, res): Promise<void> => {
