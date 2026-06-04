@@ -175,15 +175,17 @@ export default function Adjustments() {
   );
   const soldQtyParams = useMemo(() => {
     if (uniqueProductIds.length === 0) return null;
-    const p: Record<string, string> = { productIds: uniqueProductIds.join(",") };
+    const uniqueDates = [...new Set(displayedAdjustments.map(a => format(new Date(a.createdAt), "yyyy-MM-dd")))];
+    const p: Record<string, string> = {
+      productIds: uniqueProductIds.join(","),
+      dates: uniqueDates.join(","),
+    };
     if (branchFilters.length === 1) p.branchId = branchFilters[0];
     else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
-    if (dateFrom) p.dateFrom = dateFrom;
-    if (dateTo) p.dateTo = dateTo;
     return p;
-  }, [uniqueProductIds, branchFilters, dateFrom, dateTo]);
+  }, [uniqueProductIds, displayedAdjustments, branchFilters]);
 
-  const { data: soldQtyMap = {} } = useQuery<Record<number, number>>({
+  const { data: soldQtyMap = {} } = useQuery<Record<string, number>>({
     queryKey: ["adjustments-sold-qty", soldQtyParams],
     queryFn: async () => {
       if (!soldQtyParams) return {};
@@ -681,11 +683,27 @@ export default function Adjustments() {
           <Table>
             <TableHeader>
               <TableRow>
-                {(["reference","date","product","branch","qty","value","reason","createdBy"] as const).map(col => {
+                {(["reference","date","product","branch","qty"] as const).map(col => {
                   const labels: Record<string,string> = {
                     reference: "Référence", date: "Date", product: "Produit",
-                    branch: "Boutique", qty: "Variation", value: "Valeur (DA)",
-                    reason: "Motif", createdBy: "Par",
+                    branch: "Boutique", qty: "Variation",
+                  };
+                  return (
+                    <TableHead key={col}>
+                      <button
+                        onClick={() => handleSort(col)}
+                        className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+                      >
+                        {labels[col]}
+                        <SortIcon col={col} />
+                      </button>
+                    </TableHead>
+                  );
+                })}
+                <TableHead className="text-xs text-right text-blue-600 font-semibold">Vendu</TableHead>
+                {(["value","reason","createdBy"] as const).map(col => {
+                  const labels: Record<string,string> = {
+                    value: "Valeur (DA)", reason: "Motif", createdBy: "Par",
                   };
                   return (
                     <TableHead key={col}>
@@ -704,10 +722,10 @@ export default function Adjustments() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
               ) : displayedAdjustments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                     {hasActiveFilters ? "Aucun ajustement pour ces filtres" : "Aucun ajustement"}
                   </TableCell>
                 </TableRow>
@@ -721,11 +739,15 @@ export default function Adjustments() {
                     <div className={`font-mono font-medium ${a.quantityChange > 0 ? "text-green-600" : "text-red-600"}`}>
                       {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
                     </div>
-                    {soldQtyMap[a.productId] != null && (
-                      <div className="text-xs text-blue-500 font-normal mt-0.5 whitespace-nowrap">
-                        vendu : {fmt(soldQtyMap[a.productId])}
-                      </div>
-                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-right">
+                    {(() => {
+                      const dateKey = format(new Date(a.createdAt), "yyyy-MM-dd");
+                      const qty = soldQtyMap[`${a.productId}_${dateKey}`];
+                      return qty != null
+                        ? <span className="font-mono text-blue-600">{fmt(qty)}</span>
+                        : <span className="text-muted-foreground/40">—</span>;
+                    })()}
                   </TableCell>
                   <TableCell className="text-sm font-mono">
                     {a.quantityChange < 0 && a.costPrice != null

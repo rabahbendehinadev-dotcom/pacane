@@ -130,7 +130,7 @@ router.post("/adjustments", requireAuth, requirePermission(P.adjustments.create)
 
 // ── Batch sold quantities for multiple products (for per-row comparison)
 router.get("/adjustments/sold-quantities", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
-  const { productIds: productIdsRaw, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;
+  const { productIds: productIdsRaw, dates: datesRaw, branchId, branchIds } = req.query as Record<string, string>;
   if (!productIdsRaw) { res.json({}); return; }
 
   const productIds = productIdsRaw.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean);
@@ -154,24 +154,28 @@ router.get("/adjustments/sold-quantities", requireAuth, requirePermission(P.adju
     conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
   }
 
-  if (dateFrom) conds.push(gte(salesTable.createdAt, new Date(dateFrom)));
-  if (dateTo) {
-    const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
-    conds.push(lte(salesTable.createdAt, d));
+  // Filter to specific adjustment dates only (YYYY-MM-DD format validated)
+  const dates = datesRaw
+    ? datesRaw.split(",").map(d => d.trim()).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    : [];
+  if (dates.length > 0) {
+    conds.push(sql`DATE(${salesTable.createdAt}) IN (${sql.raw(dates.map(d => `'${d}'`).join(","))})`);
   }
 
   const rows = await db
     .select({
       productId: saleItemsTable.productId,
+      saleDate: sql<string>`DATE(${salesTable.createdAt})`,
       soldQty: sql<number>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
     })
     .from(saleItemsTable)
     .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
     .where(and(...conds))
-    .groupBy(saleItemsTable.productId);
+    .groupBy(saleItemsTable.productId, sql`DATE(${salesTable.createdAt})`);
 
-  const result: Record<number, number> = {};
-  for (const r of rows) result[r.productId] = Number(r.soldQty);
+  // Key format: "productId_YYYY-MM-DD"
+  const result: Record<string, number> = {};
+  for (const r of rows) result[`${r.productId}_${r.saleDate}`] = Number(r.soldQty);
   res.json(result);
 });
 
