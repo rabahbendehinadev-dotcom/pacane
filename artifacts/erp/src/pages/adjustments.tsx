@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, useGetAdjustmentsStats, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateAdjustmentPdf } from "@/lib/pdf-generator";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
@@ -24,7 +24,9 @@ function fmt(n: number) {
 export default function Adjustments() {
   const qc = useQueryClient();
 
-  const [branchFilter, setBranchFilter] = useState("all");
+  const [branchFilters, setBranchFilters] = useState<string[]>([]); // empty = all
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
   const [reasonFilter, setReasonFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -33,6 +35,16 @@ export default function Adjustments() {
   const [sortByQuantity, setSortByQuantity] = useState<"none" | "asc" | "desc">("none");
   const [sortByDate, setSortByDate] = useState<"none" | "asc" | "desc">("none");
 
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [form, setForm] = useState({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
@@ -40,7 +52,8 @@ export default function Adjustments() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const queryParams = {
-    ...(branchFilter !== "all" ? { branchId: parseInt(branchFilter) } : {}),
+    // pass single branchId to server only when exactly one branch is selected (for stats accuracy)
+    ...(branchFilters.length === 1 ? { branchId: parseInt(branchFilters[0]) } : {}),
     ...(reasonFilter !== "all" ? { reason: reasonFilter } : {}),
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
@@ -69,10 +82,10 @@ export default function Adjustments() {
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
 
-  const hasActiveFilters = branchFilter !== "all" || reasonFilter !== "all" || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
+  const hasActiveFilters = branchFilters.length > 0 || reasonFilter !== "all" || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
 
   function resetFilters() {
-    setBranchFilter("all");
+    setBranchFilters([]);
     setReasonFilter("all");
     setDateFrom("");
     setDateTo("");
@@ -82,9 +95,17 @@ export default function Adjustments() {
     setSortByDate("none");
   }
 
+  function toggleBranch(id: string) {
+    setBranchFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
   // ── Client-side filtering + sorting
   const displayedAdjustments = useMemo(() => {
     let list = [...adjustments];
+    // Multi-branch filter (client-side when 2+ selected)
+    if (branchFilters.length > 1) {
+      list = list.filter(a => branchFilters.includes(String(a.branchId)));
+    }
     if (productFilter) {
       const q = productFilter.toLowerCase();
       list = list.filter(a => a.productName.toLowerCase().includes(q));
@@ -168,18 +189,50 @@ export default function Adjustments() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {/* Boutique */}
-          <div className="space-y-1">
+          {/* Boutique — multi-select */}
+          <div className="space-y-1 relative" ref={branchDropdownRef}>
             <label className="text-xs font-medium text-muted-foreground">Boutique</label>
-            <Select value={branchFilter} onValueChange={setBranchFilter}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Toutes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les boutiques</SelectItem>
-                {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <button
+              type="button"
+              onClick={() => setBranchDropdownOpen(o => !o)}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-sm hover:bg-accent transition-colors"
+            >
+              <span className={branchFilters.length === 0 ? "text-muted-foreground" : "font-medium"}>
+                {branchFilters.length === 0
+                  ? "Toutes les boutiques"
+                  : branchFilters.length === 1
+                    ? branches.find(b => String(b.id) === branchFilters[0])?.name
+                    : `${branchFilters.length} boutiques sélectionnées`}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", branchDropdownOpen && "rotate-180")} />
+            </button>
+            {branchDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg overflow-hidden">
+                <div className="max-h-56 overflow-y-auto p-1">
+                  <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                    <input
+                      type="checkbox"
+                      checked={branchFilters.length === 0}
+                      onChange={() => setBranchFilters([])}
+                      className="h-4 w-4 rounded"
+                    />
+                    <span className="font-medium">Toutes les boutiques</span>
+                  </label>
+                  <div className="my-1 border-t" />
+                  {branches.map(b => (
+                    <label key={b.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                      <input
+                        type="checkbox"
+                        checked={branchFilters.includes(String(b.id))}
+                        onChange={() => toggleBranch(String(b.id))}
+                        className="h-4 w-4 rounded"
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Motif */}
@@ -260,12 +313,12 @@ export default function Adjustments() {
 
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {branchFilter !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">
-                {branches.find(b => String(b.id) === branchFilter)?.name}
-                <button onClick={() => setBranchFilter("all")}><X className="h-3 w-3" /></button>
+            {branchFilters.map(bid => (
+              <span key={bid} className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">
+                {branches.find(b => String(b.id) === bid)?.name}
+                <button onClick={() => setBranchFilters(prev => prev.filter(x => x !== bid))}><X className="h-3 w-3" /></button>
               </span>
-            )}
+            ))}
             {reasonFilter !== "all" && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-2.5 py-0.5 text-xs font-medium">
                 {reasonFilter}
@@ -306,9 +359,11 @@ export default function Adjustments() {
           <CardTitle className="text-base font-semibold flex items-center gap-2 text-red-700">
             <TrendingDown className="h-4 w-4" />
             Pertes & ajustements négatifs
-            {branchFilter !== "all" && (
+            {branchFilters.length > 0 && (
               <span className="ml-1 text-xs font-normal text-red-500/80">
-                — {branches.find(b => String(b.id) === branchFilter)?.name}
+                — {branchFilters.length === 1
+                  ? branches.find(b => String(b.id) === branchFilters[0])?.name
+                  : `${branchFilters.length} boutiques`}
               </span>
             )}
           </CardTitle>
