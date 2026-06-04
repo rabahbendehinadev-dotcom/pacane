@@ -146,6 +146,7 @@ export default function InternalConsumptions() {
   const [formItems, setFormItems] = useState<ICItem[]>([]);
   const [newItem, setNewItem] = useState({ productId: "", quantity: "", unitCost: "" });
   const [productComboOpen, setProductComboOpen] = useState(false);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Data
@@ -702,37 +703,58 @@ export default function InternalConsumptions() {
               )}
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-5">
-                  <Popover open={productComboOpen} onOpenChange={setProductComboOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-sm font-normal">
-                        {selectedProduct ? selectedProduct.name : "Choisir produit..."}
-                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 ml-1" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0" align="start" side="bottom">
-                      <Command>
-                        <CommandInput placeholder="Rechercher..." />
-                        <CommandList className="max-h-52 overflow-y-auto overscroll-contain">
-                          <CommandEmpty>Aucun produit trouvé</CommandEmpty>
-                          <CommandGroup>
-                            {products.map(p => (
-                              <CommandItem
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={selectedProduct ? selectedProduct.name : "Rechercher produit..."}
+                      value={productSearchQuery}
+                      onFocus={() => setProductComboOpen(true)}
+                      onChange={e => { setProductSearchQuery(e.target.value); setProductComboOpen(true); }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    {selectedProduct && !productSearchQuery && (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => { setNewItem(prev => ({ ...prev, productId: "", unitCost: "" })); setProductSearchQuery(""); }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {productComboOpen && (
+                      <div className="absolute z-50 top-full left-0 mt-1 w-72 rounded-md border bg-popover shadow-md">
+                        <div
+                          className="overflow-y-auto overscroll-contain"
+                          style={{ maxHeight: "210px", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+                        >
+                          {products
+                            .filter(p => !productSearchQuery || p.name.toLowerCase().includes(productSearchQuery.toLowerCase()))
+                            .map(p => (
+                              <button
                                 key={p.id}
-                                value={p.name}
-                                onSelect={() => {
+                                type="button"
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2 ${newItem.productId === String(p.id) ? "bg-accent font-medium" : ""}`}
+                                onPointerDown={e => {
+                                  e.preventDefault();
                                   setNewItem(prev => ({ ...prev, productId: String(p.id), unitCost: String((p as any).costPrice ?? 0) }));
+                                  setProductSearchQuery("");
                                   setProductComboOpen(false);
                                 }}
                               >
-                                <Check className={`h-3.5 w-3.5 mr-2 ${newItem.productId === String(p.id) ? "opacity-100" : "opacity-0"}`} />
+                                <Check className={`h-3 w-3 shrink-0 text-primary ${newItem.productId === String(p.id) ? "opacity-100" : "opacity-0"}`} />
                                 {p.name}
-                              </CommandItem>
+                              </button>
                             ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                          {products.filter(p => !productSearchQuery || p.name.toLowerCase().includes(productSearchQuery.toLowerCase())).length === 0 && (
+                            <p className="px-3 py-4 text-sm text-center text-muted-foreground">Aucun produit trouvé</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {productComboOpen && (
+                      <div className="fixed inset-0 z-40" onPointerDown={() => setProductComboOpen(false)} />
+                    )}
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <Input
