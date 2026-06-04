@@ -119,6 +119,32 @@ export default function Adjustments() {
     return list;
   }, [adjustments, productFilter, quantityTypeFilter, sortByQuantity, sortByDate]);
 
+  // ── Stats computed from the currently displayed (filtered) rows
+  const computedStats = useMemo(() => {
+    const negatives = displayedAdjustments.filter(a => a.quantityChange < 0);
+    let totalPerteQuantite = 0;
+    let totalPerteValeur = 0;
+    const byReasonMap = new Map<string, { count: number; quantite: number; valeur: number }>();
+    for (const a of negatives) {
+      const qty = Math.abs(a.quantityChange);
+      const cost = a.costPrice ?? 0;
+      const valeur = qty * cost;
+      totalPerteQuantite += qty;
+      totalPerteValeur += valeur;
+      const existing = byReasonMap.get(a.reason) ?? { count: 0, quantite: 0, valeur: 0 };
+      byReasonMap.set(a.reason, { count: existing.count + 1, quantite: existing.quantite + qty, valeur: existing.valeur + valeur });
+    }
+    const byReason = Array.from(byReasonMap.entries())
+      .map(([reason, v]) => ({ reason, ...v }))
+      .sort((a, b) => b.valeur - a.valeur);
+    return {
+      totalPerteQuantite: Math.round(totalPerteQuantite * 100) / 100,
+      totalPerteValeur: Math.round(totalPerteValeur * 100) / 100,
+      countPertes: negatives.length,
+      byReason,
+    };
+  }, [displayedAdjustments]);
+
   function toggleSortByQuantity() {
     setSortByQuantity(s => s === "none" ? "asc" : s === "asc" ? "desc" : "none");
   }
@@ -375,27 +401,27 @@ export default function Adjustments() {
               <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
                 <AlertTriangle className="h-3 w-3 text-red-400" />Valeur perdue
               </div>
-              <div className="text-xl font-bold text-red-600">{fmt(stats?.totalPerteValeur ?? 0)}</div>
+              <div className="text-xl font-bold text-red-600">{fmt(computedStats.totalPerteValeur)}</div>
               <div className="text-xs text-muted-foreground">DA</div>
             </div>
             <div className="rounded-lg bg-white border border-red-100 p-3 text-center">
               <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
                 <PackageMinus className="h-3 w-3 text-orange-400" />Unités perdues
               </div>
-              <div className="text-xl font-bold text-orange-600">{fmt(stats?.totalPerteQuantite ?? 0)}</div>
+              <div className="text-xl font-bold text-orange-600">{fmt(computedStats.totalPerteQuantite)}</div>
               <div className="text-xs text-muted-foreground">unités</div>
             </div>
             <div className="rounded-lg bg-white border border-red-100 p-3 text-center">
               <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
                 <BarChart3 className="h-3 w-3 text-slate-400" />Opérations
               </div>
-              <div className="text-xl font-bold text-slate-700">{stats?.countPertes ?? 0}</div>
+              <div className="text-xl font-bold text-slate-700">{computedStats.countPertes}</div>
               <div className="text-xs text-muted-foreground">ajustements négatifs</div>
             </div>
           </div>
 
           {/* Breakdown by reason */}
-          {stats && (stats.byReason ?? []).length > 0 && (
+          {computedStats.byReason.length > 0 && (
             <div>
               <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Détail par motif</div>
               <div className="rounded-md border border-red-100 bg-white overflow-hidden">
@@ -409,7 +435,7 @@ export default function Adjustments() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(stats.byReason ?? []).map((row, i) => (
+                    {computedStats.byReason.map((row, i) => (
                       <tr key={row.reason} className={cn("border-b border-red-50 last:border-0", i % 2 === 1 && "bg-red-50/20")}>
                         <td className="px-3 py-2 font-medium">{row.reason}</td>
                         <td className="px-3 py-2 text-right text-muted-foreground">{row.count}</td>
@@ -423,7 +449,7 @@ export default function Adjustments() {
             </div>
           )}
 
-          {stats && (stats.countPertes ?? 0) === 0 && (
+          {!isLoading && computedStats.countPertes === 0 && (
             <div className="text-sm text-center text-muted-foreground py-2">Aucune perte enregistrée</div>
           )}
         </CardContent>
