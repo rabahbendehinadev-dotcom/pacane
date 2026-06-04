@@ -116,11 +116,13 @@ router.get("/adjustments", requireAuth, requirePermission(P.adjustments.view), a
 });
 
 router.post("/adjustments", requireAuth, requirePermission(P.adjustments.create), async (req, res): Promise<void> => {
-  const { branchId, productId, quantityChange, reason, notes } = req.body;
+  const { branchId, productId, quantityChange, reason, notes, photoData } = req.body;
   if (!branchId || !productId || quantityChange == null || !reason) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   const reference = genRef();
   const [adj] = await db.insert(adjustmentsTable).values({
-    reference, branchId, productId, quantityChange: quantityChange.toString(), reason, notes, createdByUserId: req.userId
+    reference, branchId, productId, quantityChange: quantityChange.toString(), reason, notes,
+    photoData: photoData ?? null,
+    createdByUserId: req.userId
   }).returning();
   await adjustStock(productId, branchId, parseFloat(quantityChange.toString()), "adjustment", reference);
   const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, branchId));

@@ -10,6 +10,7 @@ export const adjustmentsTable = pgTable("adjustments", {
   quantityChange: numeric("quantity_change", { precision: 15, scale: 3 }).notNull(),
   reason: text("reason").notNull(),
   notes: text("notes"),
+  photoData: text("photo_data"), // base64 compressed JPEG
   createdByUserId: integer("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

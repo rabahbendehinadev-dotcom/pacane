@@ -62,6 +62,7 @@ export default function Adjustments() {
   const [productSearch, setProductSearch] = useState("");
   const [form, setForm] = useState({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
   const [quantitySign, setQuantitySign] = useState<1 | -1>(-1);
+  const [photoData, setPhotoData] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -270,6 +271,27 @@ export default function Adjustments() {
     }
   }
 
+  function compressImage(file: File, maxPx = 900, quality = 0.72): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = ev => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.src = ev.target!.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   const createMutation = useCreateAdjustment({
     mutation: {
       onSuccess: () => {
@@ -307,6 +329,7 @@ export default function Adjustments() {
               setForm({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
               setQuantitySign(-1);
               setProductSearch("");
+              setPhotoData(null);
               setDialogOpen(true);
             }}
             className="gap-2"
@@ -938,6 +961,56 @@ export default function Adjustments() {
               <Label>Notes</Label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
+
+            {/* Photo obligatoire — caméra live uniquement */}
+            <div>
+              <Label className="flex items-center gap-1">
+                Photo <span className="text-destructive">*</span>
+                <span className="text-xs text-muted-foreground font-normal ml-1">(caméra uniquement)</span>
+              </Label>
+              <div className="mt-1.5">
+                {photoData ? (
+                  <div className="relative w-full">
+                    <img
+                      src={photoData}
+                      alt="Photo de l'ajustement"
+                      className="w-full max-h-40 object-cover rounded-md border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPhotoData(null)}
+                      className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80"
+                      title="Reprendre la photo"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <p className="text-xs text-green-600 mt-1 font-medium">✓ Photo capturée</p>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 w-full h-24 border-2 border-dashed rounded-md cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors">
+                    <span className="text-2xl">📷</span>
+                    <span className="text-sm text-muted-foreground">Appuyer pour ouvrir la caméra</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="sr-only"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const compressed = await compressImage(file);
+                          setPhotoData(compressed);
+                        } catch {
+                          toast({ title: "Erreur lors de la capture", variant: "destructive" });
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
           </div>
           <DialogFooter className="shrink-0 pt-2 border-t">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
@@ -948,10 +1021,11 @@ export default function Adjustments() {
                   productId: parseInt(form.productId),
                   quantityChange: quantitySign * parseFloat(form.quantityChange),
                   reason: form.reason,
-                  notes: form.notes || null
-                }
+                  notes: form.notes || null,
+                  photoData: photoData ?? undefined,
+                } as Parameters<typeof createMutation.mutate>[0]["data"]
               })}
-              disabled={!form.branchId || !form.productId || !form.quantityChange || isNaN(parseFloat(form.quantityChange)) || !form.reason || createMutation.isPending}
+              disabled={!form.branchId || !form.productId || !form.quantityChange || isNaN(parseFloat(form.quantityChange)) || parseFloat(form.quantityChange) <= 0 || !form.reason || !photoData || createMutation.isPending}
             >
               Enregistrer
             </Button>
