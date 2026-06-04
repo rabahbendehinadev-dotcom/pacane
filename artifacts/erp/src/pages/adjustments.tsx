@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, useGetAdjustmentsStats, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateAdjustmentPdf } from "@/lib/pdf-generator";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2 } from "lucide-react";
+import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
@@ -28,6 +28,9 @@ export default function Adjustments() {
   const [reasonFilter, setReasonFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+  const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
+  const [sortByQuantity, setSortByQuantity] = useState<"none" | "asc" | "desc">("none");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -65,13 +68,34 @@ export default function Adjustments() {
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
 
-  const hasActiveFilters = branchFilter !== "all" || reasonFilter !== "all" || !!dateFrom || !!dateTo;
+  const hasActiveFilters = branchFilter !== "all" || reasonFilter !== "all" || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
 
   function resetFilters() {
     setBranchFilter("all");
     setReasonFilter("all");
     setDateFrom("");
     setDateTo("");
+    setProductFilter("");
+    setQuantityTypeFilter("all");
+    setSortByQuantity("none");
+  }
+
+  // ── Client-side filtering + sorting
+  const displayedAdjustments = useMemo(() => {
+    let list = [...adjustments];
+    if (productFilter) {
+      const q = productFilter.toLowerCase();
+      list = list.filter(a => a.productName.toLowerCase().includes(q));
+    }
+    if (quantityTypeFilter === "positive") list = list.filter(a => a.quantityChange > 0);
+    if (quantityTypeFilter === "negative") list = list.filter(a => a.quantityChange < 0);
+    if (sortByQuantity === "asc") list.sort((a, b) => a.quantityChange - b.quantityChange);
+    if (sortByQuantity === "desc") list.sort((a, b) => b.quantityChange - a.quantityChange);
+    return list;
+  }, [adjustments, productFilter, quantityTypeFilter, sortByQuantity]);
+
+  function toggleSortByQuantity() {
+    setSortByQuantity(s => s === "none" ? "asc" : s === "asc" ? "desc" : "none");
   }
 
   async function confirmDelete() {
@@ -135,7 +159,7 @@ export default function Adjustments() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {/* Boutique */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Boutique</label>
@@ -164,6 +188,25 @@ export default function Adjustments() {
             </Select>
           </div>
 
+          {/* Produit */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Produit</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                className="h-9 pl-8 text-sm"
+                placeholder="Rechercher un produit..."
+                value={productFilter}
+                onChange={e => setProductFilter(e.target.value)}
+              />
+              {productFilter && (
+                <button onClick={() => setProductFilter("")} className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Date de */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
@@ -189,6 +232,21 @@ export default function Adjustments() {
               min={dateFrom || undefined}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
+          </div>
+
+          {/* Type de quantité */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Quantité</label>
+            <Select value={quantityTypeFilter} onValueChange={setQuantityTypeFilter}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les mouvements</SelectItem>
+                <SelectItem value="positive">✚ Entrées (positif)</SelectItem>
+                <SelectItem value="negative">✖ Sorties (négatif)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -216,6 +274,18 @@ export default function Adjustments() {
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2.5 py-0.5 text-xs font-medium">
                 Au {dateTo}
                 <button onClick={() => setDateTo("")}><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {productFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 text-violet-800 px-2.5 py-0.5 text-xs font-medium">
+                Produit : {productFilter}
+                <button onClick={() => setProductFilter("")}><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {quantityTypeFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-0.5 text-xs font-medium">
+                {quantityTypeFilter === "positive" ? "Entrées +" : "Sorties −"}
+                <button onClick={() => setQuantityTypeFilter("all")}><X className="h-3 w-3" /></button>
               </span>
             )}
           </div>
@@ -305,7 +375,17 @@ export default function Adjustments() {
                 <TableHead>Date</TableHead>
                 <TableHead>Produit</TableHead>
                 <TableHead>Boutique</TableHead>
-                <TableHead>Variation</TableHead>
+                <TableHead>
+                  <button
+                    onClick={toggleSortByQuantity}
+                    className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+                  >
+                    Variation
+                    {sortByQuantity === "none" && <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                    {sortByQuantity === "asc"  && <ArrowUp   className="h-3.5 w-3.5 text-primary" />}
+                    {sortByQuantity === "desc" && <ArrowDown  className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                </TableHead>
                 <TableHead>Motif</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
@@ -313,13 +393,13 @@ export default function Adjustments() {
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
-              ) : adjustments.length === 0 ? (
+              ) : displayedAdjustments.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     {hasActiveFilters ? "Aucun ajustement pour ces filtres" : "Aucun ajustement"}
                   </TableCell>
                 </TableRow>
-              ) : adjustments.map(a => (
+              ) : displayedAdjustments.map(a => (
                 <TableRow key={a.id}>
                   <TableCell className="font-mono text-xs">{a.reference}</TableCell>
                   <TableCell className="text-sm">{format(new Date(a.createdAt), "dd/MM/yyyy")}</TableCell>
