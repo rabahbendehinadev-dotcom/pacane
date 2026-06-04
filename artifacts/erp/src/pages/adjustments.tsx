@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
+import { fr } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -732,7 +733,10 @@ export default function Adjustments() {
               ) : displayedAdjustments.map(a => (
                 <TableRow key={a.id}>
                   <TableCell className="font-mono text-xs">{a.reference}</TableCell>
-                  <TableCell className="text-sm">{format(new Date(a.createdAt), "dd/MM/yyyy")}</TableCell>
+                  <TableCell className="text-sm">
+                    <div>{format(new Date(a.createdAt), "dd/MM/yyyy")}</div>
+                    <div className="text-xs text-muted-foreground capitalize">{format(new Date(a.createdAt), "EEEE", { locale: fr })}</div>
+                  </TableCell>
                   <TableCell className="font-medium text-sm">{a.productName}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{a.branchName}</TableCell>
                   <TableCell className="text-sm">
