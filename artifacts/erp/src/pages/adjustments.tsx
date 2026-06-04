@@ -36,8 +36,8 @@ export default function Adjustments() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
-  const [sortByQuantity, setSortByQuantity] = useState<"none" | "asc" | "desc">("none");
-  const [sortByDate, setSortByDate] = useState<"none" | "asc" | "desc">("none");
+  const [sortBy, setSortBy]   = useState<string>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -99,8 +99,8 @@ export default function Adjustments() {
     setProductFilter("");
     setProductInputText("");
     setQuantityTypeFilter("all");
-    setSortByQuantity("none");
-    setSortByDate("none");
+    setSortBy("date");
+    setSortDir("desc");
   }
 
   function toggleBranch(id: string) {
@@ -120,12 +120,26 @@ export default function Adjustments() {
     }
     if (quantityTypeFilter === "positive") list = list.filter(a => a.quantityChange > 0);
     if (quantityTypeFilter === "negative") list = list.filter(a => a.quantityChange < 0);
-    if (sortByQuantity === "asc") list.sort((a, b) => a.quantityChange - b.quantityChange);
-    if (sortByQuantity === "desc") list.sort((a, b) => b.quantityChange - a.quantityChange);
-    if (sortByDate === "asc") list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    if (sortByDate === "desc") list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const dir = sortDir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case "reference":   return dir * a.reference.localeCompare(b.reference);
+        case "date":        return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        case "product":     return dir * (a.productName ?? "").localeCompare(b.productName ?? "");
+        case "branch":      return dir * (a.branchName  ?? "").localeCompare(b.branchName  ?? "");
+        case "qty":         return dir * (a.quantityChange - b.quantityChange);
+        case "value": {
+          const va = a.quantityChange < 0 ? Math.abs(a.quantityChange) * (a.costPrice ?? 0) : 0;
+          const vb = b.quantityChange < 0 ? Math.abs(b.quantityChange) * (b.costPrice ?? 0) : 0;
+          return dir * (va - vb);
+        }
+        case "reason":  return dir * (a.reason  ?? "").localeCompare(b.reason  ?? "");
+        case "createdBy":return dir * (a.createdByName ?? "").localeCompare(b.createdByName ?? "");
+        default:        return 0;
+      }
+    });
     return list;
-  }, [adjustments, productFilter, quantityTypeFilter, sortByQuantity, sortByDate]);
+  }, [adjustments, productFilter, quantityTypeFilter, sortBy, sortDir]);
 
   // ── Stats computed from the currently displayed (filtered) rows
   const computedStats = useMemo(() => {
@@ -153,12 +167,20 @@ export default function Adjustments() {
     };
   }, [displayedAdjustments]);
 
-  function toggleSortByQuantity() {
-    setSortByQuantity(s => s === "none" ? "asc" : s === "asc" ? "desc" : "none");
+  function handleSort(col: string) {
+    if (sortBy === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
   }
 
-  function toggleSortByDate() {
-    setSortByDate(s => s === "none" ? "desc" : s === "desc" ? "asc" : "none");
+  function SortIcon({ col }: { col: string }) {
+    if (sortBy !== col) return <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />;
+    return sortDir === "asc"
+      ? <ArrowUp   className="h-3.5 w-3.5 text-primary" />
+      : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
   }
 
   async function confirmDelete() {
@@ -517,34 +539,24 @@ export default function Adjustments() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Référence</TableHead>
-                <TableHead>
-                  <button
-                    onClick={toggleSortByDate}
-                    className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
-                  >
-                    Date
-                    {sortByDate === "none" && <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />}
-                    {sortByDate === "asc"  && <ArrowUp   className="h-3.5 w-3.5 text-primary" />}
-                    {sortByDate === "desc" && <ArrowDown  className="h-3.5 w-3.5 text-primary" />}
-                  </button>
-                </TableHead>
-                <TableHead>Produit</TableHead>
-                <TableHead>Boutique</TableHead>
-                <TableHead>
-                  <button
-                    onClick={toggleSortByQuantity}
-                    className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
-                  >
-                    Variation
-                    {sortByQuantity === "none" && <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />}
-                    {sortByQuantity === "asc"  && <ArrowUp   className="h-3.5 w-3.5 text-primary" />}
-                    {sortByQuantity === "desc" && <ArrowDown  className="h-3.5 w-3.5 text-primary" />}
-                  </button>
-                </TableHead>
-                <TableHead>Valeur (DA)</TableHead>
-                <TableHead>Motif</TableHead>
-                <TableHead>Par</TableHead>
+                {(["reference","date","product","branch","qty","value","reason","createdBy"] as const).map(col => {
+                  const labels: Record<string,string> = {
+                    reference: "Référence", date: "Date", product: "Produit",
+                    branch: "Boutique", qty: "Variation", value: "Valeur (DA)",
+                    reason: "Motif", createdBy: "Par",
+                  };
+                  return (
+                    <TableHead key={col}>
+                      <button
+                        onClick={() => handleSort(col)}
+                        className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+                      >
+                        {labels[col]}
+                        <SortIcon col={col} />
+                      </button>
+                    </TableHead>
+                  );
+                })}
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
