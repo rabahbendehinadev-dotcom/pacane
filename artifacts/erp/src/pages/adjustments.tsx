@@ -109,43 +109,6 @@ export default function Adjustments() {
     return p;
   }, [selectedFilterProduct, branchFilters, dateFrom, dateTo]);
 
-  // ── Batch sold quantities per product for table rows
-  const uniqueProductIds = useMemo(
-    () => [...new Set(displayedAdjustments.map(a => a.productId))],
-    [displayedAdjustments]
-  );
-  const soldQtyParams = useMemo(() => {
-    if (uniqueProductIds.length === 0) return null;
-    const p: Record<string, string> = { productIds: uniqueProductIds.join(",") };
-    if (branchFilters.length === 1) p.branchId = branchFilters[0];
-    else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
-    if (dateFrom) p.dateFrom = dateFrom;
-    if (dateTo) p.dateTo = dateTo;
-    return p;
-  }, [uniqueProductIds, branchFilters, dateFrom, dateTo]);
-
-  const { data: soldQtyMap = {} } = useQuery<Record<number, number>>({
-    queryKey: ["adjustments-sold-qty", soldQtyParams],
-    queryFn: async () => {
-      if (!soldQtyParams) return {};
-      const qs = new URLSearchParams(soldQtyParams).toString();
-      return customFetch(`/api/adjustments/sold-quantities?${qs}`);
-    },
-    enabled: !!soldQtyParams,
-    staleTime: 60_000,
-  });
-
-  const { data: salesCtx } = useQuery<{ soldQty: number; soldValue: number }>({
-    queryKey: ["adjustments-sales-ctx", salesContextParams],
-    queryFn: async () => {
-      if (!salesContextParams) return { soldQty: 0, soldValue: 0 };
-      const qs = new URLSearchParams(salesContextParams).toString();
-      return customFetch(`/api/adjustments/sales-context?${qs}`);
-    },
-    enabled: !!salesContextParams,
-    staleTime: 60_000,
-  });
-
   const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
 
   function resetFilters() {
@@ -204,6 +167,43 @@ export default function Adjustments() {
     });
     return list;
   }, [adjustments, reasonFilters, productFilter, quantityTypeFilter, sortBy, sortDir]);
+
+  // ── Batch sold quantities per product for table rows (must come after displayedAdjustments)
+  const uniqueProductIds = useMemo(
+    () => [...new Set(displayedAdjustments.map(a => a.productId))],
+    [displayedAdjustments]
+  );
+  const soldQtyParams = useMemo(() => {
+    if (uniqueProductIds.length === 0) return null;
+    const p: Record<string, string> = { productIds: uniqueProductIds.join(",") };
+    if (branchFilters.length === 1) p.branchId = branchFilters[0];
+    else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
+    if (dateFrom) p.dateFrom = dateFrom;
+    if (dateTo) p.dateTo = dateTo;
+    return p;
+  }, [uniqueProductIds, branchFilters, dateFrom, dateTo]);
+
+  const { data: soldQtyMap = {} } = useQuery<Record<number, number>>({
+    queryKey: ["adjustments-sold-qty", soldQtyParams],
+    queryFn: async () => {
+      if (!soldQtyParams) return {};
+      const qs = new URLSearchParams(soldQtyParams).toString();
+      return customFetch(`/api/adjustments/sold-quantities?${qs}`);
+    },
+    enabled: !!soldQtyParams,
+    staleTime: 60_000,
+  });
+
+  const { data: salesCtx } = useQuery<{ soldQty: number; soldValue: number }>({
+    queryKey: ["adjustments-sales-ctx", salesContextParams],
+    queryFn: async () => {
+      if (!salesContextParams) return { soldQty: 0, soldValue: 0 };
+      const qs = new URLSearchParams(salesContextParams).toString();
+      return customFetch(`/api/adjustments/sales-context?${qs}`);
+    },
+    enabled: !!salesContextParams,
+    staleTime: 60_000,
+  });
 
   // ── Stats computed from the currently displayed (filtered) rows
   const computedStats = useMemo(() => {
