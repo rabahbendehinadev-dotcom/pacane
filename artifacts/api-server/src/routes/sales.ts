@@ -104,13 +104,16 @@ router.get("/sales/counts", requireAuth, requirePermission(P.sales.view), async 
 });
 
 router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
-  const { branchId, type, status, customerId, search } = req.query as Record<string, string>;
+  const { branchId, type, status, customerId, search, page: pageStr, limit: limitStr } = req.query as Record<string, string>;
   const user = req.user!;
+  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const limit = Math.min(200, Math.max(1, parseInt(limitStr || "50", 10)));
+  const offset = (page - 1) * limit;
 
   const conditions = [];
   const reqBranchId = branchId ? parseInt(branchId, 10) : null;
   if (!user.adminAccess) {
-    if (user.branchIds.length === 0) { res.json([]); return; }
+    if (user.branchIds.length === 0) { res.json({ data: [], total: 0, page, totalPages: 0 }); return; }
     if (reqBranchId) {
       if (!user.branchIds.includes(reqBranchId)) { res.status(403).json({ error: "Accès refusé à cette succursale", code: "BRANCH_ACCESS_DENIED" }); return; }
       conditions.push(eq(salesTable.branchId, reqBranchId));
@@ -141,6 +144,10 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
   }
   const where = conditions.length ? and(...conditions) : undefined;
 
+  const [countRow] = await db.select({ total: sql<number>`count(*)::int` }).from(salesTable).where(where);
+  const total = countRow?.total ?? 0;
+  const totalPages = Math.ceil(total / limit);
+
   const rows = await db.select({
     id: salesTable.id,
     reference: salesTable.reference,
@@ -165,12 +172,15 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
     branchName: branchesTable.name,
     branchPhone: branchesTable.phone,
     createdByName: usersTable.name,
+    primaryMethod: sql<string | null>`(SELECT method FROM sale_payments WHERE sale_id = ${salesTable.id} ORDER BY created_at ASC LIMIT 1)`,
   }).from(salesTable)
     .leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
     .leftJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
     .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
     .where(where)
-    .orderBy(sql`${salesTable.createdAt} DESC`);
+    .orderBy(sql`${salesTable.createdAt} DESC`)
+    .limit(limit)
+    .offset(offset);
 
   const data = rows.map(r => ({
     ...r,
@@ -184,7 +194,7 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
     due: Math.max(0, parseFloat(r.total as string) - parseFloat(r.paid as string) - parseFloat((r.creditApplied ?? "0") as string)),
   }));
 
-  res.json(data);
+  res.json({ data, total, page, totalPages });
 });
 
 router.post("/sales", requireAuth, async (req, res): Promise<void> => {

@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
-  useGetSales, useCreateSale, useGetContacts, useGetBranches, useGetProducts, useGetUnits,
+  useCreateSale, useGetContacts, useGetBranches, useGetProducts, useGetUnits,
   useGetCategories,
   useAddSalePayment, useConvertSaleDocument, useCancelSaleDocument,
   useDuplicateSaleDocument, useUpdateSale,
-  getGetSalesQueryKey, Sale
+  Sale
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import {
   Plus, Eye, CreditCard, Copy, XCircle, ArrowRight, FileText, FileCheck,
   ShoppingCart, Receipt, Search, AlertCircle, CheckCircle2, Clock, Ban,
-  ChevronRight, Package, Truck, RotateCcw, Filter, Calendar, Building2,
+  ChevronRight, ChevronLeft, Package, Truck, RotateCcw, Filter, Calendar, Building2,
   User, Edit3, Check, ChevronsUpDown, X as XIcon, ShieldAlert, ShieldCheck, ShieldOff,
   AlertTriangle, TrendingUp, Info, Wallet, Sparkles,
 } from "lucide-react";
@@ -128,6 +128,18 @@ function StatusBadge({ status }: { status: string }) {
 function PayBadge({ status }: { status: string }) {
   const m = PAY_STATUS_META[status] ?? { label: status, color: "bg-gray-100 text-gray-600" };
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${m.color}`}>{m.label}</span>;
+}
+
+const METHOD_BADGE_COLORS: Record<string, string> = {
+  cash: "bg-emerald-100 text-emerald-700",
+  card: "bg-blue-100 text-blue-700",
+  transfer: "bg-violet-100 text-violet-700",
+  credit: "bg-amber-100 text-amber-700",
+};
+
+function MethodBadge({ method }: { method: string }) {
+  const color = METHOD_BADGE_COLORS[method] ?? "bg-gray-100 text-gray-600";
+  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>{METHOD_LABELS[method] ?? method}</span>;
 }
 
 // ── Payment Progress Bar ──────────────────────────────────────────────────────
@@ -306,8 +318,56 @@ export default function Sales() {
   const [overrideReason, setOverrideReason] = useState("");
   const [pendingConvertType, setPendingConvertType] = useState<string | null>(null);
 
-  // ── Data fetching — always get all, filter client-side for tabs/counts
-  const { data: allSales = [], isLoading } = useGetSales({});
+  // ── Pagination state
+  const [page, setPage] = useState(1);
+
+  // Debounce search to avoid a fetch on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset page when tab / filters change
+  useEffect(() => { setPage(1); }, [tab, statusFilter, branchFilter]);
+
+  // ── Server-side paginated sales list
+  const { data: salesPage, isLoading } = useQuery<{ data: any[]; total: number; page: number; totalPages: number }>({
+    queryKey: ["sales-paginated", page, tab, statusFilter, branchFilter, debouncedSearch],
+    queryFn: async () => {
+      const token = localStorage.getItem("erp_token") ?? "";
+      const params = new URLSearchParams({ page: String(page), limit: "50" });
+      if (tab !== "all") params.set("type", tab);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (branchFilter !== "all") params.set("branchId", branchFilter);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      const r = await fetch(`/api/sales?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error("Erreur chargement des ventes");
+      return r.json();
+    },
+    staleTime: 30000,
+    placeholderData: (prev: any) => prev,
+  });
+
+  const displayedSales = salesPage?.data ?? [];
+  const totalDocs    = salesPage?.total ?? 0;
+  const totalPages   = salesPage?.totalPages ?? 0;
+
+  // ── Tab counts from API
+  const { data: apiCounts } = useQuery<{ all: number; draft: number; quotation: number; order: number; sale: number; comptoir: number }>({
+    queryKey: ["sales-counts", branchFilter],
+    queryFn: async () => {
+      const token = localStorage.getItem("erp_token") ?? "";
+      const p = new URLSearchParams();
+      if (branchFilter !== "all") p.set("branchId", branchFilter);
+      const r = await fetch(`/api/sales/counts?${p}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return { all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 };
+      return r.json();
+    },
+    staleTime: 30000,
+  });
+  const counts = apiCounts ?? { all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 };
+
   const { data: customers = [] } = useGetContacts({ type: "customer" });
   const { data: branches = [] } = useGetBranches();
   const { data: products = [] } = useGetProducts({});
@@ -318,7 +378,8 @@ export default function Sales() {
   const qtyAllowsDecimals = selectedProduct ? (unitDecimalsMap[(selectedProduct as any).unitId] ?? true) : true;
 
   function invalidate() {
-    qc.invalidateQueries({ queryKey: getGetSalesQueryKey() });
+    qc.invalidateQueries({ queryKey: ["sales-paginated"] });
+    qc.invalidateQueries({ queryKey: ["sales-counts"] });
   }
 
   async function createQuickClient() {
@@ -396,34 +457,6 @@ export default function Sales() {
   // ── Company settings (for PDF generation)
   const { data: companySettings } = useGetCompanySettings();
 
-  // ── Tab counts
-  const counts = useMemo(() => ({
-    all:       allSales.length,
-    draft:     allSales.filter(s => s.type === "draft").length,
-    quotation: allSales.filter(s => s.type === "quotation").length,
-    order:     allSales.filter(s => s.type === "order").length,
-    sale:      allSales.filter(s => s.type === "sale" && (s as any).fulfillmentType !== "pos").length,
-    comptoir:  allSales.filter(s => s.type === "sale" && (s as any).fulfillmentType === "pos").length,
-  }), [allSales]);
-
-  // ── Filtered list
-  const displayedSales = useMemo(() => {
-    let list = allSales;
-    if (tab === "comptoir") list = list.filter(s => s.type === "sale" && (s as any).fulfillmentType === "pos");
-    else if (tab === "sale") list = list.filter(s => s.type === "sale" && (s as any).fulfillmentType !== "pos");
-    else if (tab !== "all") list = list.filter(s => s.type === tab);
-    if (statusFilter !== "all") list = list.filter(s => s.status === statusFilter);
-    if (branchFilter !== "all") list = list.filter(s => s.branchId === parseInt(branchFilter));
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(s =>
-        s.reference.toLowerCase().includes(q) ||
-        (s.customerName ?? "").toLowerCase().includes(q) ||
-        (s.branchName ?? "").toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [allSales, tab, statusFilter, branchFilter, search]);
 
   // ── Mutations
   const createMutation = useCreateSale({ mutation: {
@@ -705,7 +738,7 @@ export default function Sales() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input className="pl-8 h-8 w-52 text-xs" placeholder="Réf., client..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">{displayedSales.length} doc{displayedSales.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{totalDocs} doc{totalDocs !== 1 ? "s" : ""}</span>
           </div>
         </div>
       </div>
@@ -725,6 +758,7 @@ export default function Sales() {
                 <TableHead>Date</TableHead>
                 {(tab === "order") && <TableHead>Échéance</TableHead>}
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead>Mode</TableHead>
                 {(tab === "sale" || tab === "all") && <TableHead>Paiement</TableHead>}
                 <TableHead className="w-20 text-right">Actions</TableHead>
               </TableRow>
@@ -782,6 +816,11 @@ export default function Sales() {
                     </TableCell>
                   )}
                   <TableCell className="text-right text-sm font-semibold">{formatDA(parseFloat(s.total as string))}</TableCell>
+                  <TableCell>
+                    {(s as any).primaryMethod
+                      ? <MethodBadge method={(s as any).primaryMethod} />
+                      : <span className="text-xs text-muted-foreground">—</span>}
+                  </TableCell>
                   {(tab === "sale" || tab === "all") && (
                     <TableCell>
                       {s.type === "sale"
@@ -802,6 +841,23 @@ export default function Sales() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between py-2">
+          <span className="text-xs text-muted-foreground">
+            Page {page} / {totalPages} · {totalDocs} documents
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="gap-1 h-8" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+              <ChevronLeft className="h-3.5 w-3.5" />Précédent
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1 h-8" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+              Suivant<ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Dialog ── */}
       <Dialog open={createOpen} onOpenChange={v => { setCreateOpen(v); if (!v) setCreateStep("type"); }}>
