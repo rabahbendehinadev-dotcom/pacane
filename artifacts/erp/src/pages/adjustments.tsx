@@ -17,7 +17,7 @@ import { fr } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const REASONS = ["Inventaire physique", "Perte / Casse", "Labo perte", "Péremption", "Don", "Erreur de saisie", "Autre"];
+const REASONS = ["Inventaire physique", "DLC", "Labo perte", "Péremption", "Don", "Erreur de saisie", "Autre"];
 
 function fmt(n: number) {
   return new Intl.NumberFormat("fr-DZ", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
