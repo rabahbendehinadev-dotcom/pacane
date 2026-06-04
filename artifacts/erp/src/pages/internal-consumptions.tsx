@@ -47,6 +47,7 @@ type ICDoc = {
   status: string;
   totalCost: number;
   itemCount: number;
+  productNames?: string[];
   notes: string | null;
   createdByName: string | null;
   createdAt: string;
@@ -498,7 +499,17 @@ export default function InternalConsumptions() {
                   <TableCell className="text-sm text-muted-foreground">{doc.documentDate ? format(new Date(doc.documentDate), "dd MMM yyyy", { locale: fr }) : "—"}</TableCell>
                   <TableCell className="text-sm">{doc.sourceBranchName}</TableCell>
                   <TableCell className="text-sm">{doc.destinationBranchName}</TableCell>
-                  <TableCell className="text-center text-sm">{doc.itemCount}</TableCell>
+                  <TableCell className="text-sm">
+                    <div className="flex flex-col gap-0.5">
+                      {doc.productNames && doc.productNames.length > 0 ? (
+                        doc.productNames.map((name, i) => (
+                          <span key={i} className="text-xs leading-tight">{name}</span>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-xs">{doc.itemCount} article{doc.itemCount !== 1 ? "s" : ""}</span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right text-sm font-medium">{formatDA(doc.totalCost)}</TableCell>
                   <TableCell><StatusBadge status={doc.status} /></TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
