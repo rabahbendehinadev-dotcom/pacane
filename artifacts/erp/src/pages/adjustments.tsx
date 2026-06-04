@@ -31,6 +31,7 @@ export default function Adjustments() {
   const [productFilter, setProductFilter] = useState("");
   const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
   const [sortByQuantity, setSortByQuantity] = useState<"none" | "asc" | "desc">("none");
+  const [sortByDate, setSortByDate] = useState<"none" | "asc" | "desc">("none");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -78,6 +79,7 @@ export default function Adjustments() {
     setProductFilter("");
     setQuantityTypeFilter("all");
     setSortByQuantity("none");
+    setSortByDate("none");
   }
 
   // ── Client-side filtering + sorting
@@ -91,11 +93,17 @@ export default function Adjustments() {
     if (quantityTypeFilter === "negative") list = list.filter(a => a.quantityChange < 0);
     if (sortByQuantity === "asc") list.sort((a, b) => a.quantityChange - b.quantityChange);
     if (sortByQuantity === "desc") list.sort((a, b) => b.quantityChange - a.quantityChange);
+    if (sortByDate === "asc") list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    if (sortByDate === "desc") list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return list;
-  }, [adjustments, productFilter, quantityTypeFilter, sortByQuantity]);
+  }, [adjustments, productFilter, quantityTypeFilter, sortByQuantity, sortByDate]);
 
   function toggleSortByQuantity() {
     setSortByQuantity(s => s === "none" ? "asc" : s === "asc" ? "desc" : "none");
+  }
+
+  function toggleSortByDate() {
+    setSortByDate(s => s === "none" ? "desc" : s === "desc" ? "asc" : "none");
   }
 
   async function confirmDelete() {
@@ -372,7 +380,17 @@ export default function Adjustments() {
             <TableHeader>
               <TableRow>
                 <TableHead>Référence</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>
+                  <button
+                    onClick={toggleSortByDate}
+                    className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+                  >
+                    Date
+                    {sortByDate === "none" && <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                    {sortByDate === "asc"  && <ArrowUp   className="h-3.5 w-3.5 text-primary" />}
+                    {sortByDate === "desc" && <ArrowDown  className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                </TableHead>
                 <TableHead>Produit</TableHead>
                 <TableHead>Boutique</TableHead>
                 <TableHead>
@@ -386,6 +404,7 @@ export default function Adjustments() {
                     {sortByQuantity === "desc" && <ArrowDown  className="h-3.5 w-3.5 text-primary" />}
                   </button>
                 </TableHead>
+                <TableHead>Valeur (DA)</TableHead>
                 <TableHead>Motif</TableHead>
                 <TableHead>Par</TableHead>
                 <TableHead className="w-12"></TableHead>
@@ -393,10 +412,10 @@ export default function Adjustments() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
               ) : displayedAdjustments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                     {hasActiveFilters ? "Aucun ajustement pour ces filtres" : "Aucun ajustement"}
                   </TableCell>
                 </TableRow>
@@ -408,6 +427,11 @@ export default function Adjustments() {
                   <TableCell className="text-sm text-muted-foreground">{a.branchName}</TableCell>
                   <TableCell className={`font-mono font-medium text-sm ${a.quantityChange > 0 ? "text-green-600" : "text-red-600"}`}>
                     {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
+                  </TableCell>
+                  <TableCell className="text-sm font-mono">
+                    {a.quantityChange < 0 && a.costPrice != null
+                      ? <span className="text-red-600 font-semibold">{fmt(Math.abs(a.quantityChange) * a.costPrice)}</span>
+                      : <span className="text-muted-foreground/40">—</span>}
                   </TableCell>
                   <TableCell className="text-sm">{a.reason}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">

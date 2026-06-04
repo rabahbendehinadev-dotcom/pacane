@@ -3634,6 +3634,8 @@ components:
           type: ["string", "null"]
         createdByName:
           type: ["string", "null"]
+        costPrice:
+          type: ["number", "null"]
         createdAt:
           type: string
       required:

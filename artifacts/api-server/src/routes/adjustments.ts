@@ -86,6 +86,7 @@ router.get("/adjustments", requireAuth, requirePermission(P.adjustments.view), a
     branchName: branchesTable.name,
     productName: productsTable.name,
     createdByName: usersTable.name,
+    costPrice: productsTable.costPrice,
   }).from(adjustmentsTable)
     .leftJoin(branchesTable, eq(adjustmentsTable.branchId, branchesTable.id))
     .leftJoin(productsTable, eq(adjustmentsTable.productId, productsTable.id))
@@ -95,6 +96,7 @@ router.get("/adjustments", requireAuth, requirePermission(P.adjustments.view), a
   let result = rows.map(r => ({
     ...r.adj, branchName: r.branchName ?? "", productName: r.productName ?? "",
     createdByName: r.createdByName ?? null,
+    costPrice: r.costPrice != null ? parseFloat(r.costPrice as string) : null,
     quantityChange: parseFloat(r.adj.quantityChange as string)
   }));
 

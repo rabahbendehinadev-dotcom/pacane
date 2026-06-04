@@ -1950,6 +1950,7 @@ export const GetAdjustmentsResponseItem = zod.object({
   "reason": zod.string(),
   "notes": zod.string().nullish(),
   "createdByName": zod.string().nullish(),
+  "costPrice": zod.number().nullish(),
   "createdAt": zod.string()
 })
 export const GetAdjustmentsResponse = zod.array(GetAdjustmentsResponseItem)

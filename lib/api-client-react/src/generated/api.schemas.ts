@@ -1111,6 +1111,8 @@ export interface Adjustment {
   notes?: string | null;
   /** @nullable */
   createdByName?: string | null;
+  /** @nullable */
+  costPrice?: number | null;
   createdAt: string;
 }
 
