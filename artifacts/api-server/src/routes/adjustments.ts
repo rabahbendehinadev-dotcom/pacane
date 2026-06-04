@@ -128,6 +128,53 @@ router.post("/adjustments", requireAuth, requirePermission(P.adjustments.create)
   res.status(201).json({ ...adj, branchName: branch?.name ?? "", productName: product?.name ?? "", quantityChange: parseFloat(adj.quantityChange as string) });
 });
 
+// ── Batch sold quantities for multiple products (for per-row comparison)
+router.get("/adjustments/sold-quantities", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
+  const { productIds: productIdsRaw, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;
+  if (!productIdsRaw) { res.json({}); return; }
+
+  const productIds = productIdsRaw.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean);
+  if (productIds.length === 0) { res.json({}); return; }
+
+  const scope = visibleBranchIds(req.user!);
+  if (scope !== null && scope.length === 0) { res.json({}); return; }
+
+  const conds: any[] = [
+    inArray(saleItemsTable.productId, productIds),
+    sql`${salesTable.type} IN ('order', 'sale')`,
+  ];
+
+  if (scope !== null) conds.push(inArray(salesTable.branchId, scope));
+
+  if (branchIds) {
+    const ids = branchIds.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean);
+    const allowed = scope !== null ? ids.filter(id => scope.includes(id)) : ids;
+    if (allowed.length > 0) conds.push(inArray(salesTable.branchId, allowed));
+  } else if (branchId) {
+    conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  }
+
+  if (dateFrom) conds.push(gte(salesTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
+    conds.push(lte(salesTable.createdAt, d));
+  }
+
+  const rows = await db
+    .select({
+      productId: saleItemsTable.productId,
+      soldQty: sql<number>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+    })
+    .from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .where(and(...conds))
+    .groupBy(saleItemsTable.productId);
+
+  const result: Record<number, number> = {};
+  for (const r of rows) result[r.productId] = Number(r.soldQty);
+  res.json(result);
+});
+
 // ── Sales context: sold qty for a product in a period (for loss comparison)
 router.get("/adjustments/sales-context", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
   const { productId, dateFrom, dateTo, branchId, branchIds } = req.query as Record<string, string>;

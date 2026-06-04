@@ -109,6 +109,32 @@ export default function Adjustments() {
     return p;
   }, [selectedFilterProduct, branchFilters, dateFrom, dateTo]);
 
+  // ── Batch sold quantities per product for table rows
+  const uniqueProductIds = useMemo(
+    () => [...new Set(displayedAdjustments.map(a => a.productId))],
+    [displayedAdjustments]
+  );
+  const soldQtyParams = useMemo(() => {
+    if (uniqueProductIds.length === 0) return null;
+    const p: Record<string, string> = { productIds: uniqueProductIds.join(",") };
+    if (branchFilters.length === 1) p.branchId = branchFilters[0];
+    else if (branchFilters.length > 1) p.branchIds = branchFilters.join(",");
+    if (dateFrom) p.dateFrom = dateFrom;
+    if (dateTo) p.dateTo = dateTo;
+    return p;
+  }, [uniqueProductIds, branchFilters, dateFrom, dateTo]);
+
+  const { data: soldQtyMap = {} } = useQuery<Record<number, number>>({
+    queryKey: ["adjustments-sold-qty", soldQtyParams],
+    queryFn: async () => {
+      if (!soldQtyParams) return {};
+      const qs = new URLSearchParams(soldQtyParams).toString();
+      return customFetch(`/api/adjustments/sold-quantities?${qs}`);
+    },
+    enabled: !!soldQtyParams,
+    staleTime: 60_000,
+  });
+
   const { data: salesCtx } = useQuery<{ soldQty: number; soldValue: number }>({
     queryKey: ["adjustments-sales-ctx", salesContextParams],
     queryFn: async () => {
@@ -691,8 +717,15 @@ export default function Adjustments() {
                   <TableCell className="text-sm">{format(new Date(a.createdAt), "dd/MM/yyyy")}</TableCell>
                   <TableCell className="font-medium text-sm">{a.productName}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{a.branchName}</TableCell>
-                  <TableCell className={`font-mono font-medium text-sm ${a.quantityChange > 0 ? "text-green-600" : "text-red-600"}`}>
-                    {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
+                  <TableCell className="text-sm">
+                    <div className={`font-mono font-medium ${a.quantityChange > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
+                    </div>
+                    {soldQtyMap[a.productId] != null && (
+                      <div className="text-xs text-blue-500 font-normal mt-0.5 whitespace-nowrap">
+                        vendu : {fmt(soldQtyMap[a.productId])}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm font-mono">
                     {a.quantityChange < 0 && a.costPrice != null
