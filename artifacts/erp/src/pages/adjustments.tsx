@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react";
+import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, Eye } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -63,6 +63,7 @@ export default function Adjustments() {
   const [form, setForm] = useState({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
   const [quantitySign, setQuantitySign] = useState<1 | -1>(-1);
   const [photoData, setPhotoData] = useState<string | null>(null);
+  const [viewAdjustment, setViewAdjustment] = useState<(typeof displayedAdjustments)[0] | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -813,6 +814,13 @@ export default function Adjustments() {
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
+                        title="Voir les détails"
+                        onClick={() => setViewAdjustment(a)}
+                      >
+                        <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
                         title="Télécharger PDF"
                         onClick={() => {
                           if (!companySettings) return;
@@ -1030,6 +1038,101 @@ export default function Adjustments() {
               Enregistrer
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail view dialog */}
+      <Dialog open={viewAdjustment !== null} onOpenChange={open => { if (!open) setViewAdjustment(null); }}>
+        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+          {viewAdjustment && (() => {
+            const a = viewAdjustment;
+            const dateKey = format(new Date(a.createdAt), "yyyy-MM-dd");
+            const soldQty = soldQtyMap[`${a.productId}_${dateKey}`];
+            const costVal = a.quantityChange < 0 && a.costPrice != null
+              ? Math.abs(a.quantityChange) * a.costPrice : null;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="font-mono text-sm text-muted-foreground">{a.reference}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {/* Date & identité */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Date</p>
+                      <p className="font-medium">{format(new Date(a.createdAt), "dd/MM/yyyy")}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{format(new Date(a.createdAt), "EEEE", { locale: fr })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Créé par</p>
+                      <p className="font-medium">{a.createdByName ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Boutique</p>
+                      <p className="font-medium">{a.branchName}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Produit</p>
+                      <p className="font-medium text-xs leading-tight">{a.productName}</p>
+                    </div>
+                  </div>
+
+                  {/* Stats principales */}
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Statistiques</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className={`text-2xl font-bold font-mono ${a.quantityChange > 0 ? "text-green-600" : "text-red-600"}`}>
+                          {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Variation</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold font-mono text-blue-600">
+                          {soldQty != null ? fmt(soldQty) : "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Vendu J</p>
+                      </div>
+                      <div>
+                        <p className={`text-2xl font-bold font-mono ${costVal != null ? "text-red-600" : "text-muted-foreground"}`}>
+                          {costVal != null ? fmt(costVal) : "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Perte DA</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Motif */}
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Motif</p>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                      {a.reason}
+                    </span>
+                  </div>
+
+                  {/* Notes */}
+                  {(a as any).notes && (
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
+                      <p className="text-sm rounded-md bg-muted/40 border px-3 py-2 leading-relaxed">{(a as any).notes}</p>
+                    </div>
+                  )}
+
+                  {/* Photo */}
+                  {(a as any).photoData && (
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Photo</p>
+                      <img
+                        src={(a as any).photoData}
+                        alt="Photo de l'ajustement"
+                        className="w-full rounded-md border object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
