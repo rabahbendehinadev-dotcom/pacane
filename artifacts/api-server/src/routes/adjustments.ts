@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, adjustmentsTable, branchesTable, productsTable } from "@workspace/db";
+import { db, adjustmentsTable, branchesTable, productsTable, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, visibleBranchIds } from "../middlewares/permissions";
@@ -84,14 +84,17 @@ router.get("/adjustments", requireAuth, requirePermission(P.adjustments.view), a
   const rows = await db.select({
     adj: adjustmentsTable,
     branchName: branchesTable.name,
-    productName: productsTable.name
+    productName: productsTable.name,
+    createdByName: usersTable.name,
   }).from(adjustmentsTable)
     .leftJoin(branchesTable, eq(adjustmentsTable.branchId, branchesTable.id))
     .leftJoin(productsTable, eq(adjustmentsTable.productId, productsTable.id))
+    .leftJoin(usersTable, eq(adjustmentsTable.createdByUserId, usersTable.id))
     .orderBy(sql`${adjustmentsTable.createdAt} DESC`);
 
   let result = rows.map(r => ({
     ...r.adj, branchName: r.branchName ?? "", productName: r.productName ?? "",
+    createdByName: r.createdByName ?? null,
     quantityChange: parseFloat(r.adj.quantityChange as string)
   }));
 

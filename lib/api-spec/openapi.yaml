@@ -3632,6 +3632,8 @@ components:
           type: string
         notes:
           type: ["string", "null"]
+        createdByName:
+          type: ["string", "null"]
         createdAt:
           type: string
       required:

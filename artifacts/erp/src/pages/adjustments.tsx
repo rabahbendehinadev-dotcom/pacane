@@ -387,15 +387,16 @@ export default function Adjustments() {
                   </button>
                 </TableHead>
                 <TableHead>Motif</TableHead>
+                <TableHead>Par</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
               ) : displayedAdjustments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                     {hasActiveFilters ? "Aucun ajustement pour ces filtres" : "Aucun ajustement"}
                   </TableCell>
                 </TableRow>
@@ -409,6 +410,9 @@ export default function Adjustments() {
                     {a.quantityChange > 0 ? "+" : ""}{a.quantityChange}
                   </TableCell>
                   <TableCell className="text-sm">{a.reason}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {a.createdByName ?? <span className="text-muted-foreground/40 italic text-xs">—</span>}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Button
