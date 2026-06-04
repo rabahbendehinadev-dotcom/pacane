@@ -28,7 +28,9 @@ export default function Adjustments() {
   const [branchFilters, setBranchFilters] = useState<string[]>([]); // empty = all
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
-  const [reasonFilter, setReasonFilter] = useState("all");
+  const [reasonFilters, setReasonFilters] = useState<string[]>([]);
+  const [reasonDropdownOpen, setReasonDropdownOpen] = useState(false);
+  const reasonDropdownRef = useRef<HTMLDivElement>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [productFilter, setProductFilter] = useState("");
@@ -43,6 +45,9 @@ export default function Adjustments() {
     function handleOutside(e: MouseEvent) {
       if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
         setBranchDropdownOpen(false);
+      }
+      if (reasonDropdownRef.current && !reasonDropdownRef.current.contains(e.target as Node)) {
+        setReasonDropdownOpen(false);
       }
       if (productDropdownRef.current && !productDropdownRef.current.contains(e.target as Node)) {
         setProductDropdownOpen(false);
@@ -61,7 +66,7 @@ export default function Adjustments() {
   const queryParams = {
     // pass single branchId to server only when exactly one branch is selected (for stats accuracy)
     ...(branchFilters.length === 1 ? { branchId: parseInt(branchFilters[0]) } : {}),
-    ...(reasonFilter !== "all" ? { reason: reasonFilter } : {}),
+    ...(reasonFilters.length === 1 ? { reason: reasonFilters[0] } : {}),
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   };
@@ -89,11 +94,11 @@ export default function Adjustments() {
 
   const selectedProduct = products.find(p => String(p.id) === form.productId);
 
-  const hasActiveFilters = branchFilters.length > 0 || reasonFilter !== "all" || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
+  const hasActiveFilters = branchFilters.length > 0 || reasonFilters.length > 0 || !!dateFrom || !!dateTo || !!productFilter || quantityTypeFilter !== "all";
 
   function resetFilters() {
     setBranchFilters([]);
-    setReasonFilter("all");
+    setReasonFilters([]);
     setDateFrom("");
     setDateTo("");
     setProductFilter("");
@@ -107,12 +112,19 @@ export default function Adjustments() {
     setBranchFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
+  function toggleReason(r: string) {
+    setReasonFilters(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
+  }
+
   // ── Client-side filtering + sorting
   const displayedAdjustments = useMemo(() => {
     let list = [...adjustments];
     // Multi-branch filter (client-side when 2+ selected)
     if (branchFilters.length > 1) {
       list = list.filter(a => branchFilters.includes(String(a.branchId)));
+    }
+    if (reasonFilters.length > 0) {
+      list = list.filter(a => reasonFilters.includes(a.reason));
     }
     if (productFilter) {
       const q = productFilter.toLowerCase();
@@ -139,7 +151,7 @@ export default function Adjustments() {
       }
     });
     return list;
-  }, [adjustments, productFilter, quantityTypeFilter, sortBy, sortDir]);
+  }, [adjustments, reasonFilters, productFilter, quantityTypeFilter, sortBy, sortDir]);
 
   // ── Stats computed from the currently displayed (filtered) rows
   const computedStats = useMemo(() => {
@@ -225,7 +237,7 @@ export default function Adjustments() {
             params={{
               ...(branchFilters.length === 1 ? { branchId: branchFilters[0] } : {}),
               ...(branchFilters.length > 1  ? { branchIds: branchFilters.join(",") } : {}),
-              ...(reasonFilter !== "all"    ? { reason: reasonFilter } : {}),
+              ...(reasonFilters.length === 1 ? { reason: reasonFilters[0] } : {}),
               ...(dateFrom                  ? { dateFrom } : {}),
               ...(dateTo                    ? { dateTo } : {}),
               ...(productFilter             ? { productSearch: productFilter } : {}),
@@ -306,18 +318,50 @@ export default function Adjustments() {
             )}
           </div>
 
-          {/* Motif */}
-          <div className="space-y-1">
+          {/* Motif — multi-select */}
+          <div className="space-y-1 relative" ref={reasonDropdownRef}>
             <label className="text-xs font-medium text-muted-foreground">Motif</label>
-            <Select value={reasonFilter} onValueChange={setReasonFilter}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Tous les motifs" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les motifs</SelectItem>
-                {REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <button
+              type="button"
+              onClick={() => setReasonDropdownOpen(o => !o)}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-sm hover:bg-accent transition-colors"
+            >
+              <span className={reasonFilters.length === 0 ? "text-muted-foreground" : "font-medium"}>
+                {reasonFilters.length === 0
+                  ? "Tous les motifs"
+                  : reasonFilters.length === 1
+                    ? reasonFilters[0]
+                    : `${reasonFilters.length} motifs sélectionnés`}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", reasonDropdownOpen && "rotate-180")} />
+            </button>
+            {reasonDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg overflow-hidden">
+                <div className="max-h-56 overflow-y-auto p-1">
+                  <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                    <input
+                      type="checkbox"
+                      checked={reasonFilters.length === 0}
+                      onChange={() => setReasonFilters([])}
+                      className="h-4 w-4 rounded"
+                    />
+                    <span className="font-medium">Tous les motifs</span>
+                  </label>
+                  <div className="my-1 border-t" />
+                  {REASONS.map(r => (
+                    <label key={r} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                      <input
+                        type="checkbox"
+                        checked={reasonFilters.includes(r)}
+                        onChange={() => toggleReason(r)}
+                        className="h-4 w-4 rounded"
+                      />
+                      {r}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Produit – autocomplete */}
@@ -424,12 +468,12 @@ export default function Adjustments() {
                 <button onClick={() => setBranchFilters(prev => prev.filter(x => x !== bid))}><X className="h-3 w-3" /></button>
               </span>
             ))}
-            {reasonFilter !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-2.5 py-0.5 text-xs font-medium">
-                {reasonFilter}
-                <button onClick={() => setReasonFilter("all")}><X className="h-3 w-3" /></button>
+            {reasonFilters.map(r => (
+              <span key={r} className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-2.5 py-0.5 text-xs font-medium">
+                {r}
+                <button onClick={() => toggleReason(r)}><X className="h-3 w-3" /></button>
               </span>
-            )}
+            ))}
             {dateFrom && (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2.5 py-0.5 text-xs font-medium">
                 Du {dateFrom}
