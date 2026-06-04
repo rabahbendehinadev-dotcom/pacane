@@ -508,9 +508,11 @@ export default function Products() {
                 <Label>Catégorie</Label>
                 <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" className="max-h-60 overflow-y-auto">
                     <SelectItem value="none">Aucune</SelectItem>
-                    {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                    {Array.from(new Map(categories.map(c => [c.name, c])).values()).map(c => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
