@@ -61,6 +61,7 @@ export default function Adjustments() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [form, setForm] = useState({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
+  const [quantitySign, setQuantitySign] = useState<1 | -1>(-1);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -304,6 +305,7 @@ export default function Adjustments() {
           <Button
             onClick={() => {
               setForm({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
+              setQuantitySign(-1);
               setProductSearch("");
               setDialogOpen(true);
             }}
@@ -894,18 +896,35 @@ export default function Adjustments() {
 
             <div>
               <Label>Variation de quantité *</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={form.quantityChange}
-                onChange={e => {
-                  const val = e.target.value.replace(",", ".");
-                  if (/^-?\d*\.?\d*$/.test(val)) setForm(f => ({ ...f, quantityChange: val }));
-                }}
-                placeholder="-5 ou +10 ou -1.250"
-              />
-              {form.quantityChange && isNaN(parseFloat(form.quantityChange)) && (
-                <p className="text-xs text-destructive mt-1">Valeur invalide</p>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setQuantitySign(s => s === -1 ? 1 : -1)}
+                  className={`flex items-center justify-center h-9 w-12 shrink-0 rounded-md border text-lg font-bold transition-colors ${
+                    quantitySign === -1
+                      ? "border-red-300 bg-red-50 text-red-600 hover:bg-red-100"
+                      : "border-green-300 bg-green-50 text-green-600 hover:bg-green-100"
+                  }`}
+                  title="Cliquer pour inverser le signe"
+                >
+                  {quantitySign === -1 ? "−" : "+"}
+                </button>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.quantityChange}
+                  onChange={e => {
+                    const val = e.target.value.replace(",", ".").replace(/^-/, "");
+                    if (/^\d*\.?\d*$/.test(val)) setForm(f => ({ ...f, quantityChange: val }));
+                  }}
+                  placeholder="Ex : 5 ou 1.250"
+                  className="flex-1"
+                />
+              </div>
+              {form.quantityChange && (
+                <p className={`text-xs mt-1 font-medium ${quantitySign === -1 ? "text-red-600" : "text-green-600"}`}>
+                  Valeur enregistrée : {quantitySign === -1 ? "−" : "+"}{form.quantityChange || "0"}
+                </p>
               )}
             </div>
             <div>
@@ -927,7 +946,7 @@ export default function Adjustments() {
                 data: {
                   branchId: parseInt(form.branchId),
                   productId: parseInt(form.productId),
-                  quantityChange: parseFloat(form.quantityChange),
+                  quantityChange: quantitySign * parseFloat(form.quantityChange),
                   reason: form.reason,
                   notes: form.notes || null
                 }
