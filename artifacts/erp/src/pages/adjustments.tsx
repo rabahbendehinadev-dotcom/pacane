@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, useGetAdjustmentsStats, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateAdjustmentPdf } from "@/lib/pdf-generator";
+import { ExportButton } from "@/components/ExportButton";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,16 +188,31 @@ export default function Adjustments() {
           <h1 className="text-2xl font-serif font-bold">Ajustements de stock</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Corrections et régularisations</p>
         </div>
-        <Button
-          onClick={() => {
-            setForm({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
-            setProductSearch("");
-            setDialogOpen(true);
-          }}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />Nouvel ajustement
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            endpoint="export/adjustments"
+            label="Exporter"
+            variant="outline"
+            params={{
+              ...(branchFilters.length === 1 ? { branchId: branchFilters[0] } : {}),
+              ...(branchFilters.length > 1  ? { branchIds: branchFilters.join(",") } : {}),
+              ...(reasonFilter !== "all"    ? { reason: reasonFilter } : {}),
+              ...(dateFrom                  ? { dateFrom } : {}),
+              ...(dateTo                    ? { dateTo } : {}),
+              ...(productFilter             ? { productSearch: productFilter } : {}),
+            }}
+          />
+          <Button
+            onClick={() => {
+              setForm({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
+              setProductSearch("");
+              setDialogOpen(true);
+            }}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />Nouvel ajustement
+          </Button>
+        </div>
       </div>
 
       {/* ── Filtres ── */}

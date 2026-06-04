@@ -20,9 +20,9 @@ import {
   expensesTable, stockLevelsTable, productsTable,
   branchesTable, contactsTable, unitsTable, usersTable,
   transfersTable, transferItemsTable,
-  salesReturnsTable, categoriesTable,
+  salesReturnsTable, categoriesTable, adjustmentsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, sql, inArray, desc } from "drizzle-orm";
+import { eq, and, gte, lte, sql, inArray, desc, ilike } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
@@ -829,6 +829,78 @@ router.get("/export/products", requireAuth, requirePermission(P.products.view), 
     { header: "Type de produit",      value: r => r.typeProduit },
     { header: "Catégorie",            value: r => r.categorie },
     { header: "SKU",                  value: r => r.sku },
+  ], rows);
+
+  sendCsv(res, filename, csv);
+});
+
+// ── ADJUSTMENTS EXPORT ────────────────────────────────────────────────────
+
+router.get("/export/adjustments", requireAuth, requirePermission(P.adjustments.view), async (req, res): Promise<void> => {
+  const { branchId, branchIds, reason, dateFrom, dateTo, productSearch } = req.query as Record<string, string>;
+  const scope = visibleBranchIds(req.user!);
+  if (scope !== null && scope.length === 0) { sendCsv(res, "ajustements.csv", ""); return; }
+
+  const conds: any[] = [];
+
+  // Branch scope
+  if (scope !== null) {
+    conds.push(inArray(adjustmentsTable.branchId, scope));
+  }
+
+  // Branch filter: multi (branchIds=1,2,3) or single (branchId=1)
+  if (branchIds) {
+    const ids = branchIds.split(",").map(x => parseInt(x.trim(), 10)).filter(Boolean);
+    if (ids.length > 0) {
+      const allowed = scope !== null ? ids.filter(id => scope.includes(id)) : ids;
+      if (allowed.length > 0) conds.push(inArray(adjustmentsTable.branchId, allowed));
+    }
+  } else if (branchId) {
+    conds.push(eq(adjustmentsTable.branchId, parseInt(branchId, 10)));
+  }
+
+  if (reason) conds.push(eq(adjustmentsTable.reason, reason));
+  if (dateFrom) conds.push(gte(adjustmentsTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
+    conds.push(lte(adjustmentsTable.createdAt, d));
+  }
+  if (productSearch) conds.push(ilike(productsTable.name, `%${productSearch}%`));
+
+  const rows = await db.select({
+    adj: adjustmentsTable,
+    branchName: branchesTable.name,
+    productName: productsTable.name,
+    costPrice: productsTable.costPrice,
+    createdByName: usersTable.name,
+  }).from(adjustmentsTable)
+    .leftJoin(branchesTable, eq(adjustmentsTable.branchId, branchesTable.id))
+    .leftJoin(productsTable, eq(adjustmentsTable.productId, productsTable.id))
+    .leftJoin(usersTable, eq(adjustmentsTable.createdByUserId, usersTable.id))
+    .where(conds.length > 0 ? and(...conds) : undefined)
+    .orderBy(desc(adjustmentsTable.createdAt));
+
+  type Row = typeof rows[number];
+
+  const branchLabel = branchId && !branchIds
+    ? rows[0]?.branchName ?? undefined
+    : undefined;
+  const filename = buildFilename("ajustements", branchLabel, dateFrom, dateTo);
+
+  const csv = toCsv<Row>([
+    { header: "Référence",      value: r => r.adj.reference },
+    { header: "Date",           value: r => fmtDate(r.adj.createdAt) },
+    { header: "Produit",        value: r => r.productName ?? "" },
+    { header: "Boutique",       value: r => r.branchName ?? "" },
+    { header: "Variation",      value: r => n(r.adj.quantityChange) },
+    { header: "Valeur (DA)",    value: r => {
+      const qty = n(r.adj.quantityChange);
+      const cost = n(r.costPrice);
+      return qty < 0 && cost > 0 ? Math.abs(qty) * cost : "";
+    }},
+    { header: "Motif",          value: r => r.adj.reason },
+    { header: "Par",            value: r => r.createdByName ?? "" },
+    { header: "Notes",          value: r => r.adj.notes ?? "" },
   ], rows);
 
   sendCsv(res, filename, csv);
