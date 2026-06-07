@@ -18,7 +18,7 @@ import {
   Wallet, RotateCcw, Building2, AlertTriangle, AlertCircle,
   CheckCircle2, Package, ArrowLeftRight, Factory,
   CreditCard, Banknote, Users, ZapOff, Clock,
-  Info, ChevronRight, ChevronDown, FlaskConical, Scale,
+  Info, ChevronRight, ChevronDown, FlaskConical, Scale, Download,
 } from "lucide-react";
 import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -189,6 +189,242 @@ function CountCompareCard({ label, valueA, valueB, inverse = false }: {
       </CardContent>
     </Card>
   );
+}
+
+// ─── PDF export ───────────────────────────────────────────────────────────────
+function fmtNum(n: number) {
+  return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA";
+}
+
+async function exportCompareToPDF(opts: {
+  labelA: string; labelB: string;
+  fromA: string; toA: string; fromB: string; toB: string;
+  pA: { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
+  pB: typeof opts["pA"];
+  cmpCatRows: { category: string; A: number; B: number }[];
+  cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[];
+}) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+
+  const INDIGO = [99, 102, 241] as [number, number, number];
+  const AMBER  = [245, 158, 11] as [number, number, number];
+  const LIGHT  = [248, 250, 252] as [number, number, number];
+
+  let y = 14;
+
+  doc.setFillColor(...INDIGO);
+  doc.rect(0, 0, W, 22, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("Analyse Comparative — Pacane ERP", 14, 10);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Exporté le ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 16);
+  doc.text(`Période A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`, W / 2, 10, { align: "center" });
+  doc.text(`Période B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`, W / 2, 16, { align: "center" });
+
+  y = 28;
+
+  const deltaStr = (a: number, b: number) => {
+    if (b === 0) return a > 0 ? "+100%" : "—";
+    const d = Math.round(((a - b) / Math.abs(b)) * 100);
+    return d === 0 ? "—" : `${d > 0 ? "+" : ""}${d}%`;
+  };
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Résumé financier comparé", 14, y);
+  y += 3;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
+    body: [
+      ["CA Brut",                fmtNum(opts.pA.grossRevenue), fmtNum(opts.pB.grossRevenue), deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
+      ["CA Net (après retours)", fmtNum(opts.pA.netRevenue),   fmtNum(opts.pB.netRevenue),   deltaStr(opts.pA.netRevenue, opts.pB.netRevenue)],
+      ["Montant encaissé",       fmtNum(opts.pA.encaisse),     fmtNum(opts.pB.encaisse),     deltaStr(opts.pA.encaisse, opts.pB.encaisse)],
+      ["Dépenses totales",       fmtNum(opts.pA.expenses),     fmtNum(opts.pB.expenses),     deltaStr(opts.pA.expenses, opts.pB.expenses)],
+      ["Résultat opérationnel",  fmtNum(opts.pA.result),       fmtNum(opts.pB.result),       deltaStr(opts.pA.result, opts.pB.result)],
+    ],
+    headStyles: { fillColor: INDIGO, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: LIGHT },
+    columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
+    styles: { fontSize: 8, cellPadding: 2 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Ventes comparées", 14, y);
+  y += 3;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
+    body: [
+      ["Nb. ventes confirmées", String(opts.pA.saleCount),     String(opts.pB.saleCount),     deltaStr(opts.pA.saleCount, opts.pB.saleCount)],
+      ["Montant retours",       fmtNum(opts.pA.returnAmount),   fmtNum(opts.pB.returnAmount),   deltaStr(opts.pA.returnAmount, opts.pB.returnAmount)],
+      ["Nb. retours",           String(opts.pA.returnCount),    String(opts.pB.returnCount),    deltaStr(opts.pA.returnCount, opts.pB.returnCount)],
+    ],
+    headStyles: { fillColor: [16, 185, 129] as [number, number, number], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: LIGHT },
+    columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
+    styles: { fontSize: 8, cellPadding: 2 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  if (opts.cmpCatRows.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("Dépenses par catégorie", 14, y);
+    y += 3;
+    autoTable(doc, {
+      startY: y,
+      head: [["Catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
+      body: [
+        ...opts.cmpCatRows.map(c => [c.category, fmtNum(c.A), fmtNum(c.B), deltaStr(c.A, c.B)]),
+        ["Total",
+          fmtNum(opts.cmpCatRows.reduce((s, c) => s + c.A, 0)),
+          fmtNum(opts.cmpCatRows.reduce((s, c) => s + c.B, 0)),
+          deltaStr(opts.cmpCatRows.reduce((s, c) => s + c.A, 0), opts.cmpCatRows.reduce((s, c) => s + c.B, 0)),
+        ],
+      ],
+      headStyles: { fillColor: AMBER, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: LIGHT },
+      columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
+      styles: { fontSize: 8, cellPadding: 2 },
+      margin: { left: 14, right: 14 },
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
+
+  if (opts.cmpBrRows.length > 0) {
+    if (y > 160) { doc.addPage(); y = 14; }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("Performance agences — CA · Dépenses · Résultat (A vs B)", 14, y);
+    y += 3;
+    autoTable(doc, {
+      startY: y,
+      head: [["Agence", "CA (A)", "CA (B)", "Δ CA", "Dép. (A)", "Dép. (B)", "Δ Dép.", "Rés. (A)", "Rés. (B)", "Δ Rés."]],
+      body: opts.cmpBrRows.map(b => [
+        b.branchName,
+        fmtNum(b.revA), fmtNum(b.revB), deltaStr(b.revA, b.revB),
+        fmtNum(b.expA), fmtNum(b.expB), deltaStr(b.expA, b.expB),
+        fmtNum(b.resA), fmtNum(b.resB), deltaStr(b.resA, b.resB),
+      ]),
+      headStyles: { fillColor: [99, 102, 241] as [number, number, number], textColor: [255, 255, 255], fontSize: 7, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: LIGHT },
+      columnStyles: {
+        0: { fontStyle: "bold" },
+        1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" },
+        4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "center" },
+        7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "center" },
+      },
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  const pageCount = (doc.internal as any).getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Page ${i} / ${pageCount}`, W - 14, doc.internal.pageSize.getHeight() - 6, { align: "right" });
+  }
+
+  doc.save(`analyse-comparative-${opts.labelA}-vs-${opts.labelB}.pdf`);
+}
+
+// ─── Excel export ─────────────────────────────────────────────────────────────
+async function exportCompareToExcel(opts: {
+  labelA: string; labelB: string;
+  fromA: string; toA: string; fromB: string; toB: string;
+  pA: { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
+  pB: typeof opts["pA"];
+  cmpCatRows: { category: string; A: number; B: number }[];
+  cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[];
+}) {
+  const XLSX = await import("xlsx");
+
+  const deltaStr = (a: number, b: number) => {
+    if (b === 0) return a > 0 ? "+100%" : "—";
+    const d = Math.round(((a - b) / Math.abs(b)) * 100);
+    return d === 0 ? "—" : `${d > 0 ? "+" : ""}${d}%`;
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  const periodHeader = [
+    [`Rapport d'Analyse Comparative — Pacane ERP`],
+    [`Exporté le : ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
+    [`Période A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`],
+    [`Période B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`],
+    [],
+  ];
+
+  const financialData = [
+    ...periodHeader,
+    ["Résumé financier comparé"],
+    ["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
+    ["CA Brut",                opts.pA.grossRevenue, opts.pB.grossRevenue, deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
+    ["CA Net (après retours)", opts.pA.netRevenue,   opts.pB.netRevenue,   deltaStr(opts.pA.netRevenue,   opts.pB.netRevenue)],
+    ["Montant encaissé",       opts.pA.encaisse,     opts.pB.encaisse,     deltaStr(opts.pA.encaisse,     opts.pB.encaisse)],
+    ["Dépenses totales",       opts.pA.expenses,     opts.pB.expenses,     deltaStr(opts.pA.expenses,     opts.pB.expenses)],
+    ["Résultat opérationnel",  opts.pA.result,       opts.pB.result,       deltaStr(opts.pA.result,       opts.pB.result)],
+    [],
+    ["Ventes comparées"],
+    ["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
+    ["Nb. ventes confirmées", opts.pA.saleCount,     opts.pB.saleCount,     deltaStr(opts.pA.saleCount,     opts.pB.saleCount)],
+    ["Montant retours",       opts.pA.returnAmount,  opts.pB.returnAmount,  deltaStr(opts.pA.returnAmount,  opts.pB.returnAmount)],
+    ["Nb. retours",           opts.pA.returnCount,   opts.pB.returnCount,   deltaStr(opts.pA.returnCount,   opts.pB.returnCount)],
+  ];
+  const wsFinancial = XLSX.utils.aoa_to_sheet(financialData);
+  wsFinancial["!cols"] = [{ wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, wsFinancial, "Résumé financier & Ventes");
+
+  if (opts.cmpCatRows.length > 0) {
+    const totA = opts.cmpCatRows.reduce((s, c) => s + c.A, 0);
+    const totB = opts.cmpCatRows.reduce((s, c) => s + c.B, 0);
+    const catData = [
+      ...periodHeader,
+      ["Dépenses par catégorie — A vs B"],
+      ["Catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
+      ...opts.cmpCatRows.map(c => [c.category, c.A, c.B, deltaStr(c.A, c.B)]),
+      ["Total", totA, totB, deltaStr(totA, totB)],
+    ];
+    const wsCat = XLSX.utils.aoa_to_sheet(catData);
+    wsCat["!cols"] = [{ wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsCat, "Dépenses par catégorie");
+  }
+
+  if (opts.cmpBrRows.length > 0) {
+    const brData = [
+      ...periodHeader,
+      ["Performance agences — CA · Dépenses · Résultat (A vs B)"],
+      ["Agence", "CA (A)", "CA (B)", "Δ CA", "Dép. (A)", "Dép. (B)", "Δ Dép.", "Rés. (A)", "Rés. (B)", "Δ Rés."],
+      ...opts.cmpBrRows.map(b => [
+        b.branchName,
+        b.revA, b.revB, deltaStr(b.revA, b.revB),
+        b.expA, b.expB, deltaStr(b.expA, b.expB),
+        b.resA, b.resB, deltaStr(b.resA, b.resB),
+      ]),
+    ];
+    const wsBr = XLSX.utils.aoa_to_sheet(brData);
+    wsBr["!cols"] = [{ wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsBr, "Performance agences");
+  }
+
+  XLSX.writeFile(wb, `analyse-comparative-${opts.labelA}-vs-${opts.labelB}.xlsx`);
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -884,14 +1120,36 @@ export default function ExecutiveDashboard() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle icon={Scale} title="Analyse comparative" color="text-indigo-600" />
-          <Button
-            variant={showCompare ? "default" : "outline"} size="sm"
-            className={`text-xs h-7 gap-1.5 ${showCompare ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
-            onClick={() => setShowCompare(v => !v)}
-          >
-            {showCompare ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            {showCompare ? "Masquer" : "Voir l'analyse comparative"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {showCompare && !cmpLoading && pA && pB && (
+              <>
+                <Button
+                  variant="outline" size="sm"
+                  className="text-xs h-7 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                  onClick={() => exportCompareToPDF({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpCatRows, cmpBrRows })}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  PDF
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  className="text-xs h-7 gap-1.5 border-green-200 text-green-700 hover:bg-green-50"
+                  onClick={() => exportCompareToExcel({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpCatRows, cmpBrRows })}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Excel
+                </Button>
+              </>
+            )}
+            <Button
+              variant={showCompare ? "default" : "outline"} size="sm"
+              className={`text-xs h-7 gap-1.5 ${showCompare ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
+              onClick={() => setShowCompare(v => !v)}
+            >
+              {showCompare ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              {showCompare ? "Masquer" : "Voir l'analyse comparative"}
+            </Button>
+          </div>
         </div>
 
         {showCompare && (
