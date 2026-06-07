@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import {
@@ -135,9 +135,10 @@ function DeltaBadge({ delta, inverse = false }: { delta: number; inverse?: boole
   );
 }
 
-function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inverse = false }: {
+function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inverse = false, sparklineData }: {
   label: string; valueA: number; valueB: number;
   icon: React.FC<{ className?: string }>; isResult?: boolean; inverse?: boolean;
+  sparklineData?: { i: number; a: number; b: number }[];
 }) {
   const d = getDelta(valueA, valueB);
   return (
@@ -160,6 +161,40 @@ function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inve
             <p className="text-sm font-bold text-amber-700 leading-tight">{fmtDA(valueB)}</p>
           </div>
         </div>
+        {sparklineData && sparklineData.length > 1 && (
+          <div className="pt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="flex items-center gap-0.5 text-[9px] text-indigo-500 font-medium">
+                <span className="inline-block h-1.5 w-3 rounded-full bg-indigo-500" /> A
+              </span>
+              <span className="flex items-center gap-0.5 text-[9px] text-amber-500 font-medium">
+                <span className="inline-block h-1.5 w-3 rounded-full bg-amber-400" /> B
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={44}>
+              <LineChart data={sparklineData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                <Line type="monotone" dataKey="a" stroke="#6366f1" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="b" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <ReferenceLine y={0} stroke="#e2e8f0" strokeWidth={1} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="bg-background border border-border rounded shadow-md p-1.5 text-[9px] space-y-0.5">
+                        {payload.map((p: any, i: number) => (
+                          <div key={i} style={{ color: p.stroke }} className="flex gap-1.5 justify-between">
+                            <span>{p.dataKey === "a" ? "A" : "B"}</span>
+                            <span className="font-bold">{fmtDA(p.value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -500,6 +535,22 @@ export default function ExecutiveDashboard() {
     return new URLSearchParams(p).toString();
   }, [showCompare, compareRanges, branchIds]);
 
+  const trendAQs = useMemo(() => {
+    if (!showCompare) return "";
+    const p: Record<string, string> = { from: compareRanges.fromA, to: compareRanges.toA };
+    if (branchIds.length === 1) p.branchId = String(branchIds[0]);
+    else if (branchIds.length > 1) p.branchIds = branchIds.join(",");
+    return new URLSearchParams(p).toString();
+  }, [showCompare, compareRanges, branchIds]);
+
+  const trendBQs = useMemo(() => {
+    if (!showCompare) return "";
+    const p: Record<string, string> = { from: compareRanges.fromB, to: compareRanges.toB };
+    if (branchIds.length === 1) p.branchId = String(branchIds[0]);
+    else if (branchIds.length > 1) p.branchIds = branchIds.join(",");
+    return new URLSearchParams(p).toString();
+  }, [showCompare, compareRanges, branchIds]);
+
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
     setFrom(p.from()); setTo(p.to()); setActivePreset(i);
@@ -528,11 +579,38 @@ export default function ExecutiveDashboard() {
     queryFn: () => customFetch(`/api/dashboard/executive/compare?${compareQs}`),
     enabled: showCompare && !!compareQs,
   });
+  const { data: trendAData } = useQuery({
+    queryKey: ["ex-trend-cmp-a", trendAQs],
+    queryFn: () => customFetch(`/api/dashboard/executive/trend?${trendAQs}`),
+    enabled: showCompare && !!trendAQs,
+  });
+  const { data: trendBData } = useQuery({
+    queryKey: ["ex-trend-cmp-b", trendBQs],
+    queryFn: () => customFetch(`/api/dashboard/executive/trend?${trendBQs}`),
+    enabled: showCompare && !!trendBQs,
+  });
 
   const ov = overview as any;
   const trendRows = (trend as any[]) ?? [];
   const bData = (branchData as any[]) ?? [];
   const alerts = alertsData as any;
+
+  const trendARows = (trendAData as any[]) ?? [];
+  const trendBRows = (trendBData as any[]) ?? [];
+
+  function buildSparkData(field: string) {
+    const len = Math.max(trendARows.length, trendBRows.length);
+    if (len === 0) return [];
+    return Array.from({ length: len }, (_, i) => ({
+      i,
+      a: trendARows[i]?.[field] ?? 0,
+      b: trendBRows[i]?.[field] ?? 0,
+    }));
+  }
+
+  const sparkGross    = buildSparkData("revenue");
+  const sparkExpenses = buildSparkData("expenses");
+  const sparkResult   = buildSparkData("netResult");
 
   const cmp = compareData as any;
   const pA = cmp?.periodA as { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] } | undefined;
@@ -1202,10 +1280,10 @@ export default function ExecutiveDashboard() {
                     <Banknote className="h-3.5 w-3.5" /> Résumé financier comparé
                   </p>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <CompareCard label="CA Brut"                valueA={pA.grossRevenue} valueB={pB.grossRevenue} icon={TrendingUp} />
-                    <CompareCard label="CA Net (après retours)" valueA={pA.netRevenue}   valueB={pB.netRevenue}   icon={Banknote} />
-                    <CompareCard label="Dépenses"               valueA={pA.expenses}     valueB={pB.expenses}     icon={Wallet} inverse />
-                    <CompareCard label="Résultat opérationnel"  valueA={pA.result}       valueB={pB.result}       icon={TrendingUp} isResult />
+                    <CompareCard label="CA Brut"                valueA={pA.grossRevenue} valueB={pB.grossRevenue} icon={TrendingUp} sparklineData={sparkGross} />
+                    <CompareCard label="CA Net (après retours)" valueA={pA.netRevenue}   valueB={pB.netRevenue}   icon={Banknote}   sparklineData={sparkGross} />
+                    <CompareCard label="Dépenses"               valueA={pA.expenses}     valueB={pB.expenses}     icon={Wallet} inverse sparklineData={sparkExpenses} />
+                    <CompareCard label="Résultat opérationnel"  valueA={pA.result}       valueB={pB.result}       icon={TrendingUp} isResult sparklineData={sparkResult} />
                   </div>
                 </div>
 
