@@ -163,7 +163,7 @@ export default function AnalyticsSales() {
   const [customerSortDir, setCustomerSortDir] = useState<"desc"|"asc">("desc");
   const [sellerSortKey,   setSellerSortKey]   = useState<"sellerName"|"revenue"|"saleCount"|"avgBasket"|"paymentRate"|"revenuePct">("revenue");
   const [sellerSortDir,   setSellerSortDir]   = useState<"desc"|"asc">("desc");
-  const [docSortKey,      setDocSortKey]      = useState<"reference"|"type"|"status"|"customerName"|"total"|"paid"|"unpaid"|"createdAt">("createdAt");
+  const [docSortKey,      setDocSortKey]      = useState<"reference"|"type"|"status"|"customerName"|"branchName"|"fulfillmentType"|"paymentStatus"|"total"|"paid"|"unpaid"|"createdAt">("createdAt");
   const [docSortDir,      setDocSortDir]      = useState<"desc"|"asc">("desc");
 
   function toggleSort(
@@ -878,14 +878,14 @@ export default function AnalyticsSales() {
                       <SortHead label="Réf."    sk="reference"    curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
                       <SortHead label="Type"    sk="type"         curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
                       <SortHead label="Statut"  sk="status"       curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
-                      <SortHead label="Client"  sk="customerName" curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
-                      <TableHead className="text-xs font-semibold">Agence</TableHead>
-                      <TableHead className="text-xs font-semibold">Canal</TableHead>
-                      <SortHead label="Montant" sk="total"        curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
-                      <SortHead label="Payé"    sk="paid"         curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
-                      <SortHead label="Reste"   sk="unpaid"       curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
-                      <TableHead className="text-xs font-semibold">Paiement</TableHead>
-                      <SortHead label="Date"    sk="createdAt"    curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Client"   sk="customerName"    curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Agence"   sk="branchName"      curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Canal"    sk="fulfillmentType" curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Montant"  sk="total"           curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
+                      <SortHead label="Payé"     sk="paid"            curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
+                      <SortHead label="Reste"    sk="unpaid"          curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
+                      <SortHead label="Paiement" sk="paymentStatus"   curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Date"     sk="createdAt"       curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
