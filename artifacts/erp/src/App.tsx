@@ -45,6 +45,7 @@ import WorkersPage from "@/pages/workers";
 import PreparationOrdersPage from "@/pages/preparation-orders";
 import MyPreparationsPage from "@/pages/my-preparations";
 import AnalyticsSellers from "@/pages/analytics-sellers";
+import WhatsappTemplatesPage from "@/pages/whatsapp-templates";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -204,6 +205,9 @@ function AppRoutes() {
       </Route>
       <Route path="/my-preparations">
         <DashboardLayout><MyPreparationsPage /></DashboardLayout>
+      </Route>
+      <Route path="/whatsapp-templates">
+        <DashboardLayout><WhatsappTemplatesPage /></DashboardLayout>
       </Route>
 
       <Route component={NotFound} />

@@ -35,6 +35,7 @@ import {
   HardHat,
   ClipboardCheck,
   Send,
+  MessageCircle,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -103,6 +104,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       title: "CRM",
       items: [
         { label: "Fidélité RFM", href: "/loyalty", icon: Heart, perm: "contacts.view" },
+        { label: "Modèles WhatsApp", href: "/whatsapp-templates", icon: MessageCircle, perm: "pos.view" },
       ],
     },
     {

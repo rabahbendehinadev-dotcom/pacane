@@ -28,13 +28,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Receipt,
   CheckCircle, Package, Lock, Unlock, Clock, TrendingUp, AlertTriangle, History, X, Ban, Printer, Store,
-  UserPlus, ChevronsUpDown, Check,
+  UserPlus, ChevronsUpDown, Check, MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+
+import { loadTemplates, applyVariables, buildWhatsappUrl } from "@/lib/whatsapp-templates";
 
 type CartItem = { productId: number; name: string; price: number; quantity: number; discount: number };
 
@@ -120,6 +122,7 @@ export default function POS() {
   const [lastReceipt, setLastReceipt] = useState<{ ref: string; total: number; change: number; items: CartItem[]; paymentMethod: string; customerName: string | null; branchName: string; branchPhone: string | null; cashierName: string } | null>(null);
   const [clientComboOpen, setClientComboOpen] = useState(false);
   const [addClientOpen, setAddClientOpen] = useState(false);
+  const [whatsappPopoverOpen, setWhatsappPopoverOpen] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
 
@@ -1211,6 +1214,60 @@ export default function POS() {
                 >
                   <Printer className="h-4 w-4" />Imprimer le reçu
                 </Button>
+                {(() => {
+                  const selectedCustomer = customerId !== "none"
+                    ? customers.find(c => String(c.id) === customerId)
+                    : null;
+                  const phone = selectedCustomer ? (selectedCustomer as any).phone as string | null : null;
+                  if (!phone) return null;
+                  const templates = loadTemplates();
+                  return (
+                    <Popover open={whatsappPopoverOpen} onOpenChange={setWhatsappPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700">
+                          <MessageCircle className="h-4 w-4" />
+                          Envoyer WhatsApp
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-2" align="center">
+                        <p className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
+                          Choisir un modèle — {phone}
+                        </p>
+                        {templates.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-2 py-2">
+                            Aucun modèle. Créez-en un dans Modèles WhatsApp.
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            {templates.map(tpl => {
+                              const msg = applyVariables(tpl.message, {
+                                client: lastReceipt?.customerName ?? (selectedCustomer as any).displayName ?? "",
+                                montant: lastReceipt ? String(lastReceipt.total) : "",
+                                ref: lastReceipt?.ref ?? "",
+                              });
+                              return (
+                                <button
+                                  key={tpl.id}
+                                  className="w-full text-left rounded px-3 py-2 hover:bg-muted transition-colors"
+                                  onClick={() => {
+                                    window.open(buildWhatsappUrl(phone, msg), "_blank");
+                                    setWhatsappPopoverOpen(false);
+                                  }}
+                                >
+                                  <p className="text-sm font-medium flex items-center gap-1.5">
+                                    <MessageCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                                    {tpl.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{msg}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  );
+                })()}
                 <Button className="w-full" onClick={() => setSuccessOpen(false)}>Nouvelle vente</Button>
               </div>
             </div>
