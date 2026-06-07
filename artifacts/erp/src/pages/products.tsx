@@ -604,9 +604,25 @@ export default function Products() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div><Label>Prix coût (DA)</Label><Input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} /></div>
               <div><Label>Prix vente (DA)</Label><Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} /></div>
+              <div>
+                <Label>Marge</Label>
+                {(() => {
+                  const cost = parseFloat(form.costPrice);
+                  const sell = parseFloat(form.sellingPrice);
+                  if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0) {
+                    return <div className="flex h-9 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">—</div>;
+                  }
+                  const marge = ((sell - cost) / cost) * 100;
+                  return (
+                    <div className={`flex h-9 items-center rounded-md border bg-muted px-3 text-sm font-medium ${marge < 0 ? "text-red-500" : "text-foreground"}`}>
+                      {marge.toFixed(1)}%
+                    </div>
+                  );
+                })()}
+              </div>
               <div><Label>Seuil alerte</Label><Input type="number" step="0.001" value={form.alertQuantity} onChange={e => setForm(f => ({ ...f, alertQuantity: e.target.value }))} /></div>
             </div>
             <div><Label>Référence SKU</Label><Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} /></div>
