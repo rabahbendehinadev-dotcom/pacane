@@ -4,7 +4,9 @@ import {
   useOpenPOSSession, useClosePOSSession,
   useGetPOSSessions, useGetStockLevels,
   getGetSalesQueryKey, getGetStockLevelsQueryKey, getGetPOSSessionsQueryKey, getGetProductsQueryKey,
+  getGetContactsQueryKey,
   useGetCompanySettings,
+  useCreateContact,
   customFetch,
   type POSSession
 } from "@workspace/api-client-react";
@@ -15,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Receipt,
   CheckCircle, Package, Lock, Unlock, Clock, TrendingUp, AlertTriangle, History, X, Ban, Printer, Store,
+  UserPlus, ChevronsUpDown, Check,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/hooks/use-toast";
@@ -112,10 +117,28 @@ export default function POS() {
   const [creditBlockInfo, setCreditBlockInfo] = useState<{ state: string; creditLimit: number | null; unpaidBalance: number; canOverride: boolean } | null>(null);
   const [creditOverrideOpen, setCreditOverrideOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{ ref: string; total: number; change: number; items: CartItem[]; paymentMethod: string; customerName: string | null; branchName: string; branchPhone: string | null; cashierName: string } | null>(null);
+  const [clientComboOpen, setClientComboOpen] = useState(false);
+  const [addClientOpen, setAddClientOpen] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
 
   const { data: products = [] } = useGetProducts({});
   const { data: branches = [] } = useGetBranches();
   const { data: customers = [] } = useGetContacts({ type: "customer" });
+  const createContactMutation = useCreateContact({
+    mutation: {
+      onSuccess: (newContact: any) => {
+        qc.invalidateQueries({ queryKey: getGetContactsQueryKey({ type: "customer" }) });
+        setCustomerId(String(newContact.id));
+        setCreditBlockInfo(null);
+        setAddClientOpen(false);
+        setNewClientName("");
+        setNewClientPhone("");
+        toast({ title: "Client ajouté et sélectionné" });
+      },
+      onError: () => toast({ title: "Erreur", description: "Impossible de créer le client", variant: "destructive" }),
+    },
+  });
   const { data: companySettings } = useGetCompanySettings();
   const { data: openSessions = [], isLoading: sessionLoading } = useGetPOSSessions(
     branchId ? { branchId: parseInt(branchId), status: "open" } : { status: "open" }
@@ -561,13 +584,63 @@ export default function POS() {
                 </div>
 
                 <div className="px-4 pt-3 pb-0 space-y-2">
-                  <Select value={customerId} onValueChange={v => { setCustomerId(v); setCreditBlockInfo(null); }}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Client (optionnel)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Comptoir</SelectItem>
-                      {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.displayName}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-1.5">
+                    <Popover open={clientComboOpen} onOpenChange={setClientComboOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={clientComboOpen}
+                          className="flex-1 h-8 text-xs justify-between font-normal overflow-hidden"
+                        >
+                          <span className="truncate">
+                            {customerId === "none"
+                              ? "Comptoir"
+                              : (customers.find(c => String(c.id) === customerId) as any)?.displayName ?? "Client..."}
+                          </span>
+                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Rechercher un client..." className="h-8 text-xs" />
+                          <CommandList>
+                            <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">Aucun client trouvé.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="comptoir"
+                                onSelect={() => { setCustomerId("none"); setCreditBlockInfo(null); setClientComboOpen(false); }}
+                                className="text-xs cursor-pointer"
+                              >
+                                <Check className={`mr-2 h-3.5 w-3.5 ${customerId === "none" ? "opacity-100" : "opacity-0"}`} />
+                                Comptoir
+                              </CommandItem>
+                              {customers.map(c => (
+                                <CommandItem
+                                  key={c.id}
+                                  value={(c as any).displayName ?? String(c.id)}
+                                  onSelect={() => { setCustomerId(String(c.id)); setCreditBlockInfo(null); setClientComboOpen(false); }}
+                                  className="text-xs cursor-pointer"
+                                >
+                                  <Check className={`mr-2 h-3.5 w-3.5 ${customerId === String(c.id) ? "opacity-100" : "opacity-0"}`} />
+                                  {(c as any).displayName}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      title="Nouveau client"
+                      onClick={() => setAddClientOpen(true)}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                   {customerId !== "none" && creditStatus && (
                     <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs ${
                       creditStatus.state === "exceeded" ? "bg-red-50 text-red-700 border border-red-200" :
@@ -1138,6 +1211,59 @@ export default function POS() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ── Quick add client dialog ───────────────────────────────────────── */}
+      <Dialog open={addClientOpen} onOpenChange={setAddClientOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4" /> Nouveau client
+            </DialogTitle>
+            <DialogDescription>Ajoutez un client rapide depuis la caisse.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
+              <Label className="text-xs">Nom *</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Nom du client"
+                value={newClientName}
+                onChange={e => setNewClientName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newClientName.trim()) {
+                    createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any });
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Téléphone <span className="text-muted-foreground">(optionnel)</span></Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="0XXX XXX XXX"
+                value={newClientPhone}
+                onChange={e => setNewClientPhone(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newClientName.trim()) {
+                    createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any });
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAddClientOpen(false)}>Annuler</Button>
+            <Button
+              size="sm"
+              disabled={!newClientName.trim() || createContactMutation.isPending}
+              onClick={() => createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any })}
+            >
+              {createContactMutation.isPending ? "Ajout..." : "Ajouter et sélectionner"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
