@@ -119,7 +119,7 @@ export default function POS() {
   const [creditOverrideReason, setCreditOverrideReason] = useState("");
   const [creditBlockInfo, setCreditBlockInfo] = useState<{ state: string; creditLimit: number | null; unpaidBalance: number; canOverride: boolean } | null>(null);
   const [creditOverrideOpen, setCreditOverrideOpen] = useState(false);
-  const [lastReceipt, setLastReceipt] = useState<{ ref: string; total: number; change: number; items: CartItem[]; paymentMethod: string; customerName: string | null; branchName: string; branchPhone: string | null; cashierName: string } | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<{ ref: string; total: number; change: number; items: CartItem[]; paymentMethod: string; customerName: string | null; customerPhone: string | null; branchName: string; branchPhone: string | null; cashierName: string } | null>(null);
   const [clientComboOpen, setClientComboOpen] = useState(false);
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [whatsappPopoverOpen, setWhatsappPopoverOpen] = useState(false);
@@ -237,6 +237,7 @@ export default function POS() {
           items: [...cart],
           paymentMethod,
           customerName: selCustomer ? (selCustomer as any).displayName ?? (selCustomer as any).name : null,
+          customerPhone: selCustomer ? (selCustomer as any).phone ?? null : null,
           branchName: selBranch?.name ?? "",
           branchPhone: (selBranch as any)?.phone ?? null,
           cashierName: (authUser as any)?.name ?? (authUser as any)?.username ?? "",
@@ -1214,12 +1215,8 @@ export default function POS() {
                 >
                   <Printer className="h-4 w-4" />Imprimer le reçu
                 </Button>
-                {(() => {
-                  const selectedCustomer = customerId !== "none"
-                    ? customers.find(c => String(c.id) === customerId)
-                    : null;
-                  const phone = selectedCustomer ? (selectedCustomer as any).phone as string | null : null;
-                  if (!phone) return null;
+                {lastReceipt?.customerPhone && (() => {
+                  const phone = lastReceipt.customerPhone;
                   const templates = loadTemplates();
                   return (
                     <Popover open={whatsappPopoverOpen} onOpenChange={setWhatsappPopoverOpen}>
@@ -1235,31 +1232,35 @@ export default function POS() {
                         </p>
                         {templates.length === 0 ? (
                           <p className="text-xs text-muted-foreground px-2 py-2">
-                            Aucun modèle. Créez-en un dans Modèles WhatsApp.
+                            Aucun modèle. Créez-en un dans <strong>Modèles WhatsApp</strong>.
                           </p>
                         ) : (
                           <div className="space-y-1">
                             {templates.map(tpl => {
                               const msg = applyVariables(tpl.message, {
-                                client: lastReceipt?.customerName ?? (selectedCustomer as any).displayName ?? "",
-                                montant: lastReceipt ? String(lastReceipt.total) : "",
-                                ref: lastReceipt?.ref ?? "",
+                                client: lastReceipt.customerName ?? "",
+                                montant: String(lastReceipt.total),
+                                ref: lastReceipt.ref,
                               });
                               return (
-                                <button
-                                  key={tpl.id}
-                                  className="w-full text-left rounded px-3 py-2 hover:bg-muted transition-colors"
-                                  onClick={() => {
-                                    window.open(buildWhatsappUrl(phone, msg), "_blank");
-                                    setWhatsappPopoverOpen(false);
-                                  }}
-                                >
-                                  <p className="text-sm font-medium flex items-center gap-1.5">
+                                <div key={tpl.id} className="rounded border hover:bg-muted/60 transition-colors p-2">
+                                  <p className="text-sm font-medium flex items-center gap-1.5 mb-1">
                                     <MessageCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
                                     {tpl.name}
                                   </p>
-                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{msg}</p>
-                                </button>
+                                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{msg}</p>
+                                  <Button
+                                    size="sm"
+                                    className="w-full h-7 text-xs bg-green-500 hover:bg-green-600 text-white gap-1"
+                                    onClick={() => {
+                                      window.open(buildWhatsappUrl(phone, msg), "_blank");
+                                      setWhatsappPopoverOpen(false);
+                                    }}
+                                  >
+                                    <MessageCircle className="h-3 w-3" />
+                                    Envoyer
+                                  </Button>
+                                </div>
                               );
                             })}
                           </div>
