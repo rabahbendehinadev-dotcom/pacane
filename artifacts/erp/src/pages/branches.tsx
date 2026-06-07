@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetBranches, useCreateBranch, useUpdateBranch, getGetBranchesQueryKey, customFetch, type Branch } from "@workspace/api-client-react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit2, Trash2, Store, Factory, Warehouse, Building2, Search, AlertCircle, CheckCircle2, Clock, ShoppingCart, Star } from "lucide-react";
+import { Plus, Edit2, Trash2, Store, Factory, Warehouse, Building2, Search, AlertCircle, CheckCircle2, Clock, ShoppingCart, Star, UserPlus, X } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -65,6 +66,28 @@ export default function Branches() {
   const [editing, setEditing] = useState<Branch | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
+  const [sellers, setSellers] = useState<string[]>([]);
+  const [newSeller, setNewSeller] = useState("");
+  const newSellerRef = useRef<HTMLInputElement>(null);
+
+  const { data: fetchedSellers = [] } = useQuery<string[]>({
+    queryKey: ["branch-sellers", editing?.id],
+    queryFn: () => customFetch<string[]>(`/api/branches/${editing!.id}/sellers`),
+    enabled: !!editing,
+  });
+
+  useEffect(() => {
+    if (editing) {
+      setSellers(fetchedSellers);
+    } else {
+      setSellers([]);
+    }
+  }, [fetchedSellers, editing?.id]);
+
+  const sellersMutation = useMutation({
+    mutationFn: ({ branchId, names }: { branchId: number; names: string[] }) =>
+      customFetch(`/api/branches/${branchId}/sellers`, { method: "PUT", body: JSON.stringify({ names }) }),
+  });
 
   const defaultBranchMutation = useMutation({
     mutationFn: (branchId: number | null) =>
@@ -80,7 +103,8 @@ export default function Branches() {
 
   const createMutation = useCreateBranch({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (newBranch: any) => {
+        sellersMutation.mutate({ branchId: newBranch.id, names: sellers });
         qc.invalidateQueries({ queryKey: getGetBranchesQueryKey() });
         setDialogOpen(false);
         toast({ title: "Boutique créée" });
@@ -94,7 +118,9 @@ export default function Branches() {
   const updateMutation = useUpdateBranch({
     mutation: {
       onSuccess: () => {
+        if (editing) sellersMutation.mutate({ branchId: editing.id, names: sellers });
         qc.invalidateQueries({ queryKey: getGetBranchesQueryKey() });
+        qc.invalidateQueries({ queryKey: ["branch-sellers", editing?.id] });
         setDialogOpen(false);
         toast({ title: "Boutique mise à jour" });
       }
@@ -353,6 +379,73 @@ export default function Branches() {
                   {form.salesActive && form.posEnabled && form.requireOpenSession && <><Clock className="h-3.5 w-3.5" /> POS actif — session obligatoire avant chaque vente</>}
                   {form.salesActive && form.posEnabled && !form.requireOpenSession && <><CheckCircle2 className="h-3.5 w-3.5" /> POS actif — ventes sans contrainte de session</>}
                 </div>
+              </div>
+            </div>
+
+            {/* ─── Vendeurs ─── */}
+            <Separator />
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <UserPlus className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Vendeurs</span>
+                <span className="text-xs text-muted-foreground ml-1">({sellers.length})</span>
+              </div>
+              <div className="space-y-2">
+                {sellers.length > 0 && (
+                  <ScrollArea className="max-h-36 rounded-md border bg-muted/20">
+                    <div className="p-1">
+                      {sellers.map(name => (
+                        <div key={name} className="flex items-center justify-between px-3 py-1.5 rounded hover:bg-muted/40">
+                          <span className="text-sm">{name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSellers(s => s.filter(n => n !== name))}
+                            className="text-muted-foreground hover:text-red-500 transition-colors"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    ref={newSellerRef}
+                    className="h-8 text-sm"
+                    placeholder="Nom du vendeur (ex: Amine)"
+                    value={newSeller}
+                    onChange={e => setNewSeller(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const trimmed = newSeller.trim();
+                        if (trimmed && !sellers.includes(trimmed)) {
+                          setSellers(s => [...s, trimmed]);
+                          setNewSeller("");
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 shrink-0"
+                    onClick={() => {
+                      const trimmed = newSeller.trim();
+                      if (trimmed && !sellers.includes(trimmed)) {
+                        setSellers(s => [...s, trimmed]);
+                        setNewSeller("");
+                        newSellerRef.current?.focus();
+                      }
+                    }}
+                    disabled={!newSeller.trim()}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Ces noms apparaîtront dans la liste du POS lors de chaque vente.</p>
               </div>
             </div>
 

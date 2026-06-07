@@ -130,11 +130,15 @@ async function runMigrations() {
       CREATE TABLE IF NOT EXISTS branch_sellers (
         id SERIAL PRIMARY KEY,
         branch_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
+        seller_name TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        UNIQUE(branch_id, user_id)
+        UNIQUE(branch_id, seller_name)
       );
     `);
+    // Migrate branch_sellers: replace user_id column with seller_name text
+    await db.execute(sql`ALTER TABLE branch_sellers ADD COLUMN IF NOT EXISTS seller_name TEXT;`);
+    await db.execute(sql`DELETE FROM branch_sellers WHERE seller_name IS NULL;`);
+    await db.execute(sql`ALTER TABLE branch_sellers DROP COLUMN IF EXISTS user_id;`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");

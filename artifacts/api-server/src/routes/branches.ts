@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, branchesTable, branchSellersTable, usersTable } from "@workspace/db";
+import { db, branchesTable, branchSellersTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -7,10 +7,6 @@ import { P } from "../lib/permissions";
 
 const router: IRouter = Router();
 
-// Accessible à tout utilisateur authentifié :
-// - adminAccess → toutes les branches
-// - branchIds vide → aucune branche (utilisateur sans affectation)
-// - branchIds définis → uniquement les branches assignées
 router.get("/branches", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   if (user.adminAccess) {
@@ -71,37 +67,33 @@ router.delete("/branches/:id", requireAuth, requirePermission(P.branches.delete)
   res.json({ success: true });
 });
 
-// ── Vendeurs d'une boutique ──────────────────────────────────────────────────
+// ── Vendeurs d'une boutique (noms libres) ────────────────────────────────────
 
 router.get("/branches/:id/sellers", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const rows = await db
-    .select({ userId: branchSellersTable.userId, name: usersTable.name })
+    .select({ name: branchSellersTable.sellerName })
     .from(branchSellersTable)
-    .leftJoin(usersTable, eq(branchSellersTable.userId, usersTable.id))
-    .where(eq(branchSellersTable.branchId, id));
-  res.json(rows);
+    .where(eq(branchSellersTable.branchId, id))
+    .orderBy(branchSellersTable.sellerName);
+  res.json(rows.map(r => r.name));
 });
 
 router.put("/branches/:id/sellers", requireAuth, requirePermission(P.branches.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { userIds } = req.body;
-  if (!Array.isArray(userIds)) {
-    res.status(400).json({ error: "userIds doit être un tableau" });
+  const { names } = req.body;
+  if (!Array.isArray(names)) {
+    res.status(400).json({ error: "names doit être un tableau" });
     return;
   }
+  const cleaned = [...new Set(names.map((n: string) => String(n).trim()).filter(Boolean))];
   await db.delete(branchSellersTable).where(eq(branchSellersTable.branchId, id));
-  if (userIds.length > 0) {
+  if (cleaned.length > 0) {
     await db.insert(branchSellersTable).values(
-      userIds.map((uid: number) => ({ branchId: id, userId: uid }))
+      cleaned.map((name: string) => ({ branchId: id, sellerName: name }))
     );
   }
-  const rows = await db
-    .select({ userId: branchSellersTable.userId, name: usersTable.name })
-    .from(branchSellersTable)
-    .leftJoin(usersTable, eq(branchSellersTable.userId, usersTable.id))
-    .where(eq(branchSellersTable.branchId, id));
-  res.json(rows);
+  res.json(cleaned);
 });
 
 export default router;

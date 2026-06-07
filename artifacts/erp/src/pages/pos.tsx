@@ -5,6 +5,7 @@ import {
   useGetPOSSessions, useGetStockLevels,
   getGetSalesQueryKey, getGetStockLevelsQueryKey, getGetPOSSessionsQueryKey, getGetProductsQueryKey,
   useGetCompanySettings,
+  customFetch,
   type POSSession
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -124,6 +125,11 @@ export default function POS() {
   );
 
   const effectiveBranchIdNum = branchId ? parseInt(branchId) : (openSessions[0]?.branchId ?? null);
+  const { data: branchSellerNames = [] } = useQuery<string[]>({
+    queryKey: ["branch-sellers", effectiveBranchIdNum],
+    queryFn: () => customFetch<string[]>(`/api/branches/${effectiveBranchIdNum}/sellers`),
+    enabled: !!effectiveBranchIdNum,
+  });
   const { data: branchStockLevels = [] } = useGetStockLevels(
     effectiveBranchIdNum ? { branchId: effectiveBranchIdNum } : undefined
   );
@@ -957,14 +963,35 @@ export default function POS() {
               <p className="text-3xl font-bold text-primary">{formatDA(total)}</p>
             </div>
             <div>
-              <Label>Nom du vendeur <span className="text-red-500">*</span></Label>
-              <Input
-                className="mt-1"
-                placeholder="Ex: Ahmed, Karim..."
-                value={sellerName}
-                onChange={e => setSellerName(e.target.value)}
-                autoFocus
-              />
+              <Label>Vendeur <span className="text-red-500">*</span></Label>
+              {branchSellerNames.length > 0 ? (
+                <div className="mt-1 rounded-md border overflow-hidden">
+                  <ScrollArea className="h-36">
+                    {branchSellerNames.map(name => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setSellerName(name)}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors border-b last:border-b-0 ${
+                          sellerName === name
+                            ? "bg-primary text-primary-foreground font-medium"
+                            : "hover:bg-muted/50"
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </ScrollArea>
+                </div>
+              ) : (
+                <Input
+                  className="mt-1"
+                  placeholder="Ex: Ahmed, Karim..."
+                  value={sellerName}
+                  onChange={e => setSellerName(e.target.value)}
+                  autoFocus
+                />
+              )}
             </div>
             <div>
               <Label>Moyen de paiement</Label>
