@@ -386,15 +386,16 @@ export default function Products() {
                 <TableHead>Sites commerciaux</TableHead>
                 <TableHead>Coût</TableHead>
                 <TableHead>Prix vente</TableHead>
+                <TableHead>Marge %</TableHead>
                 <TableHead>Attributs</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
               ) : products.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Aucun produit</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun produit</TableCell></TableRow>
               ) : products.map(p => (
                 <TableRow key={p.id} className={`cursor-pointer hover:bg-muted/40 ${selectedIds.includes(p.id) ? "bg-primary/5" : ""}`}>
                   <TableCell onClick={e => e.stopPropagation()}>
@@ -427,6 +428,15 @@ export default function Products() {
                   </TableCell>
                   <TableCell className="text-sm font-mono">{p.costPrice ? formatDA(parseFloat(p.costPrice.toString())) : "—"}</TableCell>
                   <TableCell className="text-sm font-semibold text-primary">{p.sellingPrice ? formatDA(parseFloat(p.sellingPrice.toString())) : "—"}</TableCell>
+                  <TableCell className="text-sm font-mono">
+                    {(() => {
+                      const cost = p.costPrice ? parseFloat(p.costPrice.toString()) : null;
+                      const sell = p.sellingPrice ? parseFloat(p.sellingPrice.toString()) : null;
+                      if (cost == null || sell == null || sell === 0) return <span className="text-muted-foreground">—</span>;
+                      const marge = ((sell - cost) / sell) * 100;
+                      return <span className={marge < 0 ? "text-red-500" : ""}>{marge.toFixed(1)}%</span>;
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
                       {p.isSellable && <Badge variant="outline" className="text-xs">Vendable</Badge>}
