@@ -19,6 +19,7 @@ import {
   CheckCircle2, Package, ArrowLeftRight, Factory,
   CreditCard, Banknote, Users, ZapOff, Clock,
   Info, ChevronRight, ChevronDown, FlaskConical, Scale, Download,
+  Bookmark, X,
 } from "lucide-react";
 import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -119,6 +120,26 @@ const COMPARE_MODES = [
   { label: "Cette année vs Année préc.", value: "year" },
   { label: "Période vs préc.",         value: "custom" },
 ] as const;
+
+// ─── Saved comparison presets ─────────────────────────────────────────────────
+const PRESETS_KEY = "erp_compare_presets_v1";
+
+type SavedPreset = {
+  id: string;
+  label: string;
+  mode: "day" | "month" | "year" | "custom";
+  from: string;
+  to: string;
+};
+
+function loadPresets(): SavedPreset[] {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) ?? "[]"); }
+  catch { return []; }
+}
+
+function persistPresets(presets: SavedPreset[]) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
 
 function getDelta(a: number, b: number): number {
   if (b === 0) return a > 0 ? 100 : 0;
@@ -472,6 +493,9 @@ export default function ExecutiveDashboard() {
   const [activePreset, setActivePreset] = useState(3); // "Mois"
   const [showCompare, setShowCompare] = useState(false);
   const [compareMode, setCompareMode] = useState<"day" | "month" | "year" | "custom">("month");
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>(loadPresets);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState("");
 
   const { data: branches } = useGetBranches();
   const showBranchFilter = user?.adminAccess || (user?.branchIds && user.branchIds.length > 1);
@@ -1236,6 +1260,7 @@ export default function ExecutiveDashboard() {
             {/* ── Period selector ────────────────────────────────────────── */}
             <Card className="border-0 shadow-sm bg-gradient-to-r from-indigo-50/40 to-amber-50/40">
               <CardContent className="p-3 space-y-2">
+                {/* Built-in modes */}
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-xs text-muted-foreground">Comparer :</span>
                   {COMPARE_MODES.map(m => (
@@ -1247,6 +1272,103 @@ export default function ExecutiveDashboard() {
                     </Button>
                   ))}
                 </div>
+
+                {/* Saved presets */}
+                {savedPresets.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Bookmark className="h-3 w-3" /> Presets :
+                    </span>
+                    {savedPresets.map(p => (
+                      <span key={p.id} className="inline-flex items-center gap-0">
+                        <Button size="sm"
+                          variant={compareMode === p.mode && from === p.from && to === p.to ? "default" : "outline"}
+                          className={`text-xs h-7 px-2 rounded-r-none border-r-0 ${compareMode === p.mode && from === p.from && to === p.to ? "bg-violet-700 hover:bg-violet-800 border-violet-700" : ""}`}
+                          onClick={() => {
+                            if (p.mode === "custom") { setFrom(p.from); setTo(p.to); }
+                            setCompareMode(p.mode);
+                          }}>
+                          {p.label}
+                        </Button>
+                        <button
+                          className="h-7 px-1.5 text-muted-foreground hover:text-red-600 border border-l-0 rounded-r-md border-input bg-background hover:bg-red-50 transition-colors text-[10px]"
+                          title="Supprimer ce preset"
+                          onClick={() => {
+                            const next = savedPresets.filter(x => x.id !== p.id);
+                            setSavedPresets(next);
+                            persistPresets(next);
+                          }}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Save current preset */}
+                <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
+                  {!showSaveInput ? (
+                    <button
+                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-indigo-700 transition-colors"
+                      onClick={() => { setPresetNameInput(""); setShowSaveInput(true); }}>
+                      <Bookmark className="h-3 w-3" />
+                      Sauvegarder ce preset
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        autoFocus
+                        value={presetNameInput}
+                        onChange={e => setPresetNameInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && presetNameInput.trim()) {
+                            const newPreset: SavedPreset = {
+                              id: Date.now().toString(),
+                              label: presetNameInput.trim(),
+                              mode: compareMode,
+                              from,
+                              to,
+                            };
+                            const next = [...savedPresets, newPreset];
+                            setSavedPresets(next);
+                            persistPresets(next);
+                            setShowSaveInput(false);
+                            setPresetNameInput("");
+                          }
+                          if (e.key === "Escape") { setShowSaveInput(false); setPresetNameInput(""); }
+                        }}
+                        placeholder="Nom du preset…"
+                        className="h-7 text-xs w-44"
+                      />
+                      <Button size="sm" className="h-7 text-xs bg-indigo-700 hover:bg-indigo-800"
+                        disabled={!presetNameInput.trim()}
+                        onClick={() => {
+                          if (!presetNameInput.trim()) return;
+                          const newPreset: SavedPreset = {
+                            id: Date.now().toString(),
+                            label: presetNameInput.trim(),
+                            mode: compareMode,
+                            from,
+                            to,
+                          };
+                          const next = [...savedPresets, newPreset];
+                          setSavedPresets(next);
+                          persistPresets(next);
+                          setShowSaveInput(false);
+                          setPresetNameInput("");
+                        }}>
+                        Enregistrer
+                      </Button>
+                      <button
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => { setShowSaveInput(false); setPresetNameInput(""); }}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Active period labels */}
                 <div className="flex flex-wrap gap-6 text-[10px] text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <div className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />
