@@ -125,23 +125,28 @@ function getDelta(a: number, b: number): number {
   return Math.round(((a - b) / Math.abs(b)) * 100);
 }
 
+function DeltaBadge({ delta, inverse = false }: { delta: number; inverse?: boolean }) {
+  if (delta === 0) return <span className="ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">—</span>;
+  const improved = inverse ? delta < 0 : delta > 0;
+  return (
+    <span className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${improved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+      {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}%
+    </span>
+  );
+}
+
 function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inverse = false }: {
   label: string; valueA: number; valueB: number;
   icon: React.FC<{ className?: string }>; isResult?: boolean; inverse?: boolean;
 }) {
   const d = getDelta(valueA, valueB);
-  const improved = inverse ? d <= 0 : d >= 0;
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center gap-1.5">
           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">{label}</p>
-          {d !== 0 && (
-            <span className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${improved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-              {d > 0 ? "▲" : "▼"} {Math.abs(d)}%
-            </span>
-          )}
+          <DeltaBadge delta={d} inverse={inverse} />
         </div>
         <div className="grid grid-cols-2 gap-2 pt-1">
           <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
@@ -164,11 +169,13 @@ function CountCompareCard({ label, valueA, valueB, inverse = false }: {
   label: string; valueA: number; valueB: number; inverse?: boolean;
 }) {
   const d = getDelta(valueA, valueB);
-  const improved = inverse ? d <= 0 : d >= 0;
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="p-4 space-y-2">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+          <DeltaBadge delta={d} inverse={inverse} />
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
             <p className="text-[9px] text-indigo-600 font-semibold mb-0.5">A</p>
@@ -179,11 +186,6 @@ function CountCompareCard({ label, valueA, valueB, inverse = false }: {
             <p className="text-base font-bold text-amber-700">{valueB}</p>
           </div>
         </div>
-        {d !== 0 && (
-          <p className={`text-[10px] font-bold text-center ${improved ? "text-green-700" : "text-red-700"}`}>
-            {d > 0 ? "▲" : "▼"} {Math.abs(d)}%
-          </p>
-        )}
       </CardContent>
     </Card>
   );
@@ -988,91 +990,124 @@ export default function ExecutiveDashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Detail tables */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Detail tables — stack vertically for full width */}
+                <div className="space-y-4">
 
                   {/* Expenses by category */}
                   {cmpCatRows.length > 0 && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-1">
-                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          Dépenses par catégorie — A vs B
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <Wallet className="h-3.5 w-3.5" /> Dépenses par catégorie — A vs B
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-0">
                         <div className="divide-y divide-border/50">
-                          <div className="grid grid-cols-4 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          <div className="grid grid-cols-5 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
                             <span className="col-span-2">Catégorie</span>
                             <span className="text-right text-indigo-600">A</span>
                             <span className="text-right text-amber-600">B</span>
+                            <span className="text-right">Δ</span>
                           </div>
                           {cmpCatRows.map((c, i) => {
                             const d = getDelta(c.A, c.B);
-                            const less = c.A < c.B;
                             return (
-                              <div key={i} className="grid grid-cols-4 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
-                                <div className="col-span-2 flex items-center gap-1.5 min-w-0">
-                                  <span className="text-xs font-medium truncate">{c.category}</span>
-                                  {d !== 0 && (
-                                    <span className={`shrink-0 text-[9px] font-bold ${less ? "text-green-700" : "text-red-700"}`}>
-                                      {less ? "▼" : "▲"}{Math.abs(d)}%
-                                    </span>
-                                  )}
-                                </div>
+                              <div key={i} className="grid grid-cols-5 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
+                                <span className="col-span-2 text-xs font-medium truncate">{c.category}</span>
                                 <div className="text-right text-xs font-semibold text-indigo-700">{fmtDA(c.A)}</div>
                                 <div className="text-right text-xs text-amber-700">{fmtDA(c.B)}</div>
+                                <div className="flex justify-end">
+                                  {d === 0
+                                    ? <span className="text-[9px] font-bold text-slate-400">—</span>
+                                    : <span className={`text-[9px] font-bold ${c.A < c.B ? "text-green-700" : "text-red-700"}`}>{c.A < c.B ? "▼" : "▲"}{Math.abs(d)}%</span>
+                                  }
+                                </div>
                               </div>
                             );
                           })}
-                          <div className="grid grid-cols-4 px-4 py-2 bg-muted/30">
+                          <div className="grid grid-cols-5 px-4 py-2 bg-muted/30">
                             <span className="col-span-2 text-[10px] font-bold">Total</span>
                             <span className="text-right text-xs font-bold text-indigo-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.A, 0))}</span>
                             <span className="text-right text-xs font-bold text-amber-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.B, 0))}</span>
+                            <span className="flex justify-end">
+                              {(() => {
+                                const totA = cmpCatRows.reduce((s, c) => s + c.A, 0);
+                                const totB = cmpCatRows.reduce((s, c) => s + c.B, 0);
+                                const td = getDelta(totA, totB);
+                                return td === 0
+                                  ? <span className="text-[9px] font-bold text-slate-400">—</span>
+                                  : <span className={`text-[9px] font-bold ${totA < totB ? "text-green-700" : "text-red-700"}`}>{totA < totB ? "▼" : "▲"}{Math.abs(td)}%</span>;
+                              })()}
+                            </span>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
                   )}
 
-                  {/* Branch performance */}
+                  {/* Branch performance — full width, all 3 metrics A+B+Δ */}
                   {cmpBrRows.length > 0 && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-1">
-                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          Performance agences — A vs B
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <Building2 className="h-3.5 w-3.5" /> Performance agences — CA · Dépenses · Résultat (A vs B)
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0">
-                        <div className="divide-y divide-border/50">
-                          <div className="grid grid-cols-5 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
-                            <span className="col-span-2">Agence</span>
-                            <span className="text-right text-indigo-600">CA (A)</span>
-                            <span className="text-right text-amber-600">CA (B)</span>
-                            <span className="text-right">Résultat A</span>
-                          </div>
-                          {cmpBrRows.map((b, i) => {
-                            const d = getDelta(b.revA, b.revB);
-                            const colors = ["#10b981","#6366f1","#f59e0b","#ef4444","#8b5cf6"];
-                            return (
-                              <div key={b.branchId} className="grid grid-cols-5 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
-                                <div className="col-span-2 flex items-center gap-1.5 min-w-0">
-                                  <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
-                                  <span className="text-xs font-medium truncate">{b.branchName}</span>
-                                  {d !== 0 && (
-                                    <span className={`shrink-0 text-[9px] font-bold ${d >= 0 ? "text-green-700" : "text-red-700"}`}>
-                                      {d >= 0 ? "▲" : "▼"}{Math.abs(d)}%
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-right text-xs font-semibold text-indigo-700">{fmtDA(b.revA)}</div>
-                                <div className="text-right text-xs text-amber-700">{fmtDA(b.revB)}</div>
-                                <div className={`text-right text-xs font-semibold ${b.resA >= 0 ? "text-green-700" : "text-red-700"}`}>
-                                  {b.resA >= 0 ? "+" : ""}{fmtDA(b.resA)}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                      <CardContent className="p-0 overflow-x-auto">
+                        <table className="w-full min-w-[640px] text-xs">
+                          <thead>
+                            <tr className="border-b border-border/50">
+                              <th className="text-left px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider w-40">Agence</th>
+                              {/* CA group */}
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">CA (A)</th>
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">CA (B)</th>
+                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ CA</th>
+                              {/* Dépenses group */}
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">Dép. (A)</th>
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">Dép. (B)</th>
+                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ Dép.</th>
+                              {/* Résultat group */}
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">Rés. (A)</th>
+                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">Rés. (B)</th>
+                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ Rés.</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {cmpBrRows.map((b, i) => {
+                              const dCA  = getDelta(b.revA, b.revB);
+                              const dDep = getDelta(b.expA, b.expB);
+                              const dRes = getDelta(b.resA, b.resB);
+                              const colors = ["#10b981","#6366f1","#f59e0b","#ef4444","#8b5cf6"];
+                              function InlineDelta({ d, inverse = false }: { d: number; inverse?: boolean }) {
+                                if (d === 0) return <span className="text-[9px] font-bold text-slate-400">—</span>;
+                                const good = inverse ? d < 0 : d > 0;
+                                return <span className={`text-[9px] font-bold ${good ? "text-green-700" : "text-red-700"}`}>{d > 0 ? "▲" : "▼"}{Math.abs(d)}%</span>;
+                              }
+                              return (
+                                <tr key={b.branchId} className="hover:bg-muted/30 transition-colors">
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                                      <span className="text-xs font-medium truncate">{b.branchName}</span>
+                                    </div>
+                                  </td>
+                                  {/* CA */}
+                                  <td className="text-right px-2 py-2.5 font-semibold text-indigo-700">{fmtDA(b.revA)}</td>
+                                  <td className="text-right px-2 py-2.5 text-amber-700">{fmtDA(b.revB)}</td>
+                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dCA} /></td>
+                                  {/* Dépenses */}
+                                  <td className="text-right px-2 py-2.5 font-semibold text-indigo-700">{fmtDA(b.expA)}</td>
+                                  <td className="text-right px-2 py-2.5 text-amber-700">{fmtDA(b.expB)}</td>
+                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dDep} inverse /></td>
+                                  {/* Résultat */}
+                                  <td className={`text-right px-2 py-2.5 font-semibold ${b.resA >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtDA(b.resA)}</td>
+                                  <td className={`text-right px-2 py-2.5 ${b.resB >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtDA(b.resB)}</td>
+                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dRes} /></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </CardContent>
                     </Card>
                   )}

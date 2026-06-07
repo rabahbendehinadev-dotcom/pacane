@@ -690,9 +690,16 @@ router.get("/compare", requireAuth, requirePermission(P.reports.view), async (re
   }
 
   const [pA, pB] = await Promise.all([periodAgg(fromA, toA), periodAgg(fromB, toB)]);
+
+  function periodLabel(from: string | undefined, to: string | undefined): string {
+    if (!from && !to) return "Toute la période";
+    if (from === to) return from ?? "—";
+    return `${from ?? "?"} → ${to ?? "?"}`;
+  }
+
   res.json({
-    periodA: { from: fromA, to: toA, ...pA },
-    periodB: { from: fromB, to: toB, ...pB },
+    periodA: { from: fromA, to: toA, label: periodLabel(fromA, toA), ...pA },
+    periodB: { from: fromB, to: toB, label: periodLabel(fromB, toB), ...pB },
   });
 });
 
