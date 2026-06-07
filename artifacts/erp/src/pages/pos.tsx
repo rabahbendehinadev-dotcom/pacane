@@ -36,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
-import { loadTemplates, applyVariables, buildWhatsappUrl } from "@/lib/whatsapp-templates";
+import { loadTemplates, applyVariables, buildWhatsappUrl, addLog } from "@/lib/whatsapp-templates";
 
 type CartItem = { productId: number; name: string; price: number; quantity: number; discount: number };
 
@@ -1253,7 +1253,13 @@ export default function POS() {
                                     size="sm"
                                     className="w-full h-7 text-xs bg-green-500 hover:bg-green-600 text-white gap-1"
                                     onClick={() => {
-                                      window.open(buildWhatsappUrl(phone, msg), "_blank");
+                                      window.open(buildWhatsappUrl(phone!, msg), "_blank");
+                                      addLog({
+                                        clientName: lastReceipt!.customerName ?? "",
+                                        phone: phone!,
+                                        templateName: tpl.name,
+                                        invoiceRef: lastReceipt!.ref,
+                                      });
                                       setWhatsappPopoverOpen(false);
                                     }}
                                   >

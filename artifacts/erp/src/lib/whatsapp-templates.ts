@@ -4,7 +4,18 @@ export interface WhatsappTemplate {
   message: string;
 }
 
+export interface WhatsappLog {
+  id: string;
+  sentAt: string;
+  clientName: string;
+  phone: string;
+  templateName: string;
+  invoiceRef: string;
+}
+
 const STORAGE_KEY = "pacane_whatsapp_templates";
+const HISTORY_KEY = "pacane_whatsapp_history";
+const HISTORY_LIMIT = 50;
 
 const DEFAULT_TEMPLATES: WhatsappTemplate[] = [
   {
@@ -50,4 +61,29 @@ export function buildWhatsappUrl(phone: string, message: string): string {
   const cleaned = phone.replace(/\D/g, "");
   const international = cleaned.startsWith("0") ? "213" + cleaned.slice(1) : cleaned;
   return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
+}
+
+export function loadHistory(): WhatsappLog[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as WhatsappLog[];
+  } catch {
+    return [];
+  }
+}
+
+export function addLog(entry: Omit<WhatsappLog, "id" | "sentAt">): void {
+  try {
+    const history = loadHistory();
+    const newEntry: WhatsappLog = {
+      id: Date.now().toString(),
+      sentAt: new Date().toISOString(),
+      ...entry,
+    };
+    const updated = [newEntry, ...history].slice(0, HISTORY_LIMIT);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
 }
