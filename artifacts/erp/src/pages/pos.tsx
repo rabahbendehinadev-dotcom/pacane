@@ -962,36 +962,41 @@ export default function POS() {
               <p className="text-sm text-muted-foreground">Total à payer</p>
               <p className="text-3xl font-bold text-primary">{formatDA(total)}</p>
             </div>
-            <div>
+            <div className="relative">
               <Label>Vendeur <span className="text-red-500">*</span></Label>
-              {branchSellerNames.length > 0 ? (
-                <div className="mt-1 rounded-md border overflow-hidden">
-                  <ScrollArea className="h-36">
-                    {branchSellerNames.map(name => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => setSellerName(name)}
-                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors border-b last:border-b-0 ${
-                          sellerName === name
-                            ? "bg-primary text-primary-foreground font-medium"
-                            : "hover:bg-muted/50"
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </ScrollArea>
-                </div>
-              ) : (
-                <Input
-                  className="mt-1"
-                  placeholder="Ex: Ahmed, Karim..."
-                  value={sellerName}
-                  onChange={e => setSellerName(e.target.value)}
-                  autoFocus
-                />
-              )}
+              <Input
+                className="mt-1"
+                placeholder={branchSellerNames.length > 0 ? "Rechercher un vendeur..." : "Ex: Ahmed, Karim..."}
+                value={sellerName}
+                onChange={e => setSellerName(e.target.value)}
+                autoFocus
+                autoComplete="off"
+              />
+              {branchSellerNames.length > 0 && (() => {
+                const q = sellerName.trim().toLowerCase();
+                const filtered = branchSellerNames.filter(n => n.toLowerCase().includes(q));
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="mt-1 rounded-md border bg-white shadow-md overflow-hidden">
+                    <ScrollArea className="max-h-40">
+                      {filtered.map(name => (
+                        <button
+                          key={name}
+                          type="button"
+                          onMouseDown={e => { e.preventDefault(); setSellerName(name); }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors border-b last:border-b-0 ${
+                            sellerName === name
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "hover:bg-muted/60"
+                          }`}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </ScrollArea>
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <Label>Moyen de paiement</Label>
