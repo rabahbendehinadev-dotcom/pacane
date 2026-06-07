@@ -16,6 +16,7 @@ import {
 import {
   TrendingUp, ShoppingBag, Users, Banknote, CreditCard, Receipt,
   Medal, Trophy, Star, Package, Clock, BarChart3, RefreshCw,
+  ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -143,6 +144,13 @@ export default function AnalyticsSellers() {
   const [branchId, setBranchId] = useState("all");
   const [activePreset, setActivePreset] = useState(2);
   const [selectedSeller, setSelectedSeller] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<"revenue"|"sales"|"avgBasket"|"items"|"cash"|"card"|"credit"|"name">("revenue");
+  const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc");
+    else { setSortKey(key); setSortDir("desc"); }
+  }
 
   const { data: branches = [] } = useGetBranches();
 
@@ -161,6 +169,24 @@ export default function AnalyticsSellers() {
   const sellers = data?.sellers ?? [];
   const summary = data?.summary ?? { totalRevenue: 0, totalSales: 0, activeSellers: 0, avgBasket: 0 };
   const trend = data?.trend ?? [];
+
+  const sortedSellers = useMemo(() => {
+    const arr = [...sellers];
+    arr.sort((a, b) => {
+      let va: number | string, vb: number | string;
+      if      (sortKey === "name")    { va = a.name;                     vb = b.name; }
+      else if (sortKey === "sales")   { va = a.sales;                    vb = b.sales; }
+      else if (sortKey === "avgBasket"){ va = a.avgBasket;               vb = b.avgBasket; }
+      else if (sortKey === "items")   { va = a.items;                    vb = b.items; }
+      else if (sortKey === "cash")    { va = a.paymentMethods.cash;      vb = b.paymentMethods.cash; }
+      else if (sortKey === "card")    { va = a.paymentMethods.card;      vb = b.paymentMethods.card; }
+      else if (sortKey === "credit")  { va = a.paymentMethods.credit;    vb = b.paymentMethods.credit; }
+      else                            { va = a.revenue;                  vb = b.revenue; }
+      if (typeof va === "string") return sortDir === "asc" ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
+      return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+    });
+    return arr;
+  }, [sellers, sortKey, sortDir]);
 
   const sellerObj = selectedSeller ? sellers.find(s => s.name === selectedSeller) : null;
 
@@ -384,7 +410,7 @@ export default function AnalyticsSellers() {
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Medal className="h-4 w-4 text-amber-500" />Classement complet
                 <span className="text-xs font-normal text-muted-foreground ml-2">
-                  Cliquez sur un vendeur pour voir ses détails
+                  Cliquez sur un en-tête pour trier · Cliquez sur un vendeur pour ses détails
                 </span>
               </CardTitle>
             </CardHeader>
@@ -393,19 +419,33 @@ export default function AnalyticsSellers() {
                 <TableHeader>
                   <TableRow className="bg-muted/30">
                     <TableHead className="w-10">#</TableHead>
-                    <TableHead>Vendeur</TableHead>
-                    <TableHead className="text-right">CA</TableHead>
-                    <TableHead className="text-right">Part CA</TableHead>
-                    <TableHead className="text-right">Ventes</TableHead>
-                    <TableHead className="text-right">Panier moy.</TableHead>
-                    <TableHead className="text-right">Articles</TableHead>
-                    <TableHead className="text-right">Espèces</TableHead>
-                    <TableHead className="text-right">Carte</TableHead>
-                    <TableHead className="text-right">Crédit</TableHead>
+                    {(["name","revenue","sales","avgBasket","items","cash","card","credit"] as const).map(k => {
+                      const labels: Record<string, string> = {
+                        name: "Vendeur", revenue: "CA", sales: "Ventes",
+                        avgBasket: "Panier moy.", items: "Articles",
+                        cash: "Espèces", card: "Carte", credit: "Crédit",
+                      };
+                      const isActive = sortKey === k;
+                      const Icon = isActive ? (sortDir === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+                      return (
+                        <TableHead
+                          key={k}
+                          className={`${k !== "name" ? "text-right" : ""} cursor-pointer select-none hover:bg-muted/50 transition-colors`}
+                          onClick={() => toggleSort(k)}
+                        >
+                          <div className={`flex items-center gap-1 ${k !== "name" ? "justify-end" : ""}`}>
+                            <span>{labels[k]}</span>
+                            <Icon className={`h-3 w-3 ${isActive ? "text-primary" : "text-muted-foreground/50"}`} />
+                          </div>
+                        </TableHead>
+                      );
+                    })}
+                    <TableHead className="text-right w-20">Part CA</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sellers.map((s, i) => {
+                  {sortedSellers.map((s, i) => {
+                    const origRank = sellers.findIndex(x => x.name === s.name);
                     const pct = summary.totalRevenue > 0 ? (s.revenue / summary.totalRevenue) * 100 : 0;
                     const isSelected = selectedSeller === s.name;
                     return (
@@ -414,22 +454,16 @@ export default function AnalyticsSellers() {
                         className={`cursor-pointer transition-colors ${isSelected ? "bg-primary/5 border-l-4 border-primary" : "hover:bg-muted/30"}`}
                         onClick={() => setSelectedSeller(isSelected ? null : s.name)}
                       >
-                        <TableCell className="font-bold text-muted-foreground">
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                        <TableCell className="font-bold text-muted-foreground text-xs">
+                          {origRank === 0 ? "🥇" : origRank === 1 ? "🥈" : origRank === 2 ? "🥉" : origRank + 1}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: SELLER_COLORS[i % SELLER_COLORS.length] }} />
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: SELLER_COLORS[origRank % SELLER_COLORS.length] }} />
                             <span className="font-medium">{s.name}</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-semibold text-primary">{fmtDA(s.revenue)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center gap-2 justify-end">
-                            <Progress value={pct} className="w-16 h-1.5" />
-                            <span className="text-xs text-muted-foreground w-9 text-right">{pct.toFixed(1)}%</span>
-                          </div>
-                        </TableCell>
                         <TableCell className="text-right">{s.sales}</TableCell>
                         <TableCell className="text-right">{fmtDA(s.avgBasket)}</TableCell>
                         <TableCell className="text-right text-muted-foreground">{Math.round(s.items)}</TableCell>
@@ -441,6 +475,12 @@ export default function AnalyticsSellers() {
                         </TableCell>
                         <TableCell className="text-right">
                           {s.paymentMethods.credit > 0 && <Badge variant="outline" className="text-[10px] bg-violet-50 text-violet-700 border-violet-200">{s.paymentMethods.credit}</Badge>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Progress value={pct} className="w-12 h-1.5" />
+                            <span className="text-[10px] text-muted-foreground w-8 text-right">{pct.toFixed(1)}%</span>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
