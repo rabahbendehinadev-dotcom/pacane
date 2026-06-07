@@ -1244,15 +1244,15 @@ export default function POS() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Téléphone <span className="text-muted-foreground">(optionnel)</span></Label>
+              <Label className="text-xs">Téléphone *</Label>
               <Input
                 className="h-8 text-sm"
                 placeholder="0XXX XXX XXX"
                 value={newClientPhone}
                 onChange={e => setNewClientPhone(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === "Enter" && newClientName.trim()) {
-                    createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() || null } });
+                  if (e.key === "Enter" && newClientName.trim() && newClientPhone.trim()) {
+                    createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() } });
                   }
                 }}
               />
@@ -1262,8 +1262,8 @@ export default function POS() {
             <Button variant="outline" size="sm" onClick={() => setAddClientOpen(false)}>Annuler</Button>
             <Button
               size="sm"
-              disabled={!newClientName.trim() || createContactMutation.isPending}
-              onClick={() => createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() || null } })}
+              disabled={!newClientName.trim() || !newClientPhone.trim() || createContactMutation.isPending}
+              onClick={() => createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() } })}
             >
               {createContactMutation.isPending ? "Ajout..." : "Ajouter et sélectionner"}
             </Button>
