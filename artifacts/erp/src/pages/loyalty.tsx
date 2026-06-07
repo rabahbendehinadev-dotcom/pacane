@@ -215,12 +215,18 @@ export default function LoyaltyPage() {
     queryFn: () => customFetch(`/api/loyalty/rankings?${qs}`),
     enabled: activeTab === "rankings",
   });
+  const { data: crmRfmData, isLoading: crmLoading } = useQuery({
+    queryKey: ["crm-rfm", qs],
+    queryFn: () => customFetch(`/api/crm/rfm?${qs}`),
+    enabled: activeTab === "overview",
+  });
 
   const ov = overview as any;
   const segs = (segmentsData as any[]) ?? [];
   const opps = (oppsData as any[]) ?? [];
   const dorm = dormantData as any;
   const ranks = rankingsData as any;
+  const crm = crmRfmData as any;
 
   const [rankTab, setRankTab] = useState<"byRevenue" | "byFrequency" | "byBasket" | "byScore">("byRevenue");
   const [campaignFilters, setCampaignFilters] = useState({ minRevenue: "", maxInactivity: "", segmentKey: "all", branchId: "all" });
@@ -435,6 +441,88 @@ export default function LoyaltyPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* ── RFM Analytics from /api/crm/rfm ─────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Top 10 clients par CA */}
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-amber-500" />Top 10 clients par CA net
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3">
+                  {crmLoading ? (
+                    <div className="h-32 flex items-center justify-center"><div className="h-4 w-32 bg-muted animate-pulse rounded" /></div>
+                  ) : (crm?.top10BySpend ?? []).length > 0 ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={crm.top10BySpend} layout="vertical" margin={{ left: 0, right: 40 }}>
+                        <XAxis type="number" tick={{ fontSize: 8 }} tickFormatter={(v: number) => fmtDA(v)} hide />
+                        <YAxis type="category" dataKey="displayName" tick={{ fontSize: 8 }} width={90} />
+                        <Tooltip content={<ChartTip />} />
+                        <Bar dataKey="netRevenue" name="CA net" radius={[0, 4, 4, 0]}>
+                          {(crm?.top10BySpend ?? []).map((c: any, i: number) => (
+                            <Cell key={i} fill={c.segmentColor ?? "#6366f1"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <EmptyState message="Aucune donnée disponible" />}
+                </CardContent>
+              </Card>
+
+              {/* Fréquence distribution + tier counts */}
+              <div className="flex flex-col gap-4">
+                <Card className="border-0 shadow-sm flex-1">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <BarChart2 className="h-4 w-4 text-indigo-500" />Distribution de la fréquence d'achat
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-3">
+                    {crmLoading ? (
+                      <div className="h-24 flex items-center justify-center"><div className="h-4 w-32 bg-muted animate-pulse rounded" /></div>
+                    ) : (crm?.frequencyBuckets ?? []).length > 0 ? (
+                      <ResponsiveContainer width="100%" height={120}>
+                        <BarChart data={crm.frequencyBuckets} margin={{ top: 4 }}>
+                          <XAxis dataKey="label" tick={{ fontSize: 8 }} />
+                          <YAxis tick={{ fontSize: 8 }} allowDecimals={false} />
+                          <Tooltip formatter={(v: any) => [`${v} clients`, "Clients"]} />
+                          <Bar dataKey="count" name="Clients" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyState message="Aucune donnée disponible" />}
+                  </CardContent>
+                </Card>
+
+                {/* Tier badges: VIP / Régulier / Dormant */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold">Classification RFM</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-3">
+                    {crmLoading ? (
+                      <div className="flex gap-2"><div className="h-12 flex-1 bg-muted animate-pulse rounded" /><div className="h-12 flex-1 bg-muted animate-pulse rounded" /><div className="h-12 flex-1 bg-muted animate-pulse rounded" /></div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        {[
+                          { key: "VIP",      color: "text-amber-700",  bg: "bg-amber-50",  label: "VIP",      icon: Crown },
+                          { key: "Régulier", color: "text-blue-700",   bg: "bg-blue-50",   label: "Régulier", icon: Users },
+                          { key: "Nouveau",  color: "text-violet-700", bg: "bg-violet-50", label: "Nouveau",  icon: UserPlus },
+                          { key: "Dormant",  color: "text-slate-600",  bg: "bg-slate-50",  label: "Dormant",  icon: Moon },
+                        ].map(({ key, color, bg, label, icon: Icon }) => (
+                          <div key={key} className={`${bg} rounded-xl p-3`}>
+                            <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
+                            <p className={`text-lg font-black ${color}`}>{crm?.summary?.tierCounts?.[key] ?? 0}</p>
+                            <p className="text-[10px] text-muted-foreground">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </>
         )}
 

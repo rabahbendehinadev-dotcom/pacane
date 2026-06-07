@@ -41,6 +41,7 @@ import receptionsRouter from "./receptions";
 import workersRouter from "./workers";
 import preparationOrdersRouter from "./preparation-orders";
 import analyticsSellersRouter from "./analytics-sellers";
+import crmRouter from "./crm";
 
 const router: IRouter = Router();
 
@@ -87,5 +88,6 @@ router.use(receptionsRouter);
 router.use(workersRouter);
 router.use(preparationOrdersRouter);
 router.use(analyticsSellersRouter);
+router.use("/crm", crmRouter);
 
 export default router;
