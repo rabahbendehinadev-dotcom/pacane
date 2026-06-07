@@ -286,6 +286,7 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
 
   const paymentMethod = req.body.paymentMethod ?? "cash";
   const sellerIdVal = req.body.sellerId ? parseInt(String(req.body.sellerId), 10) : null;
+  const sellerNameVal = req.body.sellerName ? String(req.body.sellerName).trim() : null;
   const [sale] = await db.insert(salesTable).values({
     reference: await genRef(type), type, customerId, branchId,
     status: resolvedStatus,
@@ -295,6 +296,7 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     shippingFee: sf.toString(), total: total.toString(), paid: "0", notes,
     paymentMethod: type === "sale" ? paymentMethod : null,
     sellerId: sellerIdVal,
+    sellerName: sellerNameVal,
     createdByUserId: req.userId
   }).returning();
 

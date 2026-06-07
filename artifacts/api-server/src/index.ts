@@ -125,6 +125,7 @@ async function runMigrations() {
     await db.execute(sql`UPDATE adjustments SET reason = 'DLC' WHERE reason = 'Perte / Casse';`);
     // Vendeurs feature
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS seller_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS seller_name TEXT;`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS branch_sellers (
         id SERIAL PRIMARY KEY,

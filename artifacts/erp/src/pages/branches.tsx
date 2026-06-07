@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useGetBranches, useCreateBranch, useUpdateBranch, getGetBranchesQueryKey, customFetch, type Branch } from "@workspace/api-client-react";
-import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit2, Trash2, Store, Factory, Warehouse, Building2, Search, AlertCircle, CheckCircle2, Clock, ShoppingCart, Star, Users } from "lucide-react";
+import { Plus, Edit2, Trash2, Store, Factory, Warehouse, Building2, Search, AlertCircle, CheckCircle2, Clock, ShoppingCart, Star } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -65,13 +65,6 @@ export default function Branches() {
   const [editing, setEditing] = useState<Branch | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
-  const [branchSellers, setBranchSellers] = useState<number[]>([]);
-
-  const { data: allUsers = [] } = useQuery<Array<{ id: number; name: string; status: string }>>({
-    queryKey: ["users-list"],
-    queryFn: () => customFetch("/api/users"),
-    staleTime: 60000,
-  });
 
   const defaultBranchMutation = useMutation({
     mutationFn: (branchId: number | null) =>
@@ -124,7 +117,6 @@ export default function Branches() {
   function openNew() {
     setEditing(null);
     setForm({ ...EMPTY });
-    setBranchSellers([]);
     setDialogOpen(true);
   }
 
@@ -137,36 +129,15 @@ export default function Branches() {
       requireOpenSession: (b as any).requireOpenSession ?? false,
       salesActive: (b as any).salesActive ?? true,
     });
-    setBranchSellers([]);
-    customFetch(`/api/branches/${b.id}/sellers`)
-      .then((sellers: Array<{ userId: number }>) => setBranchSellers(sellers.map(s => s.userId)))
-      .catch(() => setBranchSellers([]));
     setDialogOpen(true);
   }
 
   function save() {
     const data = { ...form } as any;
     if (editing) {
-      const eid = editing.id;
-      updateMutation.mutate({ id: eid, data }, {
-        onSuccess: () => {
-          customFetch(`/api/branches/${eid}/sellers`, {
-            method: "PUT",
-            body: JSON.stringify({ userIds: branchSellers }),
-          }).catch(() => {});
-        }
-      });
+      updateMutation.mutate({ id: editing.id, data });
     } else {
-      createMutation.mutate({ data }, {
-        onSuccess: (branch: any) => {
-          if (branchSellers.length > 0) {
-            customFetch(`/api/branches/${branch.id}/sellers`, {
-              method: "PUT",
-              body: JSON.stringify({ userIds: branchSellers }),
-            }).catch(() => {});
-          }
-        }
-      });
+      createMutation.mutate({ data });
     }
   }
 
@@ -385,41 +356,6 @@ export default function Branches() {
               </div>
             </div>
 
-            {/* ─── Vendeurs ─── */}
-            <Separator />
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">Vendeurs assignés</span>
-                <span className="text-xs text-muted-foreground ml-1">(requis en POS si définis)</span>
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-0.5 max-h-44 overflow-y-auto">
-                {allUsers.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">Aucun utilisateur disponible</p>
-                )}
-                {allUsers.map(u => (
-                  <label key={u.id} className="flex items-center gap-2.5 py-1.5 px-1 rounded hover:bg-muted/50 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={branchSellers.includes(u.id)}
-                      onChange={e => {
-                        if (e.target.checked) setBranchSellers(s => [...s, u.id]);
-                        else setBranchSellers(s => s.filter(id => id !== u.id));
-                      }}
-                      className="h-4 w-4 rounded border-gray-300 accent-primary"
-                    />
-                    <span className="text-sm">{u.name}</span>
-                  </label>
-                ))}
-              </div>
-              {branchSellers.length > 0 ? (
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {branchSellers.length} vendeur{branchSellers.length > 1 ? "s" : ""} assigné{branchSellers.length > 1 ? "s" : ""}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1.5">Aucun vendeur assigné — sélection libre au POS</p>
-              )}
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
