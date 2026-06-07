@@ -612,7 +612,7 @@ export default function Products() {
                 {(() => {
                   const cost = parseFloat(form.costPrice);
                   const sell = parseFloat(form.sellingPrice);
-                  if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0) {
+                  if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0 || sell === 0) {
                     return <div className="flex h-9 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">—</div>;
                   }
                   const marge = ((sell - cost) / cost) * 100;
