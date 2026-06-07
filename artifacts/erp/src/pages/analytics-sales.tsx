@@ -18,6 +18,7 @@ import {
   ShoppingBag, TrendingUp, TrendingDown, Users, BarChart2, Download,
   Building2, ArrowRight, Star, Tag, CreditCard, Store,
   FileText, RotateCcw, CheckCircle2, AlertTriangle, Banknote, Receipt,
+  ArrowUpDown, ArrowUp, ArrowDown, Percent, PackageX, BadgeDollarSign, ClipboardList, FileSearch, Layers,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -111,6 +112,25 @@ function KpiCard({ title, value, sub, icon: Icon, color = "blue", loading = fals
   );
 }
 
+function SortHead({ label, sk, curKey, curDir, onToggle, right = false }: {
+  label: string; sk: string; curKey: string; curDir: "desc"|"asc";
+  onToggle: (k: string) => void; right?: boolean;
+}) {
+  const active = sk === curKey;
+  const Icon = active ? (curDir === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+  return (
+    <TableHead
+      className={`${right ? "text-right" : ""} cursor-pointer select-none hover:bg-muted/50 transition-colors whitespace-nowrap`}
+      onClick={() => onToggle(sk)}
+    >
+      <div className={`flex items-center gap-1 ${right ? "justify-end" : ""}`}>
+        <span className="text-xs font-semibold">{label}</span>
+        <Icon className={`h-3 w-3 shrink-0 ${active ? "text-primary" : "text-muted-foreground/40"}`} />
+      </div>
+    </TableHead>
+  );
+}
+
 function ChartTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -133,6 +153,37 @@ export default function AnalyticsSales() {
   const [docType, setDocType] = useState("all");
   const [paymentStatus, setPaymentStatus] = useState("all");
   const [activePreset, setActivePreset] = useState(1);
+
+  // ─── Sort states ────────────────────────────────────────────────────────────
+  const [branchSortKey,   setBranchSortKey]   = useState<"branchName"|"revenue"|"saleCount"|"avgBasket"|"unpaidBalance"|"revenuePct">("revenue");
+  const [branchSortDir,   setBranchSortDir]   = useState<"desc"|"asc">("desc");
+  const [productSortKey,  setProductSortKey]  = useState<"productName"|"revenue"|"qty"|"orderCount"|"avgUnitPrice"|"totalDiscount"|"revenuePct">("revenue");
+  const [productSortDir,  setProductSortDir]  = useState<"desc"|"asc">("desc");
+  const [customerSortKey, setCustomerSortKey] = useState<"customerName"|"revenue"|"saleCount"|"avgBasket"|"paid"|"creditApplied"|"unpaid">("revenue");
+  const [customerSortDir, setCustomerSortDir] = useState<"desc"|"asc">("desc");
+  const [sellerSortKey,   setSellerSortKey]   = useState<"sellerName"|"revenue"|"saleCount"|"avgBasket"|"paymentRate"|"revenuePct">("revenue");
+  const [sellerSortDir,   setSellerSortDir]   = useState<"desc"|"asc">("desc");
+  const [docSortKey,      setDocSortKey]      = useState<"reference"|"type"|"status"|"customerName"|"total"|"paid"|"unpaid"|"createdAt">("createdAt");
+  const [docSortDir,      setDocSortDir]      = useState<"desc"|"asc">("desc");
+
+  function toggleSort(
+    key: string, cur: string, curDir: "desc"|"asc",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setKey: (k: any) => void, setDir: (d: "desc"|"asc") => void,
+  ) {
+    if (key === cur) setDir(curDir === "desc" ? "asc" : "desc");
+    else { setKey(key); setDir("desc"); }
+  }
+
+  function sortArr<T>(arr: T[], key: keyof T, dir: "desc"|"asc") {
+    return [...arr].sort((a, b) => {
+      const va = a[key], vb = b[key];
+      if (typeof va === "string" && typeof vb === "string")
+        return dir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+      const na = Number(va ?? 0), nb = Number(vb ?? 0);
+      return dir === "asc" ? na - nb : nb - na;
+    });
+  }
 
   const { data: branches } = useGetBranches();
   const showBranchFilter = user?.adminAccess || (user?.branchIds && user.branchIds.length > 1);
@@ -202,6 +253,13 @@ export default function AnalyticsSales() {
   const k = kpis as any;
   const ch = channels as any;
   const conv = conversion as any;
+
+  // ─── Sorted datasets ────────────────────────────────────────────────────────
+  const sortedBranches  = useMemo(() => sortArr((branchData as any[] ?? []),   branchSortKey   as any, branchSortDir),   [branchData,   branchSortKey,   branchSortDir]);
+  const sortedProducts  = useMemo(() => sortArr((products   as any[] ?? []),   productSortKey  as any, productSortDir),  [products,     productSortKey,  productSortDir]);
+  const sortedCustomers = useMemo(() => sortArr((customers  as any[] ?? []),   customerSortKey as any, customerSortDir), [customers,    customerSortKey, customerSortDir]);
+  const sortedSellers   = useMemo(() => sortArr((sellers    as any[] ?? []),   sellerSortKey   as any, sellerSortDir),   [sellers,      sellerSortKey,   sellerSortDir]);
+  const sortedDocs      = useMemo(() => sortArr((documents  as any[] ?? []),   docSortKey      as any, docSortDir),      [documents,    docSortKey,      docSortDir]);
 
   const handleExport = () => {
     window.open(`/api/export/sales?${kpisQs}`, "_blank");
@@ -312,7 +370,7 @@ export default function AnalyticsSales() {
         </CardContent>
       </Card>
 
-      {/* ── KPI Cards ───────────────────────────────────────────────────────── */}
+      {/* ── KPI Cards — Rangée 1 ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard
           title="CA brut (ventes)"
@@ -351,6 +409,57 @@ export default function AnalyticsSales() {
           value={k ? String(k.customerCount) : "—"}
           sub={k ? `+ ${k.saleCount - k.customerCount > 0 ? k.saleCount - k.customerCount : 0} ventes anonymes` : "—"}
           icon={Users} color="violet" loading={kpisLoading}
+        />
+      </div>
+
+      {/* ── KPI Cards — Rangée 2 ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <KpiCard
+          title="Remise totale"
+          value={k ? fmtDA(k.totalDiscount) : "—"}
+          sub={k && k.grossRevenue > 0 ? `${Math.round((k.totalDiscount / k.grossRevenue) * 100)}% du CA brut` : "—"}
+          icon={BadgeDollarSign} color="amber" loading={kpisLoading}
+          highlight={k?.totalDiscount > 0 ? "bad" : "neutral"}
+        />
+        <KpiCard
+          title="Nb retours"
+          value={k ? String(k.returnCount) : "—"}
+          sub={k ? `Impact: −${fmtDA(k.totalRefunded)}` : "—"}
+          icon={PackageX} color="red" loading={kpisLoading}
+          highlight={k?.returnCount > 0 ? "bad" : "good"}
+        />
+        <KpiCard
+          title="Impact retours"
+          value={k ? `${k.returnImpactPct}%` : "—"}
+          sub={k ? `${fmtDA(k.totalRefunded)} remboursé` : "—"}
+          icon={Percent} color="red" loading={kpisLoading}
+          highlight={k?.returnImpactPct > 5 ? "bad" : k?.returnImpactPct > 0 ? "neutral" : "good"}
+        />
+        <KpiCard
+          title="Taux paiement"
+          value={k ? `${k.paymentRate}%` : "—"}
+          sub={k ? `${k.paidCount} soldées / ${k.partialCount} part. / ${k.unpaidCount} impayées` : "—"}
+          icon={CheckCircle2} color="green" loading={kpisLoading}
+          highlight={k?.paymentRate >= 80 ? "good" : k?.paymentRate >= 50 ? "neutral" : "bad"}
+        />
+        <KpiCard
+          title="Nb commandes"
+          value={k ? String(k.orderCount) : "—"}
+          sub="documents de type commande"
+          icon={ClipboardList} color="amber" loading={kpisLoading}
+        />
+        <KpiCard
+          title="Nb devis"
+          value={k ? String(k.quoteCount) : "—"}
+          sub="documents de type devis"
+          icon={FileSearch} color="blue" loading={kpisLoading}
+        />
+        <KpiCard
+          title="Ventes part. payées"
+          value={k ? String(k.partialCount) : "—"}
+          sub={k ? `sur ${k.saleCount} ventes total` : "—"}
+          icon={Layers} color="indigo" loading={kpisLoading}
+          highlight={k?.partialCount > 0 ? "neutral" : "good"}
         />
       </div>
 
@@ -469,17 +578,17 @@ export default function AnalyticsSales() {
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-xs font-semibold">Agence</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">CA</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Ventes</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Panier</TableHead>
-                    <TableHead className="text-xs font-semibold text-right text-red-700">Impayé</TableHead>
-                    <TableHead className="text-xs font-semibold">Part</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <SortHead label="Agence"  sk="branchName"    curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} />
+                    <SortHead label="CA"      sk="revenue"       curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} right />
+                    <SortHead label="Ventes"  sk="saleCount"     curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} right />
+                    <SortHead label="Panier"  sk="avgBasket"     curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} right />
+                    <SortHead label="Impayé"  sk="unpaidBalance" curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} right />
+                    <SortHead label="Part CA" sk="revenuePct"    curKey={branchSortKey} curDir={branchSortDir} onToggle={k => toggleSort(k, branchSortKey, branchSortDir, setBranchSortKey, setBranchSortDir)} right />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(branchData as any[]).map((b: any, i: number) => (
+                  {sortedBranches.map((b: any, i: number) => (
                     <TableRow key={b.branchId}>
                       <TableCell>
                         <div className="flex items-center gap-2 text-xs font-medium">
@@ -595,19 +704,19 @@ export default function AnalyticsSales() {
               {Array.isArray(products) && (products as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-semibold w-8">#</TableHead>
-                      <TableHead className="text-xs font-semibold">Produit</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">CA total</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Qté vendue</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Nb ventes</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">PU moyen</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-red-700">Remise totale</TableHead>
-                      <TableHead className="text-xs font-semibold">Part CA</TableHead>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-8 text-xs font-semibold">#</TableHead>
+                      <SortHead label="Produit"       sk="productName"   curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} />
+                      <SortHead label="CA total"      sk="revenue"       curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
+                      <SortHead label="Qté vendue"    sk="qty"           curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
+                      <SortHead label="Nb ventes"     sk="orderCount"    curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
+                      <SortHead label="PU moyen"      sk="avgUnitPrice"  curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
+                      <SortHead label="Remise totale" sk="totalDiscount" curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
+                      <SortHead label="Part CA"       sk="revenuePct"    curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(products as any[]).map((p: any, i: number) => (
+                    {sortedProducts.map((p: any, i: number) => (
                       <TableRow key={p.productId}>
                         <TableCell className="text-xs text-muted-foreground font-mono">{i + 1}</TableCell>
                         <TableCell className="text-xs font-semibold">{p.productName}</TableCell>
@@ -648,19 +757,19 @@ export default function AnalyticsSales() {
               {Array.isArray(customers) && (customers as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-semibold w-8">#</TableHead>
-                      <TableHead className="text-xs font-semibold">Client</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">CA total</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Achats</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Panier moy.</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-green-700">Payé</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-indigo-700">Crédit utilisé</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-red-700">Impayé</TableHead>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-8 text-xs font-semibold">#</TableHead>
+                      <SortHead label="Client"        sk="customerName"  curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} />
+                      <SortHead label="CA total"      sk="revenue"       curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
+                      <SortHead label="Achats"        sk="saleCount"     curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
+                      <SortHead label="Panier moy."   sk="avgBasket"     curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
+                      <SortHead label="Payé"          sk="paid"          curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
+                      <SortHead label="Crédit utilisé" sk="creditApplied" curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
+                      <SortHead label="Impayé"        sk="unpaid"        curKey={customerSortKey} curDir={customerSortDir} onToggle={k => toggleSort(k, customerSortKey, customerSortDir, setCustomerSortKey, setCustomerSortDir)} right />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(customers as any[]).map((c: any, i: number) => (
+                    {sortedCustomers.map((c: any, i: number) => (
                       <TableRow key={c.customerId ?? "anon"}>
                         <TableCell className="text-xs text-muted-foreground font-mono">{i + 1}</TableCell>
                         <TableCell className="text-xs font-semibold">
@@ -703,18 +812,18 @@ export default function AnalyticsSales() {
               {Array.isArray(sellers) && (sellers as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-semibold w-8">#</TableHead>
-                      <TableHead className="text-xs font-semibold">Vendeur</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">CA généré</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Ventes</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Panier moy.</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Taux paiement</TableHead>
-                      <TableHead className="text-xs font-semibold">Part CA</TableHead>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-8 text-xs font-semibold">#</TableHead>
+                      <SortHead label="Vendeur"       sk="sellerName"  curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} />
+                      <SortHead label="CA généré"     sk="revenue"     curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} right />
+                      <SortHead label="Ventes"        sk="saleCount"   curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} right />
+                      <SortHead label="Panier moy."   sk="avgBasket"   curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} right />
+                      <SortHead label="Taux paiement" sk="paymentRate" curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} right />
+                      <SortHead label="Part CA"       sk="revenuePct"  curKey={sellerSortKey} curDir={sellerSortDir} onToggle={k => toggleSort(k, sellerSortKey, sellerSortDir, setSellerSortKey, setSellerSortDir)} right />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(sellers as any[]).map((s: any, i: number) => (
+                    {sortedSellers.map((s: any, i: number) => (
                       <TableRow key={s.userId}>
                         <TableCell className="text-xs text-muted-foreground font-mono">{i + 1}</TableCell>
                         <TableCell className="text-xs font-semibold">{s.sellerName}</TableCell>
@@ -765,22 +874,22 @@ export default function AnalyticsSales() {
               {Array.isArray(documents) && (documents as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-semibold">Réf.</TableHead>
-                      <TableHead className="text-xs font-semibold">Type</TableHead>
-                      <TableHead className="text-xs font-semibold">Statut</TableHead>
-                      <TableHead className="text-xs font-semibold">Client</TableHead>
+                    <TableRow className="bg-muted/30">
+                      <SortHead label="Réf."    sk="reference"    curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Type"    sk="type"         curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Statut"  sk="status"       curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
+                      <SortHead label="Client"  sk="customerName" curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
                       <TableHead className="text-xs font-semibold">Agence</TableHead>
                       <TableHead className="text-xs font-semibold">Canal</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Montant</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-green-700">Payé</TableHead>
-                      <TableHead className="text-xs font-semibold text-right text-red-700">Reste</TableHead>
+                      <SortHead label="Montant" sk="total"        curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
+                      <SortHead label="Payé"    sk="paid"         curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
+                      <SortHead label="Reste"   sk="unpaid"       curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} right />
                       <TableHead className="text-xs font-semibold">Paiement</TableHead>
-                      <TableHead className="text-xs font-semibold">Date</TableHead>
+                      <SortHead label="Date"    sk="createdAt"    curKey={docSortKey} curDir={docSortDir} onToggle={k => toggleSort(k, docSortKey, docSortDir, setDocSortKey, setDocSortDir)} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(documents as any[]).slice(0, 100).map((d: any) => {
+                    {sortedDocs.slice(0, 100).map((d: any) => {
                       const typeCfg = DOC_TYPE_CFG[d.type] ?? { label: d.type, cls: "bg-slate-100 text-slate-700" };
                       const stCfg = STATUS_CFG[d.status] ?? { label: d.status, cls: "bg-slate-100 text-slate-700" };
                       const pmCfg = PAYMENT_CFG[d.paymentStatus] ?? { label: d.paymentStatus, cls: "bg-slate-100 text-slate-700" };
