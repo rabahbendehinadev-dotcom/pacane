@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useGetProducts, useCreateProduct, useUpdateProduct, useGetCategories, useGetUnits, useGetBranches, getGetProductsQueryKey, Product } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
@@ -57,6 +57,8 @@ export default function Products() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
+  const [margeStr, setMargeStr] = useState("");
+  const isEditingMargeRef = useRef(false);
   const [selectedBranchIds, setSelectedBranchIds] = useState<number[]>([]);
   const [branchPopoverOpen, setBranchPopoverOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -84,6 +86,17 @@ export default function Products() {
   const [purgeLoading, setPurgeLoading] = useState(false);
   const [purgeResult, setPurgeResult] = useState<any>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingMargeRef.current) return;
+    const cost = parseFloat(form.costPrice);
+    const sell = parseFloat(form.sellingPrice);
+    if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0 || sell === 0) {
+      setMargeStr("");
+    } else {
+      setMargeStr(((sell - cost) / cost * 100).toFixed(1));
+    }
+  }, [form.costPrice, form.sellingPrice]);
 
   const { user } = useAuth();
   const isAdmin = !!(user as any)?.adminAccess;
@@ -618,20 +631,33 @@ export default function Products() {
               <div><Label>Prix coût (DA)</Label><Input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} /></div>
               <div><Label>Prix vente (DA)</Label><Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} /></div>
               <div>
-                <Label>Marge</Label>
-                {(() => {
-                  const cost = parseFloat(form.costPrice);
-                  const sell = parseFloat(form.sellingPrice);
-                  if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0 || sell === 0) {
-                    return <div className="flex h-9 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">—</div>;
-                  }
-                  const marge = ((sell - cost) / cost) * 100;
-                  return (
-                    <div className={`flex h-9 items-center rounded-md border bg-muted px-3 text-sm font-medium ${marge < 0 ? "text-red-500" : "text-foreground"}`}>
-                      {marge.toFixed(1)}%
-                    </div>
-                  );
-                })()}
+                <Label>Marge %</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    value={margeStr}
+                    placeholder="—"
+                    className={parseFloat(margeStr) < 0 ? "text-red-500 pr-6" : "pr-6"}
+                    onFocus={() => { isEditingMargeRef.current = true; }}
+                    onBlur={() => {
+                      isEditingMargeRef.current = false;
+                      const cost = parseFloat(form.costPrice);
+                      const sell = parseFloat(form.sellingPrice);
+                      if (!isNaN(cost) && !isNaN(sell) && cost !== 0 && sell !== 0) {
+                        setMargeStr(((sell - cost) / cost * 100).toFixed(1));
+                      }
+                    }}
+                    onChange={e => {
+                      setMargeStr(e.target.value);
+                      const marge = parseFloat(e.target.value);
+                      const cost = parseFloat(form.costPrice);
+                      if (!isNaN(marge) && !isNaN(cost) && cost !== 0) {
+                        setForm(f => ({ ...f, sellingPrice: (cost * (1 + marge / 100)).toFixed(2) }));
+                      }
+                    }}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                </div>
               </div>
               <div><Label>Seuil alerte</Label><Input type="number" step="0.001" value={form.alertQuantity} onChange={e => setForm(f => ({ ...f, alertQuantity: e.target.value }))} /></div>
             </div>
