@@ -38,7 +38,7 @@ Full ERP for Pacane: authentication, inventory management, order management, cli
 
 ## User preferences
 
-_Populate as you build._
+- Always respond and explain in Arabic (العربية).
 
 ## Gotchas
 

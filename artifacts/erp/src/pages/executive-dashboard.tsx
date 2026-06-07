@@ -4,7 +4,7 @@ import { customFetch, useGetBranches } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -118,7 +118,7 @@ export default function ExecutiveDashboard() {
 
   const [from, setFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [branchId, setBranchId] = useState("all");
+  const [branchIds, setBranchIds] = useState<number[]>([]);
   const [activePreset, setActivePreset] = useState(3); // "Mois"
 
   const { data: branches } = useGetBranches();
@@ -128,9 +128,10 @@ export default function ExecutiveDashboard() {
     const p: Record<string, string> = {};
     if (from) p.from = from;
     if (to) p.to = to;
-    if (branchId !== "all") p.branchId = branchId;
+    if (branchIds.length === 1) p.branchId = String(branchIds[0]);
+    else if (branchIds.length > 1) p.branchIds = branchIds.join(",");
     return new URLSearchParams(p).toString();
-  }, [from, to, branchId]);
+  }, [from, to, branchIds]);
 
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
@@ -149,9 +150,10 @@ export default function ExecutiveDashboard() {
     queryKey: ["ex-branches", qs],
     queryFn: () => customFetch(`/api/dashboard/executive/branches?${qs}`),
   });
+  const alertsQs = branchIds.length === 1 ? `branchId=${branchIds[0]}` : branchIds.length > 1 ? `branchIds=${branchIds.join(",")}` : "";
   const { data: alertsData } = useQuery({
-    queryKey: ["ex-alerts", branchId],
-    queryFn: () => customFetch(`/api/dashboard/executive/alerts?${branchId !== "all" ? `branchId=${branchId}` : ""}`),
+    queryKey: ["ex-alerts", branchIds.join(",")],
+    queryFn: () => customFetch(`/api/dashboard/executive/alerts?${alertsQs}`),
     refetchInterval: 60_000,
   });
 
@@ -213,17 +215,13 @@ export default function ExecutiveDashboard() {
             <span className="text-xs text-muted-foreground self-center">→</span>
             <Input type="date" value={to} onChange={e => { setTo(e.target.value); setActivePreset(-1); }} className="h-7 text-xs w-32" />
             {showBranchFilter && (
-              <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger className="h-7 text-xs w-40">
-                  <SelectValue placeholder="Toutes les agences" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les agences</SelectItem>
-                  {(branches ?? []).map((b: any) => (
-                    <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <BranchMultiSelect
+                branches={(branches ?? []).map((b: any) => ({ id: b.id, name: b.name }))}
+                selectedIds={branchIds}
+                onChange={setBranchIds}
+                size="sm"
+                placeholder="Toutes les agences"
+              />
             )}
           </div>
         </CardContent>

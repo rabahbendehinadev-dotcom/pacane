@@ -30,6 +30,18 @@ const router: IRouter = Router();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function parseBranchFilterEx(q: Record<string, string | undefined>): number[] | null {
+  if (q.branchIds) {
+    const ids = q.branchIds.split(",").map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0);
+    return ids.length > 0 ? ids : null;
+  }
+  if (q.branchId && q.branchId !== "all") {
+    const n = parseInt(q.branchId, 10);
+    return isNaN(n) ? null : [n];
+  }
+  return null;
+}
+
 function dateConds(col: any, from?: string, to?: string) {
   const c: any[] = [];
   if (from) c.push(gte(col, new Date(from)));
@@ -52,15 +64,13 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
   const scope = visibleBranchIds(req.user!);
   const from = req.query.from as string | undefined;
   const to = req.query.to as string | undefined;
-  const branchId = req.query.branchId as string | undefined;
-
-  const extraBranchCond = branchId ? parseInt(branchId, 10) : null;
+  const filter = parseBranchFilterEx(req.query as Record<string, string | undefined>);
 
   function branchConds(col: any) {
     const c: any[] = [];
     const sc = scopeCond(col, scope);
     if (sc) c.push(sc);
-    if (extraBranchCond) c.push(eq(col, extraBranchCond));
+    if (filter && filter.length > 0) c.push(inArray(col, filter));
     return c;
   }
 
@@ -146,7 +156,7 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
         icBaseConds.push(sql`(${internalConsumptionsTable.sourceBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]) OR ${internalConsumptionsTable.destinationBranchId} = ANY(ARRAY[${sql.raw(ids)}]::int[]))`);
       }
     }
-    if (extraBranchCond) icBaseConds.push(eq(internalConsumptionsTable.destinationBranchId, extraBranchCond));
+    if (filter && filter.length > 0) icBaseConds.push(inArray(internalConsumptionsTable.destinationBranchId, filter));
 
     [icAgg] = await db.select({
       totalCost: sql<string>`COALESCE(SUM(${internalConsumptionsTable.totalCost}::numeric), 0)`,
@@ -194,7 +204,7 @@ router.get("/overview", requireAuth, requirePermission(P.reports.view), async (r
   ];
   const bsc = scopeCond(stockLevelsTable.branchId, scope);
   if (bsc) stockAlertConds.push(bsc);
-  if (extraBranchCond) stockAlertConds.push(eq(stockLevelsTable.branchId, extraBranchCond));
+  if (filter && filter.length > 0) stockAlertConds.push(inArray(stockLevelsTable.branchId, filter));
 
   const [stockAgg] = await db.select({
     lowStockCount: sql<string>`COUNT(*)`,
@@ -276,8 +286,7 @@ router.get("/trend", requireAuth, requirePermission(P.reports.view), async (req,
   const scope = visibleBranchIds(req.user!);
   const from = req.query.from as string | undefined;
   const to = req.query.to as string | undefined;
-  const branchId = req.query.branchId as string | undefined;
-  const bId = branchId ? parseInt(branchId, 10) : null;
+  const filter = parseBranchFilterEx(req.query as Record<string, string | undefined>);
 
   const sc = scopeCond(salesTable.branchId, scope);
   const saleConds: any[] = [
@@ -286,7 +295,7 @@ router.get("/trend", requireAuth, requirePermission(P.reports.view), async (req,
     ...dateConds(salesTable.createdAt, from, to),
   ];
   if (sc) saleConds.push(sc);
-  if (bId) saleConds.push(eq(salesTable.branchId, bId));
+  if (filter && filter.length > 0) saleConds.push(inArray(salesTable.branchId, filter));
 
   const expSc = scopeCond(expensesTable.branchId, scope);
   const expConds: any[] = [
@@ -294,7 +303,7 @@ router.get("/trend", requireAuth, requirePermission(P.reports.view), async (req,
     ...dateConds(expensesTable.createdAt, from, to),
   ];
   if (expSc) expConds.push(expSc);
-  if (bId) expConds.push(eq(expensesTable.branchId, bId));
+  if (filter && filter.length > 0) expConds.push(inArray(expensesTable.branchId, filter));
 
   const [salesByDay, expByDay] = await Promise.all([
     db.select({
@@ -460,13 +469,13 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
 // ─── Alerts panel ────────────────────────────────────────────────────────────
 router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
   const scope = visibleBranchIds(req.user!);
-  const branchId = req.query.branchId as string | undefined;
+  const filter = parseBranchFilterEx(req.query as Record<string, string | undefined>);
 
   // ERP alerts (system-generated)
   const alertConds: any[] = [isNull(alertsTable.resolvedAt)];
   const asc = scopeCond(alertsTable.branchId, scope);
   if (asc) alertConds.push(sql`(${alertsTable.branchId} IS NULL OR ${asc})`);
-  if (branchId) alertConds.push(sql`(${alertsTable.branchId} IS NULL OR ${alertsTable.branchId} = ${parseInt(branchId, 10)})`);
+  if (filter && filter.length > 0) alertConds.push(sql`(${alertsTable.branchId} IS NULL OR ${alertsTable.branchId} = ANY(ARRAY[${sql.raw(filter.join(","))}]::int[]))`);
 
   const erpAlerts = await db.select({
     id: alertsTable.id,
@@ -490,7 +499,7 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
   ];
   const bsc = scopeCond(stockLevelsTable.branchId, scope);
   if (bsc) stockConds.push(bsc);
-  if (branchId) stockConds.push(eq(stockLevelsTable.branchId, parseInt(branchId, 10)));
+  if (filter && filter.length > 0) stockConds.push(inArray(stockLevelsTable.branchId, filter));
 
   const lowStockItems = await db.select({
     productName: productsTable.name,

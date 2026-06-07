@@ -20,7 +20,7 @@ import { ReceivableAlertsPanel } from "@/components/ReceivableAlerts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Area, AreaChart, Bar, BarChart, ResponsiveContainer,
@@ -193,11 +193,16 @@ const CATEGORY_COLORS = [
 interface EAlert { id: number; severity: "critical" | "warning" | "info"; title: string; message: string; module: string; isRead: boolean; createdAt: string; }
 
 export default function Dashboard() {
-  const { user, activeBranchId, setActiveBranchId } = useAuth();
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [selectedBranchIds, setSelectedBranchIds] = useState<number[]>([]);
   const { data: branches = [] } = useGetBranches();
-  const branchParam = activeBranchId ? { branchId: activeBranchId } : {};
+  const branchParam: any = selectedBranchIds.length === 0
+    ? {}
+    : selectedBranchIds.length === 1
+    ? { branchId: selectedBranchIds[0] }
+    : { branchIds: selectedBranchIds.join(",") };
 
   const REFRESH = { query: { staleTime: 0, refetchInterval: 30_000, refetchOnWindowFocus: true } };
 
@@ -207,10 +212,7 @@ export default function Dashboard() {
   const { data: _trend } = useGetSalesTrend({ ...branchParam, days: 14 }, REFRESH);
   const { data: _topProducts } = useGetTopProducts(REFRESH);
   const { data: _branchPerf } = useGetBranchPerformance(REFRESH);
-  const { data: lossStats } = useGetAdjustmentsStats(
-    activeBranchId ? { branchId: activeBranchId } : {},
-    REFRESH
-  );
+  const { data: lossStats } = useGetAdjustmentsStats(branchParam, REFRESH);
 
   const alerts = Array.isArray(_alerts) ? _alerts : [];
   const activity = Array.isArray(_activity) ? _activity : [];
@@ -239,12 +241,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoadingExpenses(true);
-    const params = activeBranchId ? `?branchId=${activeBranchId}` : "";
-    customFetch<ExpenseDashboard>(`/api/dashboard/expenses${params}`)
+    const qs = selectedBranchIds.length === 0
+      ? ""
+      : selectedBranchIds.length === 1
+      ? `?branchId=${selectedBranchIds[0]}`
+      : `?branchIds=${selectedBranchIds.join(",")}`;
+    customFetch<ExpenseDashboard>(`/api/dashboard/expenses${qs}`)
       .then(setExpenseData)
       .catch(() => setExpenseData(null))
       .finally(() => setLoadingExpenses(false));
-  }, [activeBranchId]);
+  }, [selectedBranchIds]);
 
   const trendFormatted = trend.map(d => ({
     ...d,
@@ -252,7 +258,11 @@ export default function Dashboard() {
   }));
 
   const maxRevenue = topProducts[0]?.totalRevenue ?? 1;
-  const activeBranch = branches.find(b => b.id === activeBranchId);
+  const selectedBranchLabel = selectedBranchIds.length === 0
+    ? null
+    : selectedBranchIds.length === 1
+    ? (branches.find(b => b.id === selectedBranchIds[0])?.name ?? null)
+    : `${selectedBranchIds.length} boutiques`;
   const criticalAlerts = alerts.filter(a => a.severity === "critical").length;
 
   // Expense pressure alert
@@ -282,23 +292,11 @@ export default function Dashboard() {
           </p>
         </div>
         {branches.length > 1 && (
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-muted-foreground">Boutique :</span>
-            <Select
-              value={activeBranchId ? String(activeBranchId) : "all"}
-              onValueChange={v => setActiveBranchId(v === "all" ? null : parseInt(v))}
-            >
-              <SelectTrigger className="h-8 w-44 text-sm">
-                <SelectValue placeholder="Toutes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les boutiques</SelectItem>
-                {branches.map(b => (
-                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <BranchMultiSelect
+            branches={branches.map(b => ({ id: b.id, name: b.name }))}
+            selectedIds={selectedBranchIds}
+            onChange={setSelectedBranchIds}
+          />
         )}
       </div>
 
@@ -421,9 +419,9 @@ export default function Dashboard() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest capitalize">
             Bilan financier — {currentMonthLabel}
           </p>
-          {activeBranch && (
+          {selectedBranchLabel && (
             <span className="text-xs text-muted-foreground bg-muted/60 rounded-lg px-2.5 py-1">
-              {activeBranch.name}
+              {selectedBranchLabel}
             </span>
           )}
         </div>
@@ -510,8 +508,8 @@ export default function Dashboard() {
                 <CardTitle className="text-base font-semibold flex items-center gap-2 text-red-700">
                   <TrendingDown className="h-4 w-4" />
                   Pertes &amp; ajustements négatifs
-                  {activeBranch && (
-                    <span className="ml-1 text-xs font-normal text-red-500/80">— {activeBranch.name}</span>
+                  {selectedBranchLabel && (
+                    <span className="ml-1 text-xs font-normal text-red-500/80">— {selectedBranchLabel}</span>
                   )}
                 </CardTitle>
                 <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1 hover:text-foreground" onClick={() => navigate("/adjustments")}>
@@ -598,7 +596,7 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/60 rounded-lg px-2.5 py-1">
               <BarChart3 className="h-3.5 w-3.5" />
-              {activeBranch?.name ?? "Toutes boutiques"}
+              {selectedBranchLabel ?? "Toutes boutiques"}
             </div>
           </CardHeader>
           <CardContent className="pb-4">
@@ -713,7 +711,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <ReceivableAlertsPanel
-                branchId={activeBranchId}
+                branchId={selectedBranchIds.length === 1 ? selectedBranchIds[0] : null}
                 maxItems={3}
                 onOpenContact={() => navigate("/contacts")}
               />

@@ -6,8 +6,21 @@ import { visibleBranchIds } from "../middlewares/permissions";
 
 const router: IRouter = Router();
 
+function parseBranchFilter(q: Record<string, string | undefined>): number[] | null {
+  if (q.branchIds) {
+    const ids = q.branchIds.split(",").map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0);
+    return ids.length > 0 ? ids : null;
+  }
+  if (q.branchId && q.branchId !== "all") {
+    const n = parseInt(q.branchId, 10);
+    return isNaN(n) ? null : [n];
+  }
+  return null;
+}
+
 router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> => {
-  const { branchId, date } = req.query as Record<string, string>;
+  const { date } = req.query as Record<string, string>;
+  const filter = parseBranchFilter(req.query as Record<string, string | undefined>);
   const today = date ? new Date(date) : new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -20,7 +33,7 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
   const buildBranchConds = (table: { branchId: any }) => {
     const conds: any[] = [];
     if (scope !== null) conds.push(inArray(table.branchId, scope));
-    if (branchId && branchId !== "all") conds.push(eq(table.branchId, parseInt(branchId, 10)));
+    if (filter && filter.length > 0) conds.push(inArray(table.branchId, filter));
     return conds;
   };
 
@@ -163,19 +176,19 @@ router.get("/dashboard/alerts", requireAuth, async (_req, res): Promise<void> =>
 });
 
 router.get("/dashboard/recent-activity", requireAuth, async (req, res): Promise<void> => {
-  const { branchId } = req.query as { branchId?: string };
+  const filter2 = parseBranchFilter(req.query as Record<string, string | undefined>);
   const scope = visibleBranchIds(req.user!);
   const limitDate = new Date();
   limitDate.setDate(limitDate.getDate() - 7);
 
   const saleConds: any[] = [gte(salesTable.createdAt, limitDate)];
   if (scope !== null && scope.length > 0) saleConds.push(inArray(salesTable.branchId, scope));
-  if (branchId && branchId !== "all") saleConds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (filter2 && filter2.length > 0) saleConds.push(inArray(salesTable.branchId, filter2));
   const recentSales = await db.select().from(salesTable).where(and(...saleConds)).limit(10);
 
   const purchConds: any[] = [gte(purchasesTable.createdAt, limitDate)];
   if (scope !== null && scope.length > 0) purchConds.push(inArray(purchasesTable.branchId, scope));
-  if (branchId && branchId !== "all") purchConds.push(eq(purchasesTable.branchId, parseInt(branchId, 10)));
+  if (filter2 && filter2.length > 0) purchConds.push(inArray(purchasesTable.branchId, filter2));
   const recentPurchases = await db.select().from(purchasesTable).where(and(...purchConds)).limit(10);
 
   const activity = [
@@ -193,7 +206,8 @@ router.get("/dashboard/recent-activity", requireAuth, async (req, res): Promise<
 });
 
 router.get("/dashboard/branch-performance", requireAuth, async (req, res): Promise<void> => {
-  const { branchId, days } = req.query as Record<string, string>;
+  const { days } = req.query as Record<string, string>;
+  const filter3 = parseBranchFilter(req.query as Record<string, string | undefined>);
   const since = new Date();
   since.setDate(since.getDate() - (parseInt(days ?? "30", 10)));
 
@@ -201,12 +215,12 @@ router.get("/dashboard/branch-performance", requireAuth, async (req, res): Promi
 
   const saleConds: any[] = [gte(salesTable.createdAt, since), eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed")];
   if (scope !== null && scope.length > 0) saleConds.push(inArray(salesTable.branchId, scope));
-  if (branchId && branchId !== "all") saleConds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (filter3 && filter3.length > 0) saleConds.push(inArray(salesTable.branchId, filter3));
   const sales = await db.select().from(salesTable).where(and(...saleConds));
 
   const expConds: any[] = [eq(expensesTable.status, "validated"), gte(expensesTable.createdAt, since)];
   if (scope !== null && scope.length > 0) expConds.push(inArray(expensesTable.branchId, scope));
-  if (branchId && branchId !== "all") expConds.push(eq(expensesTable.branchId, parseInt(branchId, 10)));
+  if (filter3 && filter3.length > 0) expConds.push(inArray(expensesTable.branchId, filter3));
   const expenses = await db.select().from(expensesTable).where(and(...expConds));
 
   const retConds: any[] = [ne(salesReturnsTable.status, "draft"), gte(salesReturnsTable.createdAt, since)];
@@ -228,11 +242,10 @@ router.get("/dashboard/branch-performance", requireAuth, async (req, res): Promi
 });
 
 router.get("/dashboard/financial-summary", requireAuth, async (req, res): Promise<void> => {
-  const { branchId } = req.query as Record<string, string>;
+  const filter4 = parseBranchFilter(req.query as Record<string, string | undefined>);
   const scope = visibleBranchIds(req.user!);
-  const targetBranchId = branchId && branchId !== "all" ? parseInt(branchId, 10) : null;
 
-  if (targetBranchId && scope !== null && !scope.includes(targetBranchId)) {
+  if (filter4 && scope !== null && filter4.some(id => !scope.includes(id))) {
     res.status(403).json({ error: "Accès refusé à cette succursale" });
     return;
   }
@@ -243,7 +256,7 @@ router.get("/dashboard/financial-summary", requireAuth, async (req, res): Promis
 
   const saleConds: any[] = [gte(salesTable.createdAt, firstOfMonth), eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed")];
   if (scope !== null && scope.length > 0) saleConds.push(inArray(salesTable.branchId, scope));
-  if (targetBranchId) saleConds.push(eq(salesTable.branchId, targetBranchId));
+  if (filter4 && filter4.length > 0) saleConds.push(inArray(salesTable.branchId, filter4));
   const allSales = await db.select().from(salesTable).where(and(...saleConds));
 
   const salesThisMonth = allSales.filter(s => {
@@ -253,13 +266,13 @@ router.get("/dashboard/financial-summary", requireAuth, async (req, res): Promis
 
   const retMonthConds: any[] = [gte(salesReturnsTable.createdAt, firstOfMonth), ne(salesReturnsTable.status, "draft")];
   if (scope !== null && scope.length > 0) retMonthConds.push(inArray(salesReturnsTable.branchId, scope));
-  if (targetBranchId) retMonthConds.push(eq(salesReturnsTable.branchId, targetBranchId));
+  if (filter4 && filter4.length > 0) retMonthConds.push(inArray(salesReturnsTable.branchId, filter4));
   const allReturnsMonth = await db.select().from(salesReturnsTable).where(and(...retMonthConds));
   const returnsThisMonth = allReturnsMonth.reduce((s, r) => s + parseFloat(r.totalAmount as string), 0);
 
   const expConds: any[] = [gte(expensesTable.createdAt, firstOfMonth), eq(expensesTable.status, "validated")];
   if (scope !== null && scope.length > 0) expConds.push(inArray(expensesTable.branchId, scope));
-  if (targetBranchId) expConds.push(eq(expensesTable.branchId, targetBranchId));
+  if (filter4 && filter4.length > 0) expConds.push(inArray(expensesTable.branchId, filter4));
   const expensesThisMonth = await db.select().from(expensesTable).where(and(...expConds));
 
   const totalSales = salesThisMonth.reduce((s, sale) => s + parseFloat(sale.total as string), 0);
@@ -269,13 +282,13 @@ router.get("/dashboard/financial-summary", requireAuth, async (req, res): Promis
 
   const purchConds: any[] = [inArray(purchasesTable.paymentStatus, ["unpaid", "partially_paid"]), notInArray(purchasesTable.status, ["cancelled"])];
   if (scope !== null && scope.length > 0) purchConds.push(inArray(purchasesTable.branchId, scope));
-  if (targetBranchId) purchConds.push(eq(purchasesTable.branchId, targetBranchId));
+  if (filter4 && filter4.length > 0) purchConds.push(inArray(purchasesTable.branchId, filter4));
   const unpaidPurchases = await db.select().from(purchasesTable).where(and(...purchConds));
   const suppliersDue = unpaidPurchases.reduce((s, p) => s + Math.max(0, parseFloat(p.total as string) - parseFloat(p.paid as string)), 0);
 
   const receivConds: any[] = [eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed"), inArray(salesTable.paymentStatus, ["unpaid", "partially_paid"])];
   if (scope !== null && scope.length > 0) receivConds.push(inArray(salesTable.branchId, scope));
-  if (targetBranchId) receivConds.push(eq(salesTable.branchId, targetBranchId));
+  if (filter4 && filter4.length > 0) receivConds.push(inArray(salesTable.branchId, filter4));
   const unpaidSales = await db.select().from(salesTable).where(and(...receivConds));
   const receivables = unpaidSales.reduce((s, sale) => s + Math.max(0, parseFloat(sale.total as string) - parseFloat(sale.paid as string) - parseFloat(sale.creditApplied as string)), 0);
 
@@ -284,11 +297,10 @@ router.get("/dashboard/financial-summary", requireAuth, async (req, res): Promis
 
 // ─── GET /dashboard/expenses ─── vue financière complète avec dépenses ────────
 router.get("/dashboard/expenses", requireAuth, async (req, res): Promise<void> => {
-  const { branchId } = req.query as Record<string, string>;
+  const filter = parseBranchFilter(req.query as Record<string, string | undefined>);
   const scope = visibleBranchIds(req.user!);
-  const targetBranchId = branchId && branchId !== "all" ? parseInt(branchId, 10) : null;
 
-  if (targetBranchId && scope !== null && !scope.includes(targetBranchId)) {
+  if (filter && scope !== null && filter.some(id => !scope.includes(id))) {
     res.status(403).json({ error: "Accès refusé à cette succursale" });
     return;
   }
@@ -301,7 +313,7 @@ router.get("/dashboard/expenses", requireAuth, async (req, res): Promise<void> =
   const buildConds = (table: any) => {
     const conds: any[] = [];
     if (scope !== null && scope.length > 0) conds.push(inArray(table.branchId, scope));
-    if (targetBranchId) conds.push(eq(table.branchId, targetBranchId));
+    if (filter && filter.length > 0) conds.push(inArray(table.branchId, filter));
     return conds;
   };
 
@@ -375,7 +387,8 @@ router.get("/dashboard/expenses", requireAuth, async (req, res): Promise<void> =
  * Returns daily sales totals for the last N days (default 14).
  */
 router.get("/dashboard/sales-trend", requireAuth, async (req, res): Promise<void> => {
-  const { branchId, days = "14" } = req.query as Record<string, string>;
+  const { days = "14" } = req.query as Record<string, string>;
+  const filter = parseBranchFilter(req.query as Record<string, string | undefined>);
   const numDays = Math.min(Math.max(parseInt(days, 10) || 14, 1), 90);
 
   const scope = visibleBranchIds(req.user!);
@@ -394,7 +407,7 @@ router.get("/dashboard/sales-trend", requireAuth, async (req, res): Promise<void
     gte(salesTable.createdAt, since),
   ];
   if (scope !== null) conds.push(inArray(salesTable.branchId, scope));
-  if (branchId && branchId !== "all") conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (filter && filter.length > 0) conds.push(inArray(salesTable.branchId, filter));
 
   const rows = await db.select().from(salesTable).where(and(...conds));
 
@@ -425,7 +438,7 @@ router.get("/dashboard/sales-trend", requireAuth, async (req, res): Promise<void
  * Returns top 10 products by revenue this month.
  */
 router.get("/dashboard/top-products", requireAuth, async (req, res): Promise<void> => {
-  const { branchId } = req.query as Record<string, string>;
+  const filter = parseBranchFilter(req.query as Record<string, string | undefined>);
 
   const scope = visibleBranchIds(req.user!);
   if (scope !== null && scope.length === 0) {
@@ -443,7 +456,7 @@ router.get("/dashboard/top-products", requireAuth, async (req, res): Promise<voi
     gte(salesTable.createdAt, monthStart),
   ];
   if (scope !== null) saleConds.push(inArray(salesTable.branchId, scope));
-  if (branchId && branchId !== "all") saleConds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (filter && filter.length > 0) saleConds.push(inArray(salesTable.branchId, filter));
 
   const confirmedSales = await db.select({ id: salesTable.id }).from(salesTable).where(and(...saleConds));
   if (confirmedSales.length === 0) {
