@@ -7,6 +7,7 @@ import {
   getGetContactsQueryKey,
   useGetCompanySettings,
   useCreateContact,
+  CreateContactBodyStatus, CreateContactBodyType,
   customFetch,
   type POSSession
 } from "@workspace/api-client-react";
@@ -127,7 +128,7 @@ export default function POS() {
   const { data: customers = [] } = useGetContacts({ type: "customer" });
   const createContactMutation = useCreateContact({
     mutation: {
-      onSuccess: (newContact: any) => {
+      onSuccess: (newContact) => {
         qc.invalidateQueries({ queryKey: getGetContactsQueryKey({ type: "customer" }) });
         setCustomerId(String(newContact.id));
         setCreditBlockInfo(null);
@@ -615,17 +616,22 @@ export default function POS() {
                                 <Check className={`mr-2 h-3.5 w-3.5 ${customerId === "none" ? "opacity-100" : "opacity-0"}`} />
                                 Comptoir
                               </CommandItem>
-                              {customers.map(c => (
-                                <CommandItem
-                                  key={c.id}
-                                  value={(c as any).displayName ?? String(c.id)}
-                                  onSelect={() => { setCustomerId(String(c.id)); setCreditBlockInfo(null); setClientComboOpen(false); }}
-                                  className="text-xs cursor-pointer"
-                                >
-                                  <Check className={`mr-2 h-3.5 w-3.5 ${customerId === String(c.id) ? "opacity-100" : "opacity-0"}`} />
-                                  {(c as any).displayName}
-                                </CommandItem>
-                              ))}
+                              {customers.map(c => {
+                                const cAny = c as any;
+                                const searchVal = [cAny.displayName, cAny.phone].filter(Boolean).join(" ");
+                                return (
+                                  <CommandItem
+                                    key={c.id}
+                                    value={searchVal}
+                                    onSelect={() => { setCustomerId(String(c.id)); setCreditBlockInfo(null); setClientComboOpen(false); }}
+                                    className="text-xs cursor-pointer"
+                                  >
+                                    <Check className={`mr-2 h-3.5 w-3.5 ${customerId === String(c.id) ? "opacity-100" : "opacity-0"}`} />
+                                    <span className="flex-1 truncate">{cAny.displayName}</span>
+                                    {cAny.phone && <span className="ml-2 text-[10px] text-muted-foreground shrink-0">{cAny.phone}</span>}
+                                  </CommandItem>
+                                );
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>
@@ -1231,7 +1237,7 @@ export default function POS() {
                 onChange={e => setNewClientName(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && newClientName.trim()) {
-                    createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any });
+                    createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() || null } });
                   }
                 }}
                 autoFocus
@@ -1246,7 +1252,7 @@ export default function POS() {
                 onChange={e => setNewClientPhone(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && newClientName.trim()) {
-                    createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any });
+                    createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() || null } });
                   }
                 }}
               />
@@ -1257,7 +1263,7 @@ export default function POS() {
             <Button
               size="sm"
               disabled={!newClientName.trim() || createContactMutation.isPending}
-              onClick={() => createContactMutation.mutate({ data: { name: newClientName.trim(), type: "customer", phone: newClientPhone.trim() || undefined } as any })}
+              onClick={() => createContactMutation.mutate({ data: { displayName: newClientName.trim(), type: CreateContactBodyType.customer, status: CreateContactBodyStatus.active, phone: newClientPhone.trim() || null } })}
             >
               {createContactMutation.isPending ? "Ajout..." : "Ajouter et sélectionner"}
             </Button>
