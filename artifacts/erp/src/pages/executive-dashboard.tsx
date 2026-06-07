@@ -18,9 +18,9 @@ import {
   Wallet, RotateCcw, Building2, AlertTriangle, AlertCircle,
   CheckCircle2, Package, ArrowLeftRight, Factory,
   CreditCard, Banknote, Users, ZapOff, Clock,
-  Info, ChevronRight, FlaskConical,
+  Info, ChevronRight, ChevronDown, FlaskConical, Scale,
 } from "lucide-react";
-import { format, subDays, startOfMonth, startOfYear } from "date-fns";
+import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useAuth } from "@/lib/auth";
 
@@ -112,6 +112,83 @@ function ChartTip({ active, payload, label }: any) {
   );
 }
 
+// ─── Comparison helpers ───────────────────────────────────────────────────────
+const COMPARE_MODES = [
+  { label: "Auj. vs Hier",             value: "day"    },
+  { label: "Ce mois vs Mois préc.",    value: "month"  },
+  { label: "Cette année vs Année préc.", value: "year" },
+  { label: "Période vs préc.",         value: "custom" },
+] as const;
+
+function getDelta(a: number, b: number): number {
+  if (b === 0) return a > 0 ? 100 : 0;
+  return Math.round(((a - b) / Math.abs(b)) * 100);
+}
+
+function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inverse = false }: {
+  label: string; valueA: number; valueB: number;
+  icon: React.FC<{ className?: string }>; isResult?: boolean; inverse?: boolean;
+}) {
+  const d = getDelta(valueA, valueB);
+  const improved = inverse ? d <= 0 : d >= 0;
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">{label}</p>
+          {d !== 0 && (
+            <span className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${improved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+              {d > 0 ? "▲" : "▼"} {Math.abs(d)}%
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
+            <p className="text-[9px] text-indigo-600 font-semibold mb-0.5">Période A</p>
+            <p className={`text-sm font-bold leading-tight ${isResult ? (valueA >= 0 ? "text-green-700" : "text-red-700") : "text-indigo-700"}`}>
+              {fmtDA(valueA)}
+            </p>
+          </div>
+          <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-100 text-center">
+            <p className="text-[9px] text-amber-600 font-semibold mb-0.5">Période B</p>
+            <p className="text-sm font-bold text-amber-700 leading-tight">{fmtDA(valueB)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CountCompareCard({ label, valueA, valueB, inverse = false }: {
+  label: string; valueA: number; valueB: number; inverse?: boolean;
+}) {
+  const d = getDelta(valueA, valueB);
+  const improved = inverse ? d <= 0 : d >= 0;
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardContent className="p-4 space-y-2">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
+            <p className="text-[9px] text-indigo-600 font-semibold mb-0.5">A</p>
+            <p className="text-base font-bold text-indigo-700">{valueA}</p>
+          </div>
+          <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-100 text-center">
+            <p className="text-[9px] text-amber-600 font-semibold mb-0.5">B</p>
+            <p className="text-base font-bold text-amber-700">{valueB}</p>
+          </div>
+        </div>
+        {d !== 0 && (
+          <p className={`text-[10px] font-bold text-center ${improved ? "text-green-700" : "text-red-700"}`}>
+            {d > 0 ? "▲" : "▼"} {Math.abs(d)}%
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ExecutiveDashboard() {
   const { user } = useAuth();
@@ -120,6 +197,8 @@ export default function ExecutiveDashboard() {
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [activePreset, setActivePreset] = useState(3); // "Mois"
+  const [showCompare, setShowCompare] = useState(false);
+  const [compareMode, setCompareMode] = useState<"day" | "month" | "year" | "custom">("month");
 
   const { data: branches } = useGetBranches();
   const showBranchFilter = user?.adminAccess || (user?.branchIds && user.branchIds.length > 1);
@@ -132,6 +211,56 @@ export default function ExecutiveDashboard() {
     else if (branchIds.length > 1) p.branchIds = branchIds.join(",");
     return new URLSearchParams(p).toString();
   }, [from, to, branchIds]);
+
+  const compareRanges = useMemo(() => {
+    const today = new Date();
+    const fmt = (d: Date) => format(d, "yyyy-MM-dd");
+    switch (compareMode) {
+      case "day": return {
+        fromA: fmt(today), toA: fmt(today),
+        fromB: fmt(subDays(today, 1)), toB: fmt(subDays(today, 1)),
+        labelA: "Aujourd'hui", labelB: "Hier",
+      };
+      case "month": {
+        const ms = startOfMonth(today);
+        const ps = subMonths(ms, 1);
+        return {
+          fromA: fmt(ms), toA: fmt(today),
+          fromB: fmt(ps), toB: fmt(endOfMonth(ps)),
+          labelA: format(today, "MMMM yyyy", { locale: fr }),
+          labelB: format(ps, "MMMM yyyy", { locale: fr }),
+        };
+      }
+      case "year": {
+        const ys = startOfYear(today);
+        const py = new Date(today.getFullYear() - 1, 0, 1);
+        return {
+          fromA: fmt(ys), toA: fmt(today),
+          fromB: fmt(py), toB: `${today.getFullYear() - 1}-12-31`,
+          labelA: String(today.getFullYear()),
+          labelB: String(today.getFullYear() - 1),
+        };
+      }
+      case "custom": {
+        const sa = new Date(from); const ea = new Date(to);
+        const diff = Math.max(0, Math.round((ea.getTime() - sa.getTime()) / 86400000));
+        const eb = subDays(sa, 1);
+        const sb = subDays(eb, diff);
+        return { fromA: from, toA: to, fromB: fmt(sb), toB: fmt(eb), labelA: `${from}→${to}`, labelB: `${fmt(sb)}→${fmt(eb)}` };
+      }
+    }
+  }, [compareMode, from, to]);
+
+  const compareQs = useMemo(() => {
+    if (!showCompare) return "";
+    const p: Record<string, string> = {
+      fromA: compareRanges.fromA, toA: compareRanges.toA,
+      fromB: compareRanges.fromB, toB: compareRanges.toB,
+    };
+    if (branchIds.length === 1) p.branchId = String(branchIds[0]);
+    else if (branchIds.length > 1) p.branchIds = branchIds.join(",");
+    return new URLSearchParams(p).toString();
+  }, [showCompare, compareRanges, branchIds]);
 
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
@@ -156,11 +285,49 @@ export default function ExecutiveDashboard() {
     queryFn: () => customFetch(`/api/dashboard/executive/alerts?${alertsQs}`),
     refetchInterval: 60_000,
   });
+  const { data: compareData, isLoading: cmpLoading } = useQuery({
+    queryKey: ["ex-compare", compareQs],
+    queryFn: () => customFetch(`/api/dashboard/executive/compare?${compareQs}`),
+    enabled: showCompare && !!compareQs,
+  });
 
   const ov = overview as any;
   const trendRows = (trend as any[]) ?? [];
   const bData = (branchData as any[]) ?? [];
   const alerts = alertsData as any;
+
+  const cmp = compareData as any;
+  const pA = cmp?.periodA as { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] } | undefined;
+  const pB = cmp?.periodB as typeof pA;
+
+  const cmpBarData = pA && pB ? [
+    { metric: "CA brut",   A: pA.grossRevenue, B: pB.grossRevenue },
+    { metric: "CA net",    A: pA.netRevenue,   B: pB.netRevenue   },
+    { metric: "Dépenses",  A: pA.expenses,     B: pB.expenses     },
+    { metric: "Résultat",  A: pA.result,       B: pB.result       },
+  ] : [];
+
+  const cmpCatRows: { category: string; A: number; B: number }[] = (() => {
+    if (!pA || !pB) return [];
+    const m: Record<string, { category: string; A: number; B: number }> = {};
+    for (const c of (pA.byCategory ?? [])) m[c.category] = { category: c.category, A: c.amount, B: 0 };
+    for (const c of (pB.byCategory ?? [])) {
+      if (!m[c.category]) m[c.category] = { category: c.category, A: 0, B: 0 };
+      m[c.category].B = c.amount;
+    }
+    return Object.values(m).sort((x, y) => (y.A + y.B) - (x.A + x.B));
+  })();
+
+  const cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[] = (() => {
+    if (!pA || !pB) return [];
+    const m: Record<number, any> = {};
+    for (const b of (pA.byBranch ?? [])) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: b.revenue, expA: b.expenses, resA: b.result, revB: 0, expB: 0, resB: 0 };
+    for (const b of (pB.byBranch ?? [])) {
+      if (!m[b.branchId]) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: 0, expA: 0, resA: 0 };
+      m[b.branchId].revB = b.revenue; m[b.branchId].expB = b.expenses; m[b.branchId].resB = b.result;
+    }
+    return Object.values(m).sort((a, b) => (b.revA + b.revB) - (a.revA + a.revB));
+  })();
 
   const totalAlertCount = (alerts?.erpAlerts?.length ?? 0) + (alerts?.computed?.lowStock?.count ?? 0)
     + (alerts?.computed?.pendingReturns?.count ?? 0) + (alerts?.computed?.pendingTransfers?.count ?? 0);
@@ -708,6 +875,222 @@ export default function ExecutiveDashboard() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SECTION 5 — Analyse comparative
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle icon={Scale} title="Analyse comparative" color="text-indigo-600" />
+          <Button
+            variant={showCompare ? "default" : "outline"} size="sm"
+            className={`text-xs h-7 gap-1.5 ${showCompare ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
+            onClick={() => setShowCompare(v => !v)}
+          >
+            {showCompare ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {showCompare ? "Masquer" : "Voir l'analyse comparative"}
+          </Button>
+        </div>
+
+        {showCompare && (
+          <div className="space-y-4">
+
+            {/* ── Period selector ────────────────────────────────────────── */}
+            <Card className="border-0 shadow-sm bg-gradient-to-r from-indigo-50/40 to-amber-50/40">
+              <CardContent className="p-3 space-y-2">
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-muted-foreground">Comparer :</span>
+                  {COMPARE_MODES.map(m => (
+                    <Button key={m.value} size="sm"
+                      variant={compareMode === m.value ? "default" : "outline"}
+                      className={`text-xs h-7 px-2.5 ${compareMode === m.value ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
+                      onClick={() => setCompareMode(m.value)}>
+                      {m.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-6 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />
+                    <strong>A — {compareRanges.labelA} :</strong>&nbsp;{compareRanges.fromA} → {compareRanges.toA}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-sm bg-amber-400" />
+                    <strong>B — {compareRanges.labelB} :</strong>&nbsp;{compareRanges.fromB} → {compareRanges.toB}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── Loading skeleton ───────────────────────────────────────── */}
+            {cmpLoading && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <Card key={i} className="border-0 shadow-sm">
+                    <CardContent className="p-4"><div className="h-20 bg-muted animate-pulse rounded" /></CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* ── Data sections ──────────────────────────────────────────── */}
+            {!cmpLoading && pA && pB && (
+              <>
+                {/* Financial KPI cards */}
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Banknote className="h-3.5 w-3.5" /> Résumé financier comparé
+                  </p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <CompareCard label="CA Brut"                valueA={pA.grossRevenue} valueB={pB.grossRevenue} icon={TrendingUp} />
+                    <CompareCard label="CA Net (après retours)" valueA={pA.netRevenue}   valueB={pB.netRevenue}   icon={Banknote} />
+                    <CompareCard label="Dépenses"               valueA={pA.expenses}     valueB={pB.expenses}     icon={Wallet} inverse />
+                    <CompareCard label="Résultat opérationnel"  valueA={pA.result}       valueB={pB.result}       icon={TrendingUp} isResult />
+                  </div>
+                </div>
+
+                {/* Sales cards */}
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <ShoppingBag className="h-3.5 w-3.5" /> Ventes comparées
+                  </p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <CountCompareCard label="Nb. ventes confirmées" valueA={pA.saleCount}    valueB={pB.saleCount} />
+                    <CompareCard label="Montant encaissé"           valueA={pA.encaisse}     valueB={pB.encaisse}  icon={CreditCard} />
+                    <CompareCard label="Montant retours"            valueA={pA.returnAmount} valueB={pB.returnAmount} icon={RotateCcw} inverse />
+                    <CountCompareCard label="Nb. retours"           valueA={pA.returnCount}  valueB={pB.returnCount} inverse />
+                  </div>
+                </div>
+
+                {/* Grouped bar chart */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Scale className="h-4 w-4 text-indigo-600" />
+                      Vue graphique — CA · Dépenses · Résultat
+                      <div className="ml-auto flex items-center gap-4 text-[10px] font-normal text-muted-foreground">
+                        <span className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />{compareRanges.labelA}</span>
+                        <span className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-amber-400" />{compareRanges.labelB}</span>
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-4">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={cmpBarData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="metric" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 9 }} tickFormatter={v => fmtDA(v)} width={72} />
+                        <Tooltip formatter={(v: any) => fmtDA(Number(v))} />
+                        <Bar dataKey="A" name={compareRanges.labelA} fill="#6366f1" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="B" name={compareRanges.labelB} fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Detail tables */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                  {/* Expenses by category */}
+                  {cmpCatRows.length > 0 && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-1">
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          Dépenses par catégorie — A vs B
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border/50">
+                          <div className="grid grid-cols-4 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+                            <span className="col-span-2">Catégorie</span>
+                            <span className="text-right text-indigo-600">A</span>
+                            <span className="text-right text-amber-600">B</span>
+                          </div>
+                          {cmpCatRows.map((c, i) => {
+                            const d = getDelta(c.A, c.B);
+                            const less = c.A < c.B;
+                            return (
+                              <div key={i} className="grid grid-cols-4 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
+                                <div className="col-span-2 flex items-center gap-1.5 min-w-0">
+                                  <span className="text-xs font-medium truncate">{c.category}</span>
+                                  {d !== 0 && (
+                                    <span className={`shrink-0 text-[9px] font-bold ${less ? "text-green-700" : "text-red-700"}`}>
+                                      {less ? "▼" : "▲"}{Math.abs(d)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-right text-xs font-semibold text-indigo-700">{fmtDA(c.A)}</div>
+                                <div className="text-right text-xs text-amber-700">{fmtDA(c.B)}</div>
+                              </div>
+                            );
+                          })}
+                          <div className="grid grid-cols-4 px-4 py-2 bg-muted/30">
+                            <span className="col-span-2 text-[10px] font-bold">Total</span>
+                            <span className="text-right text-xs font-bold text-indigo-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.A, 0))}</span>
+                            <span className="text-right text-xs font-bold text-amber-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.B, 0))}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Branch performance */}
+                  {cmpBrRows.length > 0 && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-1">
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          Performance agences — A vs B
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border/50">
+                          <div className="grid grid-cols-5 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+                            <span className="col-span-2">Agence</span>
+                            <span className="text-right text-indigo-600">CA (A)</span>
+                            <span className="text-right text-amber-600">CA (B)</span>
+                            <span className="text-right">Résultat A</span>
+                          </div>
+                          {cmpBrRows.map((b, i) => {
+                            const d = getDelta(b.revA, b.revB);
+                            const colors = ["#10b981","#6366f1","#f59e0b","#ef4444","#8b5cf6"];
+                            return (
+                              <div key={b.branchId} className="grid grid-cols-5 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
+                                <div className="col-span-2 flex items-center gap-1.5 min-w-0">
+                                  <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                                  <span className="text-xs font-medium truncate">{b.branchName}</span>
+                                  {d !== 0 && (
+                                    <span className={`shrink-0 text-[9px] font-bold ${d >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                      {d >= 0 ? "▲" : "▼"}{Math.abs(d)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-right text-xs font-semibold text-indigo-700">{fmtDA(b.revA)}</div>
+                                <div className="text-right text-xs text-amber-700">{fmtDA(b.revB)}</div>
+                                <div className={`text-right text-xs font-semibold ${b.resA >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                  {b.resA >= 0 ? "+" : ""}{fmtDA(b.resA)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                </div>
+              </>
+            )}
+
+            {/* No data yet */}
+            {!cmpLoading && !pA && (
+              <div className="flex items-center justify-center p-8 text-xs text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
+                Aucune donnée disponible pour les périodes sélectionnées.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

@@ -560,4 +560,140 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
   });
 });
 
+// ─── Comparative analysis ────────────────────────────────────────────────────
+router.get("/compare", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const scope = visibleBranchIds(req.user!);
+  const q = req.query as Record<string, string | undefined>;
+  const { fromA, toA, fromB, toB } = q;
+  const filter = parseBranchFilterEx(q);
+
+  async function periodAgg(from: string | undefined, to: string | undefined) {
+    function brConds(col: any) {
+      const c: any[] = [];
+      const sc = scopeCond(col, scope);
+      if (sc) c.push(sc);
+      if (filter && filter.length > 0) c.push(inArray(col, filter));
+      return c;
+    }
+
+    const saleConds = [
+      eq(salesTable.type, "sale"),
+      eq(salesTable.status, "confirmed"),
+      ...dateConds(salesTable.createdAt, from, to),
+      ...brConds(salesTable.branchId),
+    ];
+    const [saleAgg] = await db.select({
+      grossRevenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+      saleCount:    sql<string>`COUNT(*)`,
+      totalPaid:    sql<string>`COALESCE(SUM(${salesTable.paid}::numeric), 0)`,
+      totalCredit:  sql<string>`COALESCE(SUM(${salesTable.creditApplied}::numeric), 0)`,
+    }).from(salesTable).where(and(...saleConds));
+
+    const retConds = [
+      inArray(salesReturnsTable.status, ["confirmed", "refunded"]),
+      ...dateConds(salesReturnsTable.createdAt, from, to),
+      ...brConds(salesReturnsTable.branchId),
+    ];
+    const [retAgg] = await db.select({
+      returnAmount: sql<string>`COALESCE(SUM(${salesReturnsTable.refundedAmount}::numeric), 0)`,
+      returnCount:  sql<string>`COUNT(*)`,
+    }).from(salesReturnsTable).where(and(...retConds));
+
+    const expConds = [
+      eq(expensesTable.status, "validated"),
+      ...dateConds(expensesTable.createdAt, from, to),
+      ...brConds(expensesTable.branchId),
+    ];
+    const [expAgg] = await db.select({
+      totalExpenses: sql<string>`COALESCE(SUM(${expensesTable.amount}::numeric), 0)`,
+      expenseCount:  sql<string>`COUNT(*)`,
+    }).from(expensesTable).where(and(...expConds));
+
+    const byCategory = await db.select({
+      category: expensesTable.category,
+      amount:   sql<string>`COALESCE(SUM(${expensesTable.amount}::numeric), 0)`,
+    }).from(expensesTable)
+      .where(and(...expConds))
+      .groupBy(expensesTable.category)
+      .orderBy(sql`SUM(${expensesTable.amount}::numeric) DESC`)
+      .limit(8);
+
+    const branchScopeConds: any[] = [];
+    const bsc2 = scopeCond(branchesTable.id, scope);
+    if (bsc2) branchScopeConds.push(bsc2);
+    if (filter && filter.length > 0) branchScopeConds.push(inArray(branchesTable.id, filter));
+
+    const branches = await db.select({ id: branchesTable.id, name: branchesTable.name })
+      .from(branchesTable)
+      .where(branchScopeConds.length ? and(...branchScopeConds) : undefined);
+
+    let byBranch: any[] = [];
+    if (branches.length > 0) {
+      const bIds = branches.map(b => b.id);
+      const [salesByBranch, expByBranch] = await Promise.all([
+        db.select({
+          branchId:  salesTable.branchId,
+          revenue:   sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+          saleCount: sql<string>`COUNT(*)`,
+        }).from(salesTable)
+          .where(and(
+            eq(salesTable.type, "sale"),
+            eq(salesTable.status, "confirmed"),
+            inArray(salesTable.branchId, bIds),
+            ...dateConds(salesTable.createdAt, from, to),
+          ))
+          .groupBy(salesTable.branchId),
+
+        db.select({
+          branchId: expensesTable.branchId,
+          expenses: sql<string>`COALESCE(SUM(${expensesTable.amount}::numeric), 0)`,
+        }).from(expensesTable)
+          .where(and(
+            eq(expensesTable.status, "validated"),
+            inArray(expensesTable.branchId, bIds),
+            ...dateConds(expensesTable.createdAt, from, to),
+          ))
+          .groupBy(expensesTable.branchId),
+      ]);
+
+      const salesMap = Object.fromEntries(salesByBranch.map(r => [r.branchId, r]));
+      const expMap   = Object.fromEntries(expByBranch.map(r => [r.branchId, r]));
+      byBranch = branches.map(b => {
+        const s = salesMap[b.id];
+        const e = expMap[b.id];
+        const revenue  = parseFloat(s?.revenue ?? "0");
+        const expenses = parseFloat(e?.expenses ?? "0");
+        return {
+          branchId: b.id, branchName: b.name,
+          revenue, saleCount: parseInt(s?.saleCount ?? "0", 10),
+          expenses, result: revenue - expenses,
+        };
+      });
+    }
+
+    const grossRevenue  = parseFloat(saleAgg?.grossRevenue ?? "0");
+    const returnAmount  = parseFloat(retAgg?.returnAmount ?? "0");
+    const totalExpenses = parseFloat(expAgg?.totalExpenses ?? "0");
+    const netRevenue    = grossRevenue - returnAmount;
+    const encaisse      = parseFloat(saleAgg?.totalPaid ?? "0") + parseFloat(saleAgg?.totalCredit ?? "0");
+
+    return {
+      grossRevenue, netRevenue,
+      expenses: totalExpenses,
+      result: netRevenue - totalExpenses,
+      saleCount: parseInt(saleAgg?.saleCount ?? "0", 10),
+      returnAmount, returnCount: parseInt(retAgg?.returnCount ?? "0", 10),
+      encaisse,
+      byCategory: byCategory.map(c => ({ category: c.category ?? "Autre", amount: parseFloat(c.amount) })),
+      byBranch,
+    };
+  }
+
+  const [pA, pB] = await Promise.all([periodAgg(fromA, toA), periodAgg(fromB, toB)]);
+  res.json({
+    periodA: { from: fromA, to: toA, ...pA },
+    periodB: { from: fromB, to: toB, ...pB },
+  });
+});
+
 export default router;
