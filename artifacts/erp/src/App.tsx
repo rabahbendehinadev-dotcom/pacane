@@ -44,6 +44,7 @@ import Receptions from "@/pages/receptions";
 import WorkersPage from "@/pages/workers";
 import PreparationOrdersPage from "@/pages/preparation-orders";
 import MyPreparationsPage from "@/pages/my-preparations";
+import AnalyticsSellers from "@/pages/analytics-sellers";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -173,6 +174,9 @@ function AppRoutes() {
       </Route>
       <Route path="/analytics/sales">
         <DashboardLayout><AnalyticsSales /></DashboardLayout>
+      </Route>
+      <Route path="/analytics/sellers">
+        <DashboardLayout><AnalyticsSellers /></DashboardLayout>
       </Route>
       <Route path="/dashboard/executive">
         <DashboardLayout><ExecutiveDashboard /></DashboardLayout>

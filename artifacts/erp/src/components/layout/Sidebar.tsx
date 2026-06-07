@@ -119,6 +119,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       title: "Analytique",
       items: [
         { label: "Analytique Ventes", href: "/analytics/sales", icon: BarChart2, perm: "analytics.view" },
+        { label: "Analytique Vendeurs", href: "/analytics/sellers", icon: Users, perm: "analytics.view" },
         { label: "Analytique Achats", href: "/analytics/purchases", icon: TrendingUp, perm: "analytics.view" },
         { label: "Analytique Production", href: "/analytics/production", icon: Factory, perm: "analytics.view" },
         { label: "Conso. interne", href: "/internal-consumptions/reports", icon: Wrench, perm: "internal_consumptions.view" },
