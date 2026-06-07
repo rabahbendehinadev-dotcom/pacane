@@ -25,3 +25,4 @@ export * from "./replenishment";
 export * from "./internal-consumptions";
 export * from "./workers";
 export * from "./preparation-orders";
+export * from "./branch-sellers";

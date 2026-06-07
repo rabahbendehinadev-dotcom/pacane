@@ -24,6 +24,7 @@ export const salesTable = pgTable("sales", {
   paymentMethod: text("payment_method").default("cash"),
   dueDate: timestamp("due_date", { withTimezone: true }),
   posSessionId: integer("pos_session_id"),
+  sellerId: integer("seller_id"),
   createdByUserId: integer("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

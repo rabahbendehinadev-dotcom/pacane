@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, branchesTable } from "@workspace/db";
+import { db, branchesTable, branchSellersTable, usersTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -69,6 +69,39 @@ router.delete("/branches/:id", requireAuth, requirePermission(P.branches.delete)
   if (branch.isMain) { res.status(400).json({ error: "Impossible de supprimer la boutique principale" }); return; }
   await db.delete(branchesTable).where(eq(branchesTable.id, id));
   res.json({ success: true });
+});
+
+// ── Vendeurs d'une boutique ──────────────────────────────────────────────────
+
+router.get("/branches/:id/sellers", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const rows = await db
+    .select({ userId: branchSellersTable.userId, name: usersTable.name })
+    .from(branchSellersTable)
+    .leftJoin(usersTable, eq(branchSellersTable.userId, usersTable.id))
+    .where(eq(branchSellersTable.branchId, id));
+  res.json(rows);
+});
+
+router.put("/branches/:id/sellers", requireAuth, requirePermission(P.branches.edit), async (req, res): Promise<void> => {
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const { userIds } = req.body;
+  if (!Array.isArray(userIds)) {
+    res.status(400).json({ error: "userIds doit être un tableau" });
+    return;
+  }
+  await db.delete(branchSellersTable).where(eq(branchSellersTable.branchId, id));
+  if (userIds.length > 0) {
+    await db.insert(branchSellersTable).values(
+      userIds.map((uid: number) => ({ branchId: id, userId: uid }))
+    );
+  }
+  const rows = await db
+    .select({ userId: branchSellersTable.userId, name: usersTable.name })
+    .from(branchSellersTable)
+    .leftJoin(usersTable, eq(branchSellersTable.userId, usersTable.id))
+    .where(eq(branchSellersTable.branchId, id));
+  res.json(rows);
 });
 
 export default router;

@@ -106,6 +106,7 @@ export default function POS() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const [cashReceived, setCashReceived] = useState("");
+  const [sellerId, setSellerId] = useState<string>("");
   const [creditOverrideReason, setCreditOverrideReason] = useState("");
   const [creditBlockInfo, setCreditBlockInfo] = useState<{ state: string; creditLimit: number | null; unpaidBalance: number; canOverride: boolean } | null>(null);
   const [creditOverrideOpen, setCreditOverrideOpen] = useState(false);
@@ -123,6 +124,19 @@ export default function POS() {
   );
 
   const effectiveBranchIdNum = branchId ? parseInt(branchId) : (openSessions[0]?.branchId ?? null);
+  const { data: branchSellersList = [] } = useQuery<Array<{ userId: number; name: string }>>({
+    queryKey: ["branch-sellers", effectiveBranchIdNum],
+    queryFn: async () => {
+      if (!effectiveBranchIdNum) return [];
+      const r = await fetch(`/api/branches/${effectiveBranchIdNum}/sellers`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("erp_token") ?? ""}` },
+      });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!effectiveBranchIdNum,
+    staleTime: 30000,
+  });
   const { data: branchStockLevels = [] } = useGetStockLevels(
     effectiveBranchIdNum ? { branchId: effectiveBranchIdNum } : undefined
   );
@@ -305,6 +319,7 @@ export default function POS() {
         paymentMethod: paymentMethod as any,
         discount: discountAmt, tax: 0, shippingFee: 0, notes: null,
         creditOverrideReason: overrideReason || undefined,
+        sellerId: sellerId ? parseInt(sellerId) : undefined,
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.price, discount: i.discount }))
       } as any
     });
@@ -954,6 +969,21 @@ export default function POS() {
               <p className="text-sm text-muted-foreground">Total à payer</p>
               <p className="text-3xl font-bold text-primary">{formatDA(total)}</p>
             </div>
+            {branchSellersList.length > 0 && (
+              <div>
+                <Label>Vendeur {branchSellersList.length > 0 ? <span className="text-red-500">*</span> : ""}</Label>
+                <Select value={sellerId} onValueChange={setSellerId}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Choisir un vendeur..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchSellersList.map(s => (
+                      <SelectItem key={s.userId} value={String(s.userId)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Moyen de paiement</Label>
               <div className="grid grid-cols-3 gap-2 mt-2">
@@ -981,7 +1011,11 @@ export default function POS() {
             <Button
               className="gap-2"
               onClick={() => confirmSale()}
-              disabled={createSale.isPending || (paymentMethod === "cash" && parseFloat(cashReceived || "0") < total)}
+              disabled={
+                createSale.isPending ||
+                (paymentMethod === "cash" && parseFloat(cashReceived || "0") < total) ||
+                (branchSellersList.length > 0 && !sellerId)
+              }
             >
               <CheckCircle className="h-4 w-4" />{createSale.isPending ? "Enregistrement..." : "Confirmer"}
             </Button>

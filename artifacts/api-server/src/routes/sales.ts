@@ -55,8 +55,13 @@ async function buildSaleResponse(sale: typeof salesTable.$inferSelect) {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, sale.createdByUserId));
     createdByName = u?.name ?? null;
   }
+  let sellerName: string | null = null;
+  if ((sale as any).sellerId) {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, (sale as any).sellerId));
+    sellerName = u?.name ?? null;
+  }
   return {
-    ...sale, customerName, branchName: branch?.name ?? "", branchPhone: branch?.phone ?? null, createdByName,
+    ...sale, customerName, branchName: branch?.name ?? "", branchPhone: branch?.phone ?? null, createdByName, sellerName,
     subtotal: parseFloat(sale.subtotal as string), discount: parseFloat(sale.discount as string),
     tax: parseFloat(sale.tax as string), shippingFee: parseFloat(sale.shippingFee as string),
     total: parseFloat(sale.total as string), paid: parseFloat(sale.paid as string),
@@ -280,6 +285,7 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
   // draft / quotation / order / proforma → aucun check stock à la création
 
   const paymentMethod = req.body.paymentMethod ?? "cash";
+  const sellerIdVal = req.body.sellerId ? parseInt(String(req.body.sellerId), 10) : null;
   const [sale] = await db.insert(salesTable).values({
     reference: await genRef(type), type, customerId, branchId,
     status: resolvedStatus,
@@ -288,6 +294,7 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     subtotal: subtotal.toString(), discount: d.toString(), tax: t.toString(),
     shippingFee: sf.toString(), total: total.toString(), paid: "0", notes,
     paymentMethod: type === "sale" ? paymentMethod : null,
+    sellerId: sellerIdVal,
     createdByUserId: req.userId
   }).returning();
 
