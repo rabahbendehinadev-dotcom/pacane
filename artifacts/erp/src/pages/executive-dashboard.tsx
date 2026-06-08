@@ -21,7 +21,7 @@ import {
   Info, ChevronRight, ChevronDown, FlaskConical, Scale, Download,
   Bookmark, X,
 } from "lucide-react";
-import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
+import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear, startOfWeek } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useAuth } from "@/lib/auth";
 
@@ -115,131 +115,54 @@ function ChartTip({ active, payload, label }: any) {
 
 // ─── Comparison helpers ───────────────────────────────────────────────────────
 const COMPARE_MODES = [
-  { label: "Auj. vs Hier",             value: "day"    },
-  { label: "Ce mois vs Mois préc.",    value: "month"  },
-  { label: "Cette année vs Année préc.", value: "year" },
-  { label: "Période vs préc.",         value: "custom" },
+  { label: "Auj. vs Hier",               value: "day"    },
+  { label: "7j vs 7j préc.",             value: "week"   },
+  { label: "Ce mois vs Mois préc.",      value: "month"  },
+  { label: "Cette année vs Année préc.", value: "year"   },
+  { label: "Personnalisé",               value: "custom" },
 ] as const;
-
-// ─── Saved comparison presets ─────────────────────────────────────────────────
-const PRESETS_KEY = "erp_compare_presets_v1";
-
-type SavedPreset = {
-  id: string;
-  label: string;
-  mode: "day" | "month" | "year" | "custom";
-  from: string;
-  to: string;
-};
-
-function loadPresets(): SavedPreset[] {
-  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) ?? "[]"); }
-  catch { return []; }
-}
-
-function persistPresets(presets: SavedPreset[]) {
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-}
 
 function getDelta(a: number, b: number): number {
   if (b === 0) return a > 0 ? 100 : 0;
   return Math.round(((a - b) / Math.abs(b)) * 100);
 }
 
-function DeltaBadge({ delta, inverse = false }: { delta: number; inverse?: boolean }) {
-  if (delta === 0) return <span className="ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">—</span>;
+function DeltaBadge({ delta, inverse = false, size = "sm" }: { delta: number; inverse?: boolean; size?: "sm" | "lg" }) {
+  if (delta === 0) return <span className={`shrink-0 font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 ${size === "lg" ? "text-xs" : "text-[10px]"}`}>—</span>;
   const improved = inverse ? delta < 0 : delta > 0;
   return (
-    <span className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${improved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+    <span className={`shrink-0 font-bold px-1.5 py-0.5 rounded-full ${improved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"} ${size === "lg" ? "text-xs" : "text-[10px]"}`}>
       {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}%
     </span>
   );
 }
 
-function CompareCard({ label, valueA, valueB, icon: Icon, isResult = false, inverse = false, sparklineData }: {
-  label: string; valueA: number; valueB: number;
-  icon: React.FC<{ className?: string }>; isResult?: boolean; inverse?: boolean;
-  sparklineData?: { i: number; a: number; b: number }[];
+function KpiCmpCard({ label, valA, valB, fmt = "number", inverse = false }: {
+  label: string; valA: number; valB: number;
+  fmt?: "number" | "money" | "pct";
+  inverse?: boolean;
 }) {
-  const d = getDelta(valueA, valueB);
+  const d = getDelta(valA, valB);
+  const fmtVal = (v: number) => {
+    if (fmt === "money") return fmtDA(v);
+    if (fmt === "pct") return v.toFixed(1) + "%";
+    return new Intl.NumberFormat("fr-DZ").format(v);
+  };
   return (
     <Card className="border-0 shadow-sm">
-      <CardContent className="p-4 space-y-2">
-        <div className="flex items-center gap-1.5">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">{label}</p>
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">{label}</p>
           <DeltaBadge delta={d} inverse={inverse} />
         </div>
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
-            <p className="text-[9px] text-indigo-600 font-semibold mb-0.5">Période A</p>
-            <p className={`text-sm font-bold leading-tight ${isResult ? (valueA >= 0 ? "text-green-700" : "text-red-700") : "text-indigo-700"}`}>
-              {fmtDA(valueA)}
-            </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="rounded-lg bg-indigo-50/70 border border-indigo-100 p-2 text-center">
+            <p className="text-[9px] text-indigo-500 font-semibold mb-0.5">A</p>
+            <p className="text-sm font-bold text-indigo-700 leading-tight">{fmtVal(valA)}</p>
           </div>
-          <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-100 text-center">
-            <p className="text-[9px] text-amber-600 font-semibold mb-0.5">Période B</p>
-            <p className="text-sm font-bold text-amber-700 leading-tight">{fmtDA(valueB)}</p>
-          </div>
-        </div>
-        {sparklineData && sparklineData.length > 1 && (
-          <div className="pt-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="flex items-center gap-0.5 text-[9px] text-indigo-500 font-medium">
-                <span className="inline-block h-1.5 w-3 rounded-full bg-indigo-500" /> A
-              </span>
-              <span className="flex items-center gap-0.5 text-[9px] text-amber-500 font-medium">
-                <span className="inline-block h-1.5 w-3 rounded-full bg-amber-400" /> B
-              </span>
-            </div>
-            <ResponsiveContainer width="100%" height={44}>
-              <LineChart data={sparklineData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                <Line type="monotone" dataKey="a" stroke="#6366f1" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="b" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                <ReferenceLine y={0} stroke="#e2e8f0" strokeWidth={1} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    return (
-                      <div className="bg-background border border-border rounded shadow-md p-1.5 text-[9px] space-y-0.5">
-                        {payload.map((p: any, i: number) => (
-                          <div key={i} style={{ color: p.stroke }} className="flex gap-1.5 justify-between">
-                            <span>{p.dataKey === "a" ? "A" : "B"}</span>
-                            <span className="font-bold">{fmtDA(p.value)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function CountCompareCard({ label, valueA, valueB, inverse = false }: {
-  label: string; valueA: number; valueB: number; inverse?: boolean;
-}) {
-  const d = getDelta(valueA, valueB);
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-4 space-y-2">
-        <div className="flex items-center gap-1.5">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
-          <DeltaBadge delta={d} inverse={inverse} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 text-center">
-            <p className="text-[9px] text-indigo-600 font-semibold mb-0.5">A</p>
-            <p className="text-base font-bold text-indigo-700">{valueA}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-100 text-center">
-            <p className="text-[9px] text-amber-600 font-semibold mb-0.5">B</p>
-            <p className="text-base font-bold text-amber-700">{valueB}</p>
+          <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-2 text-center">
+            <p className="text-[9px] text-amber-500 font-semibold mb-0.5">B</p>
+            <p className="text-sm font-bold text-amber-700 leading-tight">{fmtVal(valB)}</p>
           </div>
         </div>
       </CardContent>
@@ -247,240 +170,120 @@ function CountCompareCard({ label, valueA, valueB, inverse = false }: {
   );
 }
 
-// ─── PDF export ───────────────────────────────────────────────────────────────
+// ─── PDF export (CA focused) ──────────────────────────────────────────────────
 function fmtNum(n: number) {
   return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA";
 }
 
+type CmpPeriod = { grossRevenue: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
+
 async function exportCompareToPDF(opts: {
   labelA: string; labelB: string;
   fromA: string; toA: string; fromB: string; toB: string;
-  pA: { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
-  pB: typeof opts["pA"];
-  cmpCatRows: { category: string; A: number; B: number }[];
-  cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[];
+  pA: CmpPeriod; pB: CmpPeriod;
+  cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[];
 }) {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
-
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
-
   const INDIGO = [99, 102, 241] as [number, number, number];
-  const AMBER  = [245, 158, 11] as [number, number, number];
   const LIGHT  = [248, 250, 252] as [number, number, number];
-
-  let y = 14;
-
-  doc.setFillColor(...INDIGO);
-  doc.rect(0, 0, W, 22, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text("Analyse Comparative — Pacane ERP", 14, 10);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Exporté le ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 16);
-  doc.text(`Période A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`, W / 2, 10, { align: "center" });
-  doc.text(`Période B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`, W / 2, 16, { align: "center" });
-
-  y = 28;
-
   const deltaStr = (a: number, b: number) => {
     if (b === 0) return a > 0 ? "+100%" : "—";
     const d = Math.round(((a - b) / Math.abs(b)) * 100);
     return d === 0 ? "—" : `${d > 0 ? "+" : ""}${d}%`;
   };
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("Résumé financier comparé", 14, y);
-  y += 3;
-
+  doc.setFillColor(...INDIGO);
+  doc.rect(0, 0, W, 20, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(12); doc.setFont("helvetica", "bold");
+  doc.text("Analyse Comparative — CA", 14, 9);
+  doc.setFontSize(7); doc.setFont("helvetica", "normal");
+  doc.text(`Exporté le ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 15);
+  doc.text(`A: ${opts.labelA} (${opts.fromA}→${opts.toA})   B: ${opts.labelB} (${opts.fromB}→${opts.toB})`, W / 2, 15, { align: "center" });
+  let y = 26;
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("Chiffre d'affaires & Ventes", 14, y); y += 3;
   autoTable(doc, {
     startY: y,
     head: [["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
     body: [
-      ["CA Brut",                fmtNum(opts.pA.grossRevenue), fmtNum(opts.pB.grossRevenue), deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
-      ["CA Net (après retours)", fmtNum(opts.pA.netRevenue),   fmtNum(opts.pB.netRevenue),   deltaStr(opts.pA.netRevenue, opts.pB.netRevenue)],
-      ["Montant encaissé",       fmtNum(opts.pA.encaisse),     fmtNum(opts.pB.encaisse),     deltaStr(opts.pA.encaisse, opts.pB.encaisse)],
-      ["Dépenses totales",       fmtNum(opts.pA.expenses),     fmtNum(opts.pB.expenses),     deltaStr(opts.pA.expenses, opts.pB.expenses)],
-      ["Résultat opérationnel",  fmtNum(opts.pA.result),       fmtNum(opts.pB.result),       deltaStr(opts.pA.result, opts.pB.result)],
+      ["CA (Chiffre d'affaires)", fmtNum(opts.pA.grossRevenue), fmtNum(opts.pB.grossRevenue), deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
+      ["Montant encaissé",        fmtNum(opts.pA.encaisse),     fmtNum(opts.pB.encaisse),     deltaStr(opts.pA.encaisse, opts.pB.encaisse)],
+      ["Nb. ventes",              String(opts.pA.saleCount),    String(opts.pB.saleCount),    deltaStr(opts.pA.saleCount, opts.pB.saleCount)],
+      ["Moy. / vente",
+        opts.pA.saleCount > 0 ? fmtNum(Math.round(opts.pA.grossRevenue / opts.pA.saleCount)) : "—",
+        opts.pB.saleCount > 0 ? fmtNum(Math.round(opts.pB.grossRevenue / opts.pB.saleCount)) : "—", ""],
+      ["Nb. retours",             String(opts.pA.returnCount),  String(opts.pB.returnCount),  deltaStr(opts.pA.returnCount, opts.pB.returnCount)],
+      ["Montant retours",         fmtNum(opts.pA.returnAmount), fmtNum(opts.pB.returnAmount), deltaStr(opts.pA.returnAmount, opts.pB.returnAmount)],
     ],
     headStyles: { fillColor: INDIGO, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
     alternateRowStyles: { fillColor: LIGHT },
     columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
-    styles: { fontSize: 8, cellPadding: 2 },
-    margin: { left: 14, right: 14 },
+    styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 },
   });
   y = (doc as any).lastAutoTable.finalY + 8;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("Ventes comparées", 14, y);
-  y += 3;
-
-  autoTable(doc, {
-    startY: y,
-    head: [["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
-    body: [
-      ["Nb. ventes confirmées", String(opts.pA.saleCount),     String(opts.pB.saleCount),     deltaStr(opts.pA.saleCount, opts.pB.saleCount)],
-      ["Montant retours",       fmtNum(opts.pA.returnAmount),   fmtNum(opts.pB.returnAmount),   deltaStr(opts.pA.returnAmount, opts.pB.returnAmount)],
-      ["Nb. retours",           String(opts.pA.returnCount),    String(opts.pB.returnCount),    deltaStr(opts.pA.returnCount, opts.pB.returnCount)],
-    ],
-    headStyles: { fillColor: [16, 185, 129] as [number, number, number], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
-    alternateRowStyles: { fillColor: LIGHT },
-    columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
-    styles: { fontSize: 8, cellPadding: 2 },
-    margin: { left: 14, right: 14 },
-  });
-  y = (doc as any).lastAutoTable.finalY + 8;
-
-  if (opts.cmpCatRows.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("Dépenses par catégorie", 14, y);
-    y += 3;
+  if (opts.cmpBrRows.length > 0) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("CA par agence — A vs B", 14, y); y += 3;
     autoTable(doc, {
       startY: y,
-      head: [["Catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"]],
-      body: [
-        ...opts.cmpCatRows.map(c => [c.category, fmtNum(c.A), fmtNum(c.B), deltaStr(c.A, c.B)]),
-        ["Total",
-          fmtNum(opts.cmpCatRows.reduce((s, c) => s + c.A, 0)),
-          fmtNum(opts.cmpCatRows.reduce((s, c) => s + c.B, 0)),
-          deltaStr(opts.cmpCatRows.reduce((s, c) => s + c.A, 0), opts.cmpCatRows.reduce((s, c) => s + c.B, 0)),
-        ],
-      ],
-      headStyles: { fillColor: AMBER, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+      head: [["Agence", `CA A`, `CA B`, "Δ CA"]],
+      body: opts.cmpBrRows.map(b => [b.branchName, fmtNum(b.revA), fmtNum(b.revB), deltaStr(b.revA, b.revB)]),
+      headStyles: { fillColor: INDIGO, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
       alternateRowStyles: { fillColor: LIGHT },
       columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
-      styles: { fontSize: 8, cellPadding: 2 },
-      margin: { left: 14, right: 14 },
-    });
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  if (opts.cmpBrRows.length > 0) {
-    if (y > 160) { doc.addPage(); y = 14; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("Performance agences — CA · Dépenses · Résultat (A vs B)", 14, y);
-    y += 3;
-    autoTable(doc, {
-      startY: y,
-      head: [["Agence", "CA (A)", "CA (B)", "Δ CA", "Dép. (A)", "Dép. (B)", "Δ Dép.", "Rés. (A)", "Rés. (B)", "Δ Rés."]],
-      body: opts.cmpBrRows.map(b => [
-        b.branchName,
-        fmtNum(b.revA), fmtNum(b.revB), deltaStr(b.revA, b.revB),
-        fmtNum(b.expA), fmtNum(b.expB), deltaStr(b.expA, b.expB),
-        fmtNum(b.resA), fmtNum(b.resB), deltaStr(b.resA, b.resB),
-      ]),
-      headStyles: { fillColor: [99, 102, 241] as [number, number, number], textColor: [255, 255, 255], fontSize: 7, fontStyle: "bold" },
-      alternateRowStyles: { fillColor: LIGHT },
-      columnStyles: {
-        0: { fontStyle: "bold" },
-        1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" },
-        4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "center" },
-        7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "center" },
-      },
-      styles: { fontSize: 7, cellPadding: 1.5 },
-      margin: { left: 14, right: 14 },
+      styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 },
     });
   }
-
   const pageCount = (doc.internal as any).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
+    doc.setPage(i); doc.setFontSize(7); doc.setTextColor(150, 150, 150);
     doc.text(`Page ${i} / ${pageCount}`, W - 14, doc.internal.pageSize.getHeight() - 6, { align: "right" });
   }
-
-  doc.save(`analyse-comparative-${opts.labelA}-vs-${opts.labelB}.pdf`);
+  doc.save(`CA-comparatif-${opts.labelA}-vs-${opts.labelB}.pdf`);
 }
 
-// ─── Excel export ─────────────────────────────────────────────────────────────
+// ─── Excel export (CA focused) ────────────────────────────────────────────────
 async function exportCompareToExcel(opts: {
   labelA: string; labelB: string;
   fromA: string; toA: string; fromB: string; toB: string;
-  pA: { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
-  pB: typeof opts["pA"];
-  cmpCatRows: { category: string; A: number; B: number }[];
-  cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[];
+  pA: CmpPeriod; pB: CmpPeriod;
+  cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[];
 }) {
   const XLSX = await import("xlsx");
-
   const deltaStr = (a: number, b: number) => {
     if (b === 0) return a > 0 ? "+100%" : "—";
     const d = Math.round(((a - b) / Math.abs(b)) * 100);
     return d === 0 ? "—" : `${d > 0 ? "+" : ""}${d}%`;
   };
-
   const wb = XLSX.utils.book_new();
-
-  const periodHeader = [
-    [`Rapport d'Analyse Comparative — Pacane ERP`],
+  const header = [
+    [`Analyse Comparative CA — Pacane ERP`],
     [`Exporté le : ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
-    [`Période A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`],
-    [`Période B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`],
+    [`A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`],
+    [`B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`],
     [],
   ];
-
-  const financialData = [
-    ...periodHeader,
-    ["Résumé financier comparé"],
+  const ws = XLSX.utils.aoa_to_sheet([
+    ...header,
     ["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
-    ["CA Brut",                opts.pA.grossRevenue, opts.pB.grossRevenue, deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
-    ["CA Net (après retours)", opts.pA.netRevenue,   opts.pB.netRevenue,   deltaStr(opts.pA.netRevenue,   opts.pB.netRevenue)],
-    ["Montant encaissé",       opts.pA.encaisse,     opts.pB.encaisse,     deltaStr(opts.pA.encaisse,     opts.pB.encaisse)],
-    ["Dépenses totales",       opts.pA.expenses,     opts.pB.expenses,     deltaStr(opts.pA.expenses,     opts.pB.expenses)],
-    ["Résultat opérationnel",  opts.pA.result,       opts.pB.result,       deltaStr(opts.pA.result,       opts.pB.result)],
+    ["CA",              opts.pA.grossRevenue, opts.pB.grossRevenue, deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
+    ["Encaissé",        opts.pA.encaisse,     opts.pB.encaisse,     deltaStr(opts.pA.encaisse, opts.pB.encaisse)],
+    ["Nb. ventes",      opts.pA.saleCount,    opts.pB.saleCount,    deltaStr(opts.pA.saleCount, opts.pB.saleCount)],
+    ["Moy./vente", opts.pA.saleCount > 0 ? Math.round(opts.pA.grossRevenue / opts.pA.saleCount) : 0, opts.pB.saleCount > 0 ? Math.round(opts.pB.grossRevenue / opts.pB.saleCount) : 0, ""],
+    ["Nb. retours",     opts.pA.returnCount,  opts.pB.returnCount,  deltaStr(opts.pA.returnCount, opts.pB.returnCount)],
+    ["Mt. retours",     opts.pA.returnAmount, opts.pB.returnAmount, deltaStr(opts.pA.returnAmount, opts.pB.returnAmount)],
     [],
-    ["Ventes comparées"],
-    ["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
-    ["Nb. ventes confirmées", opts.pA.saleCount,     opts.pB.saleCount,     deltaStr(opts.pA.saleCount,     opts.pB.saleCount)],
-    ["Montant retours",       opts.pA.returnAmount,  opts.pB.returnAmount,  deltaStr(opts.pA.returnAmount,  opts.pB.returnAmount)],
-    ["Nb. retours",           opts.pA.returnCount,   opts.pB.returnCount,   deltaStr(opts.pA.returnCount,   opts.pB.returnCount)],
-  ];
-  const wsFinancial = XLSX.utils.aoa_to_sheet(financialData);
-  wsFinancial["!cols"] = [{ wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, wsFinancial, "Résumé financier & Ventes");
-
-  if (opts.cmpCatRows.length > 0) {
-    const totA = opts.cmpCatRows.reduce((s, c) => s + c.A, 0);
-    const totB = opts.cmpCatRows.reduce((s, c) => s + c.B, 0);
-    const catData = [
-      ...periodHeader,
-      ["Dépenses par catégorie — A vs B"],
-      ["Catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
-      ...opts.cmpCatRows.map(c => [c.category, c.A, c.B, deltaStr(c.A, c.B)]),
-      ["Total", totA, totB, deltaStr(totA, totB)],
-    ];
-    const wsCat = XLSX.utils.aoa_to_sheet(catData);
-    wsCat["!cols"] = [{ wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
-    XLSX.utils.book_append_sheet(wb, wsCat, "Dépenses par catégorie");
-  }
-
-  if (opts.cmpBrRows.length > 0) {
-    const brData = [
-      ...periodHeader,
-      ["Performance agences — CA · Dépenses · Résultat (A vs B)"],
-      ["Agence", "CA (A)", "CA (B)", "Δ CA", "Dép. (A)", "Dép. (B)", "Δ Dép.", "Rés. (A)", "Rés. (B)", "Δ Rés."],
-      ...opts.cmpBrRows.map(b => [
-        b.branchName,
-        b.revA, b.revB, deltaStr(b.revA, b.revB),
-        b.expA, b.expB, deltaStr(b.expA, b.expB),
-        b.resA, b.resB, deltaStr(b.resA, b.resB),
-      ]),
-    ];
-    const wsBr = XLSX.utils.aoa_to_sheet(brData);
-    wsBr["!cols"] = [{ wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
-    XLSX.utils.book_append_sheet(wb, wsBr, "Performance agences");
-  }
-
-  XLSX.writeFile(wb, `analyse-comparative-${opts.labelA}-vs-${opts.labelB}.xlsx`);
+    ...(opts.cmpBrRows.length > 0 ? [
+      ["CA par agence", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
+      ...opts.cmpBrRows.map(b => [b.branchName, b.revA, b.revB, deltaStr(b.revA, b.revB)]),
+    ] : []),
+  ]);
+  ws["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, ws, "CA Comparatif");
+  XLSX.writeFile(wb, `CA-comparatif-${opts.labelA}-vs-${opts.labelB}.xlsx`);
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -492,10 +295,11 @@ export default function ExecutiveDashboard() {
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [activePreset, setActivePreset] = useState(3); // "Mois"
   const [showCompare, setShowCompare] = useState(false);
-  const [compareMode, setCompareMode] = useState<"day" | "month" | "year" | "custom">("month");
-  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>(loadPresets);
-  const [showSaveInput, setShowSaveInput] = useState(false);
-  const [presetNameInput, setPresetNameInput] = useState("");
+  const [compareMode, setCompareMode] = useState<"day" | "week" | "month" | "year" | "custom">("month");
+  const [customFromA, setCustomFromA] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [customToA,   setCustomToA]   = useState(format(new Date(), "yyyy-MM-dd"));
+  const [customFromB, setCustomFromB] = useState(format(startOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd"));
+  const [customToB,   setCustomToB]   = useState(format(endOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd"));
 
   const { data: branches } = useGetBranches();
   const showBranchFilter = user?.adminAccess || (user?.branchIds && user.branchIds.length > 1);
@@ -518,6 +322,15 @@ export default function ExecutiveDashboard() {
         fromB: fmt(subDays(today, 1)), toB: fmt(subDays(today, 1)),
         labelA: "Aujourd'hui", labelB: "Hier",
       };
+      case "week": {
+        const ws = startOfWeek(today, { weekStartsOn: 1 });
+        const pw = subDays(ws, 7);
+        return {
+          fromA: fmt(ws), toA: fmt(today),
+          fromB: fmt(pw), toB: fmt(subDays(ws, 1)),
+          labelA: "Cette semaine", labelB: "Semaine préc.",
+        };
+      }
       case "month": {
         const ms = startOfMonth(today);
         const ps = subMonths(ms, 1);
@@ -538,15 +351,15 @@ export default function ExecutiveDashboard() {
           labelB: String(today.getFullYear() - 1),
         };
       }
-      case "custom": {
-        const sa = new Date(from); const ea = new Date(to);
-        const diff = Math.max(0, Math.round((ea.getTime() - sa.getTime()) / 86400000));
-        const eb = subDays(sa, 1);
-        const sb = subDays(eb, diff);
-        return { fromA: from, toA: to, fromB: fmt(sb), toB: fmt(eb), labelA: `${from}→${to}`, labelB: `${fmt(sb)}→${fmt(eb)}` };
-      }
+      case "custom":
+        return {
+          fromA: customFromA, toA: customToA,
+          fromB: customFromB, toB: customToB,
+          labelA: `${customFromA}→${customToA}`,
+          labelB: `${customFromB}→${customToB}`,
+        };
     }
-  }, [compareMode, from, to]);
+  }, [compareMode, customFromA, customToA, customFromB, customToB]);
 
   const compareQs = useMemo(() => {
     if (!showCompare) return "";
@@ -622,52 +435,25 @@ export default function ExecutiveDashboard() {
   const trendARows = (trendAData as any[]) ?? [];
   const trendBRows = (trendBData as any[]) ?? [];
 
-  function buildSparkData(field: string) {
-    const len = Math.max(trendARows.length, trendBRows.length);
-    if (len === 0) return [];
-    return Array.from({ length: len }, (_, i) => ({
-      i,
-      a: trendARows[i]?.[field] ?? 0,
-      b: trendBRows[i]?.[field] ?? 0,
-    }));
-  }
-
-  const sparkGross    = buildSparkData("revenue");
-  const sparkExpenses = buildSparkData("expenses");
-  const sparkResult   = buildSparkData("netResult");
+  const sparkRevA = trendARows.map((r: any, i: number) => ({ i, date: r.date ?? i, v: r.revenue ?? 0 }));
+  const sparkRevB = trendBRows.map((r: any, i: number) => ({ i, date: r.date ?? i, v: r.revenue ?? 0 }));
 
   const cmp = compareData as any;
-  const pA = cmp?.periodA as { grossRevenue: number; netRevenue: number; expenses: number; result: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] } | undefined;
-  const pB = cmp?.periodB as typeof pA;
+  const pA = cmp?.periodA as CmpPeriod | undefined;
+  const pB = cmp?.periodB as CmpPeriod | undefined;
 
-  const cmpBarData = pA && pB ? [
-    { metric: "CA brut",   A: pA.grossRevenue, B: pB.grossRevenue },
-    { metric: "CA net",    A: pA.netRevenue,   B: pB.netRevenue   },
-    { metric: "Dépenses",  A: pA.expenses,     B: pB.expenses     },
-    { metric: "Résultat",  A: pA.result,       B: pB.result       },
-  ] : [];
-
-  const cmpCatRows: { category: string; A: number; B: number }[] = (() => {
+  const cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[] = (() => {
     if (!pA || !pB) return [];
-    const m: Record<string, { category: string; A: number; B: number }> = {};
-    for (const c of (pA.byCategory ?? [])) m[c.category] = { category: c.category, A: c.amount, B: 0 };
-    for (const c of (pB.byCategory ?? [])) {
-      if (!m[c.category]) m[c.category] = { category: c.category, A: 0, B: 0 };
-      m[c.category].B = c.amount;
-    }
-    return Object.values(m).sort((x, y) => (y.A + y.B) - (x.A + x.B));
-  })();
-
-  const cmpBrRows: { branchId: number; branchName: string; revA: number; expA: number; resA: number; revB: number; expB: number; resB: number }[] = (() => {
-    if (!pA || !pB) return [];
-    const m: Record<number, any> = {};
-    for (const b of (pA.byBranch ?? [])) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: b.revenue, expA: b.expenses, resA: b.result, revB: 0, expB: 0, resB: 0 };
+    const m: Record<number, { branchId: number; branchName: string; revA: number; revB: number }> = {};
+    for (const b of (pA.byBranch ?? [])) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: b.revenue, revB: 0 };
     for (const b of (pB.byBranch ?? [])) {
-      if (!m[b.branchId]) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: 0, expA: 0, resA: 0 };
-      m[b.branchId].revB = b.revenue; m[b.branchId].expB = b.expenses; m[b.branchId].resB = b.result;
+      if (!m[b.branchId]) m[b.branchId] = { branchId: b.branchId, branchName: b.branchName, revA: 0, revB: 0 };
+      m[b.branchId].revB = b.revenue;
     }
     return Object.values(m).sort((a, b) => (b.revA + b.revB) - (a.revA + a.revB));
   })();
+
+  const cmpBranchMax = Math.max(...cmpBrRows.map(b => Math.max(b.revA, b.revB)), 1);
 
   const totalAlertCount = (alerts?.erpAlerts?.length ?? 0) + (alerts?.computed?.lowStock?.count ?? 0)
     + (alerts?.computed?.pendingReturns?.count ?? 0) + (alerts?.computed?.pendingTransfers?.count ?? 0);
@@ -1217,39 +1003,31 @@ export default function ExecutiveDashboard() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          SECTION 5 — Analyse comparative
+          SECTION 5 — Analyse comparative CA
       ═══════════════════════════════════════════════════════════════════════ */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle icon={Scale} title="Analyse comparative" color="text-indigo-600" />
+          <SectionTitle icon={Scale} title="Analyse comparative — CA" color="text-indigo-600" />
           <div className="flex items-center gap-2">
             {showCompare && !cmpLoading && pA && pB && (
               <>
-                <Button
-                  variant="outline" size="sm"
+                <Button variant="outline" size="sm"
                   className="text-xs h-7 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                  onClick={() => exportCompareToPDF({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpCatRows, cmpBrRows })}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  PDF
+                  onClick={() => exportCompareToPDF({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows })}>
+                  <Download className="h-3.5 w-3.5" /> PDF
                 </Button>
-                <Button
-                  variant="outline" size="sm"
+                <Button variant="outline" size="sm"
                   className="text-xs h-7 gap-1.5 border-green-200 text-green-700 hover:bg-green-50"
-                  onClick={() => exportCompareToExcel({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpCatRows, cmpBrRows })}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Excel
+                  onClick={() => exportCompareToExcel({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows })}>
+                  <Download className="h-3.5 w-3.5" /> Excel
                 </Button>
               </>
             )}
-            <Button
-              variant={showCompare ? "default" : "outline"} size="sm"
+            <Button variant={showCompare ? "default" : "outline"} size="sm"
               className={`text-xs h-7 gap-1.5 ${showCompare ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
-              onClick={() => setShowCompare(v => !v)}
-            >
+              onClick={() => setShowCompare(v => !v)}>
               {showCompare ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              {showCompare ? "Masquer" : "Voir l'analyse comparative"}
+              {showCompare ? "Masquer" : "Comparer deux périodes"}
             </Button>
           </div>
         </div>
@@ -1259,322 +1037,237 @@ export default function ExecutiveDashboard() {
 
             {/* ── Period selector ────────────────────────────────────────── */}
             <Card className="border-0 shadow-sm bg-gradient-to-r from-indigo-50/40 to-amber-50/40">
-              <CardContent className="p-3 space-y-2">
-                {/* Built-in modes */}
-                <div className="flex flex-wrap gap-1.5 items-center">
-                  <span className="text-xs text-muted-foreground">Comparer :</span>
+              <CardContent className="p-4 space-y-3">
+                {/* Mode buttons */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs font-medium text-muted-foreground">Mode :</span>
                   {COMPARE_MODES.map(m => (
                     <Button key={m.value} size="sm"
                       variant={compareMode === m.value ? "default" : "outline"}
-                      className={`text-xs h-7 px-2.5 ${compareMode === m.value ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
-                      onClick={() => setCompareMode(m.value)}>
+                      className={`text-xs h-7 px-3 ${compareMode === m.value ? "bg-indigo-700 hover:bg-indigo-800 border-indigo-700" : ""}`}
+                      onClick={() => setCompareMode(m.value as typeof compareMode)}>
                       {m.label}
                     </Button>
                   ))}
                 </div>
 
-                {/* Saved presets */}
-                {savedPresets.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Bookmark className="h-3 w-3" /> Presets :
-                    </span>
-                    {savedPresets.map(p => (
-                      <span key={p.id} className="inline-flex items-center gap-0">
-                        <Button size="sm"
-                          variant={compareMode === p.mode && from === p.from && to === p.to ? "default" : "outline"}
-                          className={`text-xs h-7 px-2 rounded-r-none border-r-0 ${compareMode === p.mode && from === p.from && to === p.to ? "bg-violet-700 hover:bg-violet-800 border-violet-700" : ""}`}
-                          onClick={() => {
-                            if (p.mode === "custom") { setFrom(p.from); setTo(p.to); }
-                            setCompareMode(p.mode);
-                          }}>
-                          {p.label}
-                        </Button>
-                        <button
-                          className="h-7 px-1.5 text-muted-foreground hover:text-red-600 border border-l-0 rounded-r-md border-input bg-background hover:bg-red-50 transition-colors text-[10px]"
-                          title="Supprimer ce preset"
-                          onClick={() => {
-                            const next = savedPresets.filter(x => x.id !== p.id);
-                            setSavedPresets(next);
-                            persistPresets(next);
-                          }}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
+                {/* Custom date pickers */}
+                {compareMode === "custom" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <div className="h-2 w-2 rounded-sm bg-indigo-500" /> Période A
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input type="date" value={customFromA} onChange={e => setCustomFromA(e.target.value)}
+                          className="h-7 text-xs border rounded-md px-2 bg-background border-indigo-200 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        <span className="text-muted-foreground text-xs">→</span>
+                        <input type="date" value={customToA} onChange={e => setCustomToA(e.target.value)}
+                          className="h-7 text-xs border rounded-md px-2 bg-background border-indigo-200 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <div className="h-2 w-2 rounded-sm bg-amber-400" /> Période B
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input type="date" value={customFromB} onChange={e => setCustomFromB(e.target.value)}
+                          className="h-7 text-xs border rounded-md px-2 bg-background border-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                        <span className="text-muted-foreground text-xs">→</span>
+                        <input type="date" value={customToB} onChange={e => setCustomToB(e.target.value)}
+                          className="h-7 text-xs border rounded-md px-2 bg-background border-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Save current preset */}
-                <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
-                  {!showSaveInput ? (
-                    <button
-                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-indigo-700 transition-colors"
-                      onClick={() => { setPresetNameInput(""); setShowSaveInput(true); }}>
-                      <Bookmark className="h-3 w-3" />
-                      Sauvegarder ce preset
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        autoFocus
-                        value={presetNameInput}
-                        onChange={e => setPresetNameInput(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && presetNameInput.trim()) {
-                            const newPreset: SavedPreset = {
-                              id: Date.now().toString(),
-                              label: presetNameInput.trim(),
-                              mode: compareMode,
-                              from,
-                              to,
-                            };
-                            const next = [...savedPresets, newPreset];
-                            setSavedPresets(next);
-                            persistPresets(next);
-                            setShowSaveInput(false);
-                            setPresetNameInput("");
-                          }
-                          if (e.key === "Escape") { setShowSaveInput(false); setPresetNameInput(""); }
-                        }}
-                        placeholder="Nom du preset…"
-                        className="h-7 text-xs w-44"
-                      />
-                      <Button size="sm" className="h-7 text-xs bg-indigo-700 hover:bg-indigo-800"
-                        disabled={!presetNameInput.trim()}
-                        onClick={() => {
-                          if (!presetNameInput.trim()) return;
-                          const newPreset: SavedPreset = {
-                            id: Date.now().toString(),
-                            label: presetNameInput.trim(),
-                            mode: compareMode,
-                            from,
-                            to,
-                          };
-                          const next = [...savedPresets, newPreset];
-                          setSavedPresets(next);
-                          persistPresets(next);
-                          setShowSaveInput(false);
-                          setPresetNameInput("");
-                        }}>
-                        Enregistrer
-                      </Button>
-                      <button
-                        className="text-muted-foreground hover:text-foreground"
-                        onClick={() => { setShowSaveInput(false); setPresetNameInput(""); }}>
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 {/* Active period labels */}
-                <div className="flex flex-wrap gap-6 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />
-                    <strong>A — {compareRanges.labelA} :</strong>&nbsp;{compareRanges.fromA} → {compareRanges.toA}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-sm bg-amber-400" />
-                    <strong>B — {compareRanges.labelB} :</strong>&nbsp;{compareRanges.fromB} → {compareRanges.toB}
-                  </span>
-                </div>
+                {compareMode !== "custom" && (
+                  <div className="flex flex-wrap gap-6 text-[10px] text-muted-foreground pt-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <div className="h-2 w-2 rounded-sm bg-indigo-500" />
+                      <strong className="text-foreground">A — {compareRanges.labelA}</strong>&nbsp;·&nbsp;{compareRanges.fromA} → {compareRanges.toA}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <div className="h-2 w-2 rounded-sm bg-amber-400" />
+                      <strong className="text-foreground">B — {compareRanges.labelB}</strong>&nbsp;·&nbsp;{compareRanges.fromB} → {compareRanges.toB}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* ── Loading skeleton ───────────────────────────────────────── */}
+            {/* ── Loading ─────────────────────────────────────────────────── */}
             {cmpLoading && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {[...Array(4)].map((_, i) => (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {[...Array(6)].map((_, i) => (
                   <Card key={i} className="border-0 shadow-sm">
-                    <CardContent className="p-4"><div className="h-20 bg-muted animate-pulse rounded" /></CardContent>
+                    <CardContent className="p-4"><div className="h-16 bg-muted animate-pulse rounded" /></CardContent>
                   </Card>
                 ))}
               </div>
             )}
 
-            {/* ── Data sections ──────────────────────────────────────────── */}
-            {!cmpLoading && pA && pB && (
-              <>
-                {/* Financial KPI cards */}
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Banknote className="h-3.5 w-3.5" /> Résumé financier comparé
-                  </p>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <CompareCard label="CA Brut"                valueA={pA.grossRevenue} valueB={pB.grossRevenue} icon={TrendingUp} sparklineData={sparkGross} />
-                    <CompareCard label="CA Net (après retours)" valueA={pA.netRevenue}   valueB={pB.netRevenue}   icon={Banknote}   sparklineData={sparkGross} />
-                    <CompareCard label="Dépenses"               valueA={pA.expenses}     valueB={pB.expenses}     icon={Wallet} inverse sparklineData={sparkExpenses} />
-                    <CompareCard label="Résultat opérationnel"  valueA={pA.result}       valueB={pB.result}       icon={TrendingUp} isResult sparklineData={sparkResult} />
-                  </div>
-                </div>
+            {/* ── Results ─────────────────────────────────────────────────── */}
+            {!cmpLoading && pA && pB && (() => {
+              const avgA = pA.saleCount > 0 ? Math.round(pA.grossRevenue / pA.saleCount) : 0;
+              const avgB = pB.saleCount > 0 ? Math.round(pB.grossRevenue / pB.saleCount) : 0;
+              const tauxA = pA.saleCount > 0 ? (pA.returnCount / pA.saleCount) * 100 : 0;
+              const tauxB = pB.saleCount > 0 ? (pB.returnCount / pB.saleCount) * 100 : 0;
 
-                {/* Sales cards */}
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <ShoppingBag className="h-3.5 w-3.5" /> Ventes comparées
-                  </p>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <CountCompareCard label="Nb. ventes confirmées" valueA={pA.saleCount}    valueB={pB.saleCount} />
-                    <CompareCard label="Montant encaissé"           valueA={pA.encaisse}     valueB={pB.encaisse}  icon={CreditCard} />
-                    <CompareCard label="Montant retours"            valueA={pA.returnAmount} valueB={pB.returnAmount} icon={RotateCcw} inverse />
-                    <CountCompareCard label="Nb. retours"           valueA={pA.returnCount}  valueB={pB.returnCount} inverse />
-                  </div>
-                </div>
+              const areaData = (() => {
+                const maxLen = Math.max(sparkRevA.length, sparkRevB.length);
+                return Array.from({ length: maxLen }, (_, i) => ({
+                  i,
+                  A: sparkRevA[i]?.v ?? null,
+                  B: sparkRevB[i]?.v ?? null,
+                }));
+              })();
 
-                {/* Grouped bar chart */}
-                <Card className="border-0 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Scale className="h-4 w-4 text-indigo-600" />
-                      Vue graphique — CA · Dépenses · Résultat
-                      <div className="ml-auto flex items-center gap-4 text-[10px] font-normal text-muted-foreground">
-                        <span className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />{compareRanges.labelA}</span>
-                        <span className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-amber-400" />{compareRanges.labelB}</span>
+              return (
+                <>
+                  {/* Hero CA cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* CA A */}
+                    <div className="rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-white p-5 shadow-md relative overflow-hidden">
+                      <div className="absolute inset-0 opacity-10">
+                        <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white" />
+                        <div className="absolute -right-2 -bottom-8 h-20 w-20 rounded-full bg-white" />
                       </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pb-4">
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={cmpBarData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="metric" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 9 }} tickFormatter={v => fmtDA(v)} width={72} />
-                        <Tooltip formatter={(v: any) => fmtDA(Number(v))} />
-                        <Bar dataKey="A" name={compareRanges.labelA} fill="#6366f1" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="B" name={compareRanges.labelB} fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                      <div className="relative">
+                        <p className="text-indigo-200 text-[10px] font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <div className="h-1.5 w-1.5 rounded-full bg-indigo-300" /> Période A — {compareRanges.labelA}
+                        </p>
+                        <p className="text-2xl font-bold leading-tight">{fmtDA(pA.grossRevenue)}</p>
+                        <p className="text-indigo-300 text-xs mt-1">{compareRanges.fromA} → {compareRanges.toA}</p>
+                      </div>
+                    </div>
+                    {/* CA B */}
+                    <div className="rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 text-white p-5 shadow-md relative overflow-hidden">
+                      <div className="absolute inset-0 opacity-10">
+                        <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white" />
+                        <div className="absolute -right-2 -bottom-8 h-20 w-20 rounded-full bg-white" />
+                      </div>
+                      <div className="relative">
+                        <p className="text-amber-200 text-[10px] font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <div className="h-1.5 w-1.5 rounded-full bg-amber-300" /> Période B — {compareRanges.labelB}
+                        </p>
+                        <p className="text-2xl font-bold leading-tight">{fmtDA(pB.grossRevenue)}</p>
+                        <p className="text-amber-200 text-xs mt-1">{compareRanges.fromB} → {compareRanges.toB}</p>
+                      </div>
+                      {/* Delta badge */}
+                      <div className="absolute top-4 right-4">
+                        <DeltaBadge delta={getDelta(pA.grossRevenue, pB.grossRevenue)} size="lg" />
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Detail tables — stack vertically for full width */}
-                <div className="space-y-4">
+                  {/* KPI grid — 6 cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    <KpiCmpCard label="Nb. Ventes" valA={pA.saleCount} valB={pB.saleCount} />
+                    <KpiCmpCard label="Moy. / Vente" valA={avgA} valB={avgB} fmt="money" />
+                    <KpiCmpCard label="Encaissé" valA={pA.encaisse} valB={pB.encaisse} fmt="money" />
+                    <KpiCmpCard label="Nb. Retours" valA={pA.returnCount} valB={pB.returnCount} inverse />
+                    <KpiCmpCard label="Taux Retours" valA={tauxA} valB={tauxB} fmt="pct" inverse />
+                    <KpiCmpCard label="Mt. Retours" valA={pA.returnAmount} valB={pB.returnAmount} fmt="money" inverse />
+                  </div>
 
-                  {/* Expenses by category */}
-                  {cmpCatRows.length > 0 && (
+                  {/* AreaChart daily CA trend */}
+                  {areaData.length > 1 && (
                     <Card className="border-0 shadow-sm">
-                      <CardHeader className="pb-1">
-                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                          <Wallet className="h-3.5 w-3.5" /> Dépenses par catégorie — A vs B
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-indigo-600" />
+                          Évolution journalière du CA
+                          <div className="ml-auto flex items-center gap-4 text-[10px] font-normal text-muted-foreground">
+                            <span className="flex items-center gap-1.5"><div className="h-2 w-6 rounded-full bg-indigo-500/60" />{compareRanges.labelA}</span>
+                            <span className="flex items-center gap-1.5"><div className="h-2 w-6 rounded-full bg-amber-400/60" />{compareRanges.labelB}</span>
+                          </div>
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0">
-                        <div className="divide-y divide-border/50">
-                          <div className="grid grid-cols-5 px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
-                            <span className="col-span-2">Catégorie</span>
-                            <span className="text-right text-indigo-600">A</span>
-                            <span className="text-right text-amber-600">B</span>
-                            <span className="text-right">Δ</span>
-                          </div>
-                          {cmpCatRows.map((c, i) => {
-                            const d = getDelta(c.A, c.B);
-                            return (
-                              <div key={i} className="grid grid-cols-5 px-4 py-2 items-center hover:bg-muted/30 transition-colors">
-                                <span className="col-span-2 text-xs font-medium truncate">{c.category}</span>
-                                <div className="text-right text-xs font-semibold text-indigo-700">{fmtDA(c.A)}</div>
-                                <div className="text-right text-xs text-amber-700">{fmtDA(c.B)}</div>
-                                <div className="flex justify-end">
-                                  {d === 0
-                                    ? <span className="text-[9px] font-bold text-slate-400">—</span>
-                                    : <span className={`text-[9px] font-bold ${c.A < c.B ? "text-green-700" : "text-red-700"}`}>{c.A < c.B ? "▼" : "▲"}{Math.abs(d)}%</span>
-                                  }
-                                </div>
-                              </div>
-                            );
-                          })}
-                          <div className="grid grid-cols-5 px-4 py-2 bg-muted/30">
-                            <span className="col-span-2 text-[10px] font-bold">Total</span>
-                            <span className="text-right text-xs font-bold text-indigo-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.A, 0))}</span>
-                            <span className="text-right text-xs font-bold text-amber-700">{fmtDA(cmpCatRows.reduce((s, c) => s + c.B, 0))}</span>
-                            <span className="flex justify-end">
-                              {(() => {
-                                const totA = cmpCatRows.reduce((s, c) => s + c.A, 0);
-                                const totB = cmpCatRows.reduce((s, c) => s + c.B, 0);
-                                const td = getDelta(totA, totB);
-                                return td === 0
-                                  ? <span className="text-[9px] font-bold text-slate-400">—</span>
-                                  : <span className={`text-[9px] font-bold ${totA < totB ? "text-green-700" : "text-red-700"}`}>{totA < totB ? "▼" : "▲"}{Math.abs(td)}%</span>;
-                              })()}
-                            </span>
-                          </div>
-                        </div>
+                      <CardContent className="pb-4">
+                        <ResponsiveContainer width="100%" height={200}>
+                          <AreaChart data={areaData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                            <defs>
+                              <linearGradient id="gradA" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0.02} />
+                              </linearGradient>
+                              <linearGradient id="gradB" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
+                                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="i" tick={{ fontSize: 9 }} tickFormatter={v => `J${v + 1}`} />
+                            <YAxis tick={{ fontSize: 9 }} tickFormatter={v => fmtDA(v)} width={74} />
+                            <Tooltip formatter={(v: any) => fmtDA(Number(v))} labelFormatter={v => `Jour ${Number(v) + 1}`} />
+                            <Area type="monotone" dataKey="A" name={compareRanges.labelA} stroke="#6366f1" strokeWidth={2} fill="url(#gradA)" connectNulls dot={false} />
+                            <Area type="monotone" dataKey="B" name={compareRanges.labelB} stroke="#f59e0b" strokeWidth={2} fill="url(#gradB)" connectNulls dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </CardContent>
                     </Card>
                   )}
 
-                  {/* Branch performance — full width, all 3 metrics A+B+Δ */}
+                  {/* Branch CA table */}
                   {cmpBrRows.length > 0 && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-1">
                         <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                          <Building2 className="h-3.5 w-3.5" /> Performance agences — CA · Dépenses · Résultat (A vs B)
+                          <Building2 className="h-3.5 w-3.5" /> CA par agence — A vs B
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0 overflow-x-auto">
-                        <table className="w-full min-w-[640px] text-xs">
-                          <thead>
-                            <tr className="border-b border-border/50">
-                              <th className="text-left px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider w-40">Agence</th>
-                              {/* CA group */}
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">CA (A)</th>
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">CA (B)</th>
-                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ CA</th>
-                              {/* Dépenses group */}
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">Dép. (A)</th>
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">Dép. (B)</th>
-                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ Dép.</th>
-                              {/* Résultat group */}
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-indigo-600 uppercase">Rés. (A)</th>
-                              <th className="text-right px-2 py-1 text-[9px] font-semibold text-amber-600 uppercase">Rés. (B)</th>
-                              <th className="text-center px-2 py-1 text-[9px] font-semibold text-muted-foreground uppercase">Δ Rés.</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/50">
-                            {cmpBrRows.map((b, i) => {
-                              const dCA  = getDelta(b.revA, b.revB);
-                              const dDep = getDelta(b.expA, b.expB);
-                              const dRes = getDelta(b.resA, b.resB);
-                              const colors = ["#10b981","#6366f1","#f59e0b","#ef4444","#8b5cf6"];
-                              function InlineDelta({ d, inverse = false }: { d: number; inverse?: boolean }) {
-                                if (d === 0) return <span className="text-[9px] font-bold text-slate-400">—</span>;
-                                const good = inverse ? d < 0 : d > 0;
-                                return <span className={`text-[9px] font-bold ${good ? "text-green-700" : "text-red-700"}`}>{d > 0 ? "▲" : "▼"}{Math.abs(d)}%</span>;
-                              }
-                              return (
-                                <tr key={b.branchId} className="hover:bg-muted/30 transition-colors">
-                                  <td className="px-4 py-2.5">
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
-                                      <span className="text-xs font-medium truncate">{b.branchName}</span>
-                                    </div>
-                                  </td>
-                                  {/* CA */}
-                                  <td className="text-right px-2 py-2.5 font-semibold text-indigo-700">{fmtDA(b.revA)}</td>
-                                  <td className="text-right px-2 py-2.5 text-amber-700">{fmtDA(b.revB)}</td>
-                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dCA} /></td>
-                                  {/* Dépenses */}
-                                  <td className="text-right px-2 py-2.5 font-semibold text-indigo-700">{fmtDA(b.expA)}</td>
-                                  <td className="text-right px-2 py-2.5 text-amber-700">{fmtDA(b.expB)}</td>
-                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dDep} inverse /></td>
-                                  {/* Résultat */}
-                                  <td className={`text-right px-2 py-2.5 font-semibold ${b.resA >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtDA(b.resA)}</td>
-                                  <td className={`text-right px-2 py-2.5 ${b.resB >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtDA(b.resB)}</td>
-                                  <td className="text-center px-2 py-2.5"><InlineDelta d={dRes} /></td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border/50">
+                          <div className="grid grid-cols-[1fr_auto_auto_auto] px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider gap-3">
+                            <span>Agence</span>
+                            <span className="text-right text-indigo-600 w-24">CA A</span>
+                            <span className="text-right text-amber-600 w-24">CA B</span>
+                            <span className="text-center w-14">Δ</span>
+                          </div>
+                          {cmpBrRows.map((b, i) => {
+                            const d = getDelta(b.revA, b.revB);
+                            const colors = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+                            const barWA = Math.round((b.revA / cmpBranchMax) * 100);
+                            const barWB = Math.round((b.revB / cmpBranchMax) * 100);
+                            return (
+                              <div key={b.branchId} className="px-4 py-2.5 hover:bg-muted/30 transition-colors space-y-1.5">
+                                <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                                    <span className="text-xs font-medium truncate">{b.branchName}</span>
+                                  </div>
+                                  <span className="text-xs font-bold text-indigo-700 w-24 text-right tabular-nums">{fmtDA(b.revA)}</span>
+                                  <span className="text-xs text-amber-700 w-24 text-right tabular-nums">{fmtDA(b.revB)}</span>
+                                  <div className="w-14 flex justify-center">
+                                    {d === 0
+                                      ? <span className="text-[9px] font-bold text-slate-400">—</span>
+                                      : <span className={`text-[9px] font-bold ${d > 0 ? "text-green-700" : "text-red-700"}`}>{d > 0 ? "▲" : "▼"}{Math.abs(d)}%</span>
+                                    }
+                                  </div>
+                                </div>
+                                {/* Progress bars */}
+                                <div className="space-y-0.5 pl-3.5">
+                                  <div className="h-1 rounded-full bg-indigo-100">
+                                    <div className="h-1 rounded-full bg-indigo-500 transition-all" style={{ width: `${barWA}%` }} />
+                                  </div>
+                                  <div className="h-1 rounded-full bg-amber-100">
+                                    <div className="h-1 rounded-full bg-amber-400 transition-all" style={{ width: `${barWB}%` }} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </CardContent>
                     </Card>
                   )}
+                </>
+              );
+            })()}
 
-                </div>
-              </>
-            )}
-
-            {/* No data yet */}
+            {/* No data */}
             {!cmpLoading && !pA && (
               <div className="flex items-center justify-center p-8 text-xs text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
                 Aucune donnée disponible pour les périodes sélectionnées.
