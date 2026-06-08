@@ -10,7 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon, Search } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon, Search, ChevronsUpDown, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({
@@ -321,6 +323,7 @@ function AdminView() {
   const [formDays, setFormDays] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [userComboOpen, setUserComboOpen] = useState(false);
 
   const { data: users = [] } = useQuery<SimpleUser[]>({
     queryKey: ["checklist-users"],
@@ -562,16 +565,44 @@ function AdminView() {
             </div>
             <div>
               <Label>Utilisateur <span className="text-destructive">*</span></Label>
-              <Select value={formUserId} onValueChange={setFormUserId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Choisir un utilisateur" />
-                </SelectTrigger>
-                <SelectContent className="max-h-56">
-                  {users.map(u => (
-                    <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={userComboOpen}
+                    className="mt-1 w-full justify-between font-normal"
+                  >
+                    {formUserId
+                      ? (users.find(u => u.id.toString() === formUserId)?.name ?? "Choisir un utilisateur")
+                      : "Choisir un utilisateur"}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Rechercher un utilisateur..." />
+                    <CommandList>
+                      <CommandEmpty>Aucun utilisateur trouvé.</CommandEmpty>
+                      <CommandGroup>
+                        {users.map(u => (
+                          <CommandItem
+                            key={u.id}
+                            value={u.name}
+                            onSelect={() => {
+                              setFormUserId(u.id.toString());
+                              setUserComboOpen(false);
+                            }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${formUserId === u.id.toString() ? "opacity-100" : "opacity-0"}`} />
+                            {u.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label>Récurrence</Label>
