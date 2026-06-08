@@ -21,7 +21,7 @@ import {
   Info, ChevronRight, ChevronDown, FlaskConical, Scale, Download,
   Bookmark, X,
 } from "lucide-react";
-import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear, startOfWeek } from "date-fns";
+import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useAuth } from "@/lib/auth";
 
@@ -116,7 +116,6 @@ function ChartTip({ active, payload, label }: any) {
 // ─── Comparison helpers ───────────────────────────────────────────────────────
 const COMPARE_MODES = [
   { label: "Auj. vs Hier",               value: "day"    },
-  { label: "7j vs 7j préc.",             value: "week"   },
   { label: "Ce mois vs Mois préc.",      value: "month"  },
   { label: "Cette année vs Année préc.", value: "year"   },
   { label: "Personnalisé",               value: "custom" },
@@ -175,7 +174,7 @@ function fmtNum(n: number) {
   return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA";
 }
 
-type CmpPeriod = { grossRevenue: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
+type CmpPeriod = { grossRevenue: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
 
 async function exportCompareToPDF(opts: {
   labelA: string; labelB: string;
@@ -295,7 +294,7 @@ export default function ExecutiveDashboard() {
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [activePreset, setActivePreset] = useState(3); // "Mois"
   const [showCompare, setShowCompare] = useState(false);
-  const [compareMode, setCompareMode] = useState<"day" | "week" | "month" | "year" | "custom">("month");
+  const [compareMode, setCompareMode] = useState<"day" | "month" | "year" | "custom">("month");
   const [customFromA, setCustomFromA] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [customToA,   setCustomToA]   = useState(format(new Date(), "yyyy-MM-dd"));
   const [customFromB, setCustomFromB] = useState(format(startOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd"));
@@ -322,15 +321,6 @@ export default function ExecutiveDashboard() {
         fromB: fmt(subDays(today, 1)), toB: fmt(subDays(today, 1)),
         labelA: "Aujourd'hui", labelB: "Hier",
       };
-      case "week": {
-        const ws = startOfWeek(today, { weekStartsOn: 1 });
-        const pw = subDays(ws, 7);
-        return {
-          fromA: fmt(ws), toA: fmt(today),
-          fromB: fmt(pw), toB: fmt(subDays(ws, 1)),
-          labelA: "Cette semaine", labelB: "Semaine préc.",
-        };
-      }
       case "month": {
         const ms = startOfMonth(today);
         const ps = subMonths(ms, 1);
@@ -1115,6 +1105,11 @@ export default function ExecutiveDashboard() {
               const tauxA = pA.saleCount > 0 ? (pA.returnCount / pA.saleCount) * 100 : 0;
               const tauxB = pB.saleCount > 0 ? (pB.returnCount / pB.saleCount) * 100 : 0;
 
+              const bestDayA = sparkRevA.reduce((best, r) => r.v > (best?.v ?? -1) ? r : best, null as typeof sparkRevA[0] | null);
+              const bestDayB = sparkRevB.reduce((best, r) => r.v > (best?.v ?? -1) ? r : best, null as typeof sparkRevB[0] | null);
+              const topCatA = [...(pA.byCategory ?? [])].sort((a, b) => b.amount - a.amount)[0];
+              const topCatB = [...(pB.byCategory ?? [])].sort((a, b) => b.amount - a.amount)[0];
+
               const areaData = (() => {
                 const maxLen = Math.max(sparkRevA.length, sparkRevB.length);
                 return Array.from({ length: maxLen }, (_, i) => ({
@@ -1123,6 +1118,8 @@ export default function ExecutiveDashboard() {
                   B: sparkRevB[i]?.v ?? null,
                 }));
               })();
+
+              const caDelta = getDelta(pA.grossRevenue, pB.grossRevenue);
 
               return (
                 <>
@@ -1141,6 +1138,9 @@ export default function ExecutiveDashboard() {
                         <p className="text-2xl font-bold leading-tight">{fmtDA(pA.grossRevenue)}</p>
                         <p className="text-indigo-300 text-xs mt-1">{compareRanges.fromA} → {compareRanges.toA}</p>
                       </div>
+                      <div className="absolute top-4 right-4">
+                        <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white border border-white/30">Référence</span>
+                      </div>
                     </div>
                     {/* CA B */}
                     <div className="rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 text-white p-5 shadow-md relative overflow-hidden">
@@ -1155,9 +1155,14 @@ export default function ExecutiveDashboard() {
                         <p className="text-2xl font-bold leading-tight">{fmtDA(pB.grossRevenue)}</p>
                         <p className="text-amber-200 text-xs mt-1">{compareRanges.fromB} → {compareRanges.toB}</p>
                       </div>
-                      {/* Delta badge */}
+                      {/* Delta A vs B */}
                       <div className="absolute top-4 right-4">
-                        <DeltaBadge delta={getDelta(pA.grossRevenue, pB.grossRevenue)} size="lg" />
+                        {caDelta === 0
+                          ? <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white">—</span>
+                          : <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${caDelta > 0 ? "bg-green-500/80 text-white" : "bg-red-500/80 text-white"}`}>
+                              {caDelta > 0 ? "▲" : "▼"} {Math.abs(caDelta)}% vs A
+                            </span>
+                        }
                       </div>
                     </div>
                   </div>
@@ -1166,10 +1171,52 @@ export default function ExecutiveDashboard() {
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                     <KpiCmpCard label="Nb. Ventes" valA={pA.saleCount} valB={pB.saleCount} />
                     <KpiCmpCard label="Moy. / Vente" valA={avgA} valB={avgB} fmt="money" />
-                    <KpiCmpCard label="Encaissé" valA={pA.encaisse} valB={pB.encaisse} fmt="money" />
-                    <KpiCmpCard label="Nb. Retours" valA={pA.returnCount} valB={pB.returnCount} inverse />
                     <KpiCmpCard label="Taux Retours" valA={tauxA} valB={tauxB} fmt="pct" inverse />
-                    <KpiCmpCard label="Mt. Retours" valA={pA.returnAmount} valB={pB.returnAmount} fmt="money" inverse />
+                    {/* Meilleure journée */}
+                    <Card className="border-0 shadow-sm">
+                      <CardContent className="p-3 space-y-2">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">Meilleure journée</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div className="rounded-lg bg-indigo-50/70 border border-indigo-100 p-2 text-center">
+                            <p className="text-[9px] text-indigo-500 font-semibold mb-0.5">A</p>
+                            {bestDayA && bestDayA.v > 0
+                              ? <><p className="text-[9px] text-indigo-400">{bestDayA.date}</p><p className="text-xs font-bold text-indigo-700 leading-tight">{fmtDA(bestDayA.v)}</p></>
+                              : <p className="text-xs text-muted-foreground">—</p>
+                            }
+                          </div>
+                          <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-2 text-center">
+                            <p className="text-[9px] text-amber-500 font-semibold mb-0.5">B</p>
+                            {bestDayB && bestDayB.v > 0
+                              ? <><p className="text-[9px] text-amber-400">{bestDayB.date}</p><p className="text-xs font-bold text-amber-700 leading-tight">{fmtDA(bestDayB.v)}</p></>
+                              : <p className="text-xs text-muted-foreground">—</p>
+                            }
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    {/* Top catégorie */}
+                    <Card className="border-0 shadow-sm">
+                      <CardContent className="p-3 space-y-2">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">Top Catégorie</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div className="rounded-lg bg-indigo-50/70 border border-indigo-100 p-2 text-center">
+                            <p className="text-[9px] text-indigo-500 font-semibold mb-0.5">A</p>
+                            {topCatA
+                              ? <><p className="text-[9px] text-indigo-400 truncate" title={topCatA.category}>{topCatA.category}</p><p className="text-xs font-bold text-indigo-700 leading-tight">{fmtDA(topCatA.amount)}</p></>
+                              : <p className="text-xs text-muted-foreground">—</p>
+                            }
+                          </div>
+                          <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-2 text-center">
+                            <p className="text-[9px] text-amber-500 font-semibold mb-0.5">B</p>
+                            {topCatB
+                              ? <><p className="text-[9px] text-amber-400 truncate" title={topCatB.category}>{topCatB.category}</p><p className="text-xs font-bold text-amber-700 leading-tight">{fmtDA(topCatB.amount)}</p></>
+                              : <p className="text-xs text-muted-foreground">—</p>
+                            }
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <KpiCmpCard label="Encaissé" valA={pA.encaisse} valB={pB.encaisse} fmt="money" />
                   </div>
 
                   {/* AreaChart daily CA trend */}
