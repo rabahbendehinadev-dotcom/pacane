@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({
@@ -33,6 +34,22 @@ interface SimpleUser {
   id: number;
   name: string;
   username: string;
+}
+
+interface WorkerSummary {
+  userId: number;
+  userName: string;
+  total: number;
+  done: number;
+}
+
+interface DailySummary {
+  date: string;
+  totalWorkers: number;
+  workersCompleted: number;
+  totalTasks: number;
+  totalDone: number;
+  workers: WorkerSummary[];
 }
 
 function hasPerm(userPerms: string[], p: string): boolean {
@@ -153,6 +170,97 @@ function WorkerView() {
   );
 }
 
+// ─── Daily Summary Card ───────────────────────────────────────────────────────
+function DailySummaryCard() {
+  const { data: summary, isLoading } = useQuery<DailySummary>({
+    queryKey: ["checklist-summary"],
+    queryFn: async () => {
+      const r = await fetch("/api/checklist/summary", { headers: AUTH() });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="py-4 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!summary || summary.totalWorkers === 0) return null;
+
+  const overallPct = summary.totalTasks > 0 ? Math.round((summary.totalDone / summary.totalTasks) * 100) : 0;
+
+  return (
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            ملخّص إنجاز اليوم
+          </CardTitle>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
+              {summary.workersCompleted}/{summary.totalWorkers} عامل أنجز
+            </span>
+            <Badge
+              className={
+                overallPct === 100
+                  ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                  : overallPct >= 50
+                  ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                  : "bg-rose-100 text-rose-700 hover:bg-rose-100"
+              }
+            >
+              {overallPct}%
+            </Badge>
+          </div>
+        </div>
+        <div className="mt-2 space-y-1">
+          <Progress value={overallPct} className="h-2" />
+          <p className="text-xs text-muted-foreground text-left">
+            {summary.totalDone} من {summary.totalTasks} مهمة مُنجزة
+          </p>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 pb-4">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {summary.workers.map(w => {
+            const pct = w.total > 0 ? Math.round((w.done / w.total) * 100) : 0;
+            const allDone = w.total > 0 && w.done === w.total;
+            return (
+              <div key={w.userId} className="flex items-center gap-2 min-w-0">
+                <div className="shrink-0">
+                  {allDone
+                    ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    : <Circle className="h-4 w-4 text-muted-foreground/40" />
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-xs font-medium truncate">{w.userName}</span>
+                    <span className="text-xs text-muted-foreground shrink-0 ml-2">{w.done}/{w.total}</span>
+                  </div>
+                  <Progress
+                    value={pct}
+                    className={`h-1.5 ${allDone ? "[&>div]:bg-emerald-500" : ""}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Admin View ───────────────────────────────────────────────────────────────
 function AdminView() {
   const qc = useQueryClient();
@@ -265,6 +373,8 @@ function AdminView() {
           <Plus className="h-4 w-4" /> إضافة مهمة
         </Button>
       </div>
+
+      <DailySummaryCard />
 
       <div className="flex items-center gap-3">
         <Select value={selectedUserId} onValueChange={setSelectedUserId}>

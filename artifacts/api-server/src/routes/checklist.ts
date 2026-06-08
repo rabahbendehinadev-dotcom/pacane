@@ -11,7 +11,59 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// GET /checklist/my — mهامي اليوم (any authenticated user)
+// GET /checklist/summary — daily completion summary (manage perm)
+router.get("/checklist/summary", requireAuth, requirePermission(P.checklist.manage), async (req, res): Promise<void> => {
+  const dateParam = typeof req.query.date === "string" ? req.query.date : todayStr();
+
+  // Get all active tasks with their completion status for the given date
+  const rows = await db
+    .select({
+      userId: checklistTasksTable.assignedToUserId,
+      userName: usersTable.name,
+      taskId: checklistTasksTable.id,
+      isDone: checklistCompletionsTable.isDone,
+    })
+    .from(checklistTasksTable)
+    .leftJoin(usersTable, eq(usersTable.id, checklistTasksTable.assignedToUserId))
+    .leftJoin(
+      checklistCompletionsTable,
+      and(
+        eq(checklistCompletionsTable.taskId, checklistTasksTable.id),
+        eq(checklistCompletionsTable.userId, checklistTasksTable.assignedToUserId),
+        eq(checklistCompletionsTable.completionDate, dateParam)
+      )
+    )
+    .where(eq(checklistTasksTable.isActive, true))
+    .orderBy(asc(usersTable.name));
+
+  // Group by worker
+  const workerMap = new Map<number, { userId: number; userName: string; total: number; done: number }>();
+  for (const row of rows) {
+    if (row.userId === null) continue;
+    if (!workerMap.has(row.userId)) {
+      workerMap.set(row.userId, { userId: row.userId, userName: row.userName ?? "—", total: 0, done: 0 });
+    }
+    const w = workerMap.get(row.userId)!;
+    w.total += 1;
+    if (row.isDone) w.done += 1;
+  }
+
+  const workers = Array.from(workerMap.values());
+  const totalTasks = workers.reduce((s, w) => s + w.total, 0);
+  const totalDone = workers.reduce((s, w) => s + w.done, 0);
+  const workersCompleted = workers.filter(w => w.total > 0 && w.done === w.total).length;
+
+  res.json({
+    date: dateParam,
+    totalWorkers: workers.length,
+    workersCompleted,
+    totalTasks,
+    totalDone,
+    workers,
+  });
+});
+
+// GET /checklist/my — مهامي اليوم (any authenticated user)
 router.get("/checklist/my", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as any).user.id;
   const today = todayStr();
