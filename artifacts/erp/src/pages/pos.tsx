@@ -1046,7 +1046,7 @@ export default function POS() {
               <p className="text-3xl font-bold text-primary">{formatDA(total)}</p>
             </div>
             <div className="relative">
-              <Label>Vendeur <span className="text-red-500">*</span></Label>
+              <Label>Vendeur</Label>
               <Input
                 className="mt-1"
                 placeholder={branchSellerNames.length > 0 ? "Rechercher un vendeur..." : "Ex: Ahmed, Karim..."}
@@ -1110,7 +1110,6 @@ export default function POS() {
               onClick={() => confirmSale()}
               disabled={
                 createSale.isPending ||
-                !sellerName.trim() ||
                 (paymentMethod === "cash" && parseFloat(cashReceived || "0") < total)
               }
             >
