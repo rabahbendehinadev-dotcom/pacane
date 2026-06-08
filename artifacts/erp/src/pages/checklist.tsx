@@ -678,7 +678,7 @@ function AdminView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={save} disabled={saving || !formTitle.trim() || !formUserId}>
+            <Button onClick={save} disabled={saving || !formTitles.some(t => t.trim()) || !formUserId}>
               {saving ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </DialogFooter>
