@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, recipesTable, recipeIngredientsTable, productsTable, unitsTable } from "@workspace/db";
-import { eq, and, ilike, or, sql } from "drizzle-orm";
+import { db, recipesTable, recipeIngredientsTable, recipeItemsTable, productsTable, unitsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
+import { requirePermission } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
 
 const router: IRouter = Router();
@@ -14,18 +14,65 @@ async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
     const [p] = await db.select().from(productsTable).where(eq(productsTable.id, recipe.productId));
     productName = p?.name ?? null;
   }
-  const ingredients = await db.select({
-    ri: recipeIngredientsTable,
-    productName: productsTable.name,
-    costPrice: productsTable.costPrice,
-    unitName: unitsTable.abbreviation
+
+  const recipeItems = await db.select().from(recipeItemsTable).where(eq(recipeItemsTable.recipeId, recipe.id));
+
+  let theoreticalCost = 0;
+  let components: object[] = [];
+
+  if (recipeItems.length > 0) {
+    for (const item of recipeItems) {
+      const qty = parseFloat(item.quantity as string);
+      const wastage = parseFloat(item.wastageRate as string) / 100;
+      const [u] = await db.select().from(unitsTable).where(eq(unitsTable.id, item.unitId));
+
+      if (item.itemType === "recipe") {
+        const [subRecipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, item.itemId));
+        components.push({
+          id: item.id, itemType: "recipe", itemId: item.itemId,
+          itemName: subRecipe?.name ?? `Recette #${item.itemId}`,
+          quantity: qty, unitId: item.unitId, unitName: u?.abbreviation ?? "",
+          wastageRate: parseFloat(item.wastageRate as string), totalCost: 0,
+        });
+      } else {
+        const [p] = await db.select().from(productsTable).where(eq(productsTable.id, item.itemId));
+        const cost = parseFloat(p?.costPrice as string ?? "0");
+        const totalCost = qty * (1 + wastage) * cost;
+        theoreticalCost += totalCost;
+        components.push({
+          id: item.id, itemType: "product", itemId: item.itemId,
+          itemName: p?.name ?? `Produit #${item.itemId}`,
+          productId: item.itemId, productName: p?.name ?? "",
+          quantity: qty, unitId: item.unitId, unitName: u?.abbreviation ?? "",
+          wastageRate: parseFloat(item.wastageRate as string), unitCost: cost, totalCost,
+        });
+      }
+    }
+
+    const ingredientsCompat = components
+      .filter((c: any) => c.itemType === "product")
+      .map((c: any) => ({
+        id: c.id, productId: c.productId, productName: c.productName,
+        quantity: c.quantity, unitId: c.unitId, unitName: c.unitName,
+        wastageRate: c.wastageRate, unitCost: c.unitCost, totalCost: c.totalCost,
+      }));
+
+    return {
+      ...recipe, productName, yieldUnitName: unit?.abbreviation ?? "",
+      yield: parseFloat(recipe.yield as string), theoreticalCost,
+      components, ingredients: ingredientsCompat,
+    };
+  }
+
+  const legacyRows = await db.select({
+    ri: recipeIngredientsTable, productName: productsTable.name,
+    costPrice: productsTable.costPrice, unitName: unitsTable.abbreviation
   }).from(recipeIngredientsTable)
     .leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
     .leftJoin(unitsTable, eq(recipeIngredientsTable.unitId, unitsTable.id))
     .where(eq(recipeIngredientsTable.recipeId, recipe.id));
 
-  let theoreticalCost = 0;
-  const mappedIngredients = ingredients.map(i => {
+  const ingredients = legacyRows.map(i => {
     const qty = parseFloat(i.ri.quantity as string);
     const wastage = parseFloat(i.ri.wastageRate as string) / 100;
     const cost = parseFloat(i.costPrice as string ?? "0");
@@ -38,9 +85,12 @@ async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
     };
   });
 
+  components = ingredients.map(i => ({ ...i, itemType: "product", itemId: i.productId, itemName: i.productName }));
+
   return {
     ...recipe, productName, yieldUnitName: unit?.abbreviation ?? "",
-    yield: parseFloat(recipe.yield as string), theoreticalCost, ingredients: mappedIngredients
+    yield: parseFloat(recipe.yield as string), theoreticalCost,
+    components, ingredients,
   };
 }
 
@@ -54,17 +104,34 @@ router.get("/recipes", requireAuth, requirePermission(P.recipes.view), async (re
 });
 
 router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async (req, res): Promise<void> => {
-  const { name, productId, type, yield: yieldQty, yieldUnitId, steps, notes, ingredients } = req.body;
-  if (!name || !type || !yieldQty || !yieldUnitId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
-  const [recipe] = await db.insert(recipesTable).values({ name, productId, type, yield: yieldQty.toString(), yieldUnitId, steps, notes }).returning();
-  if (ingredients?.length) {
+  const { name, productId, type, yield: yieldQty, yieldUnitId, steps, notes, ingredients, components } = req.body;
+  if (!name || !type || !yieldQty || !yieldUnitId) {
+    res.status(400).json({ error: "Champs requis manquants" }); return;
+  }
+
+  const [recipe] = await db.insert(recipesTable).values({
+    name, productId, type, yield: yieldQty.toString(), yieldUnitId, steps, notes
+  }).returning();
+
+  if (components?.length) {
+    for (const c of components) {
+      await db.insert(recipeItemsTable).values({
+        recipeId: recipe.id, itemType: c.itemType ?? "product",
+        itemId: c.itemId ?? c.productId,
+        quantity: c.quantity.toString(), unitId: c.unitId,
+        wastageRate: (c.wastageRate ?? 0).toString()
+      });
+    }
+  } else if (ingredients?.length) {
     for (const ing of ingredients) {
       await db.insert(recipeIngredientsTable).values({
-        recipeId: recipe.id, productId: ing.productId, quantity: ing.quantity.toString(),
-        unitId: ing.unitId, wastageRate: (ing.wastageRate ?? 0).toString()
+        recipeId: recipe.id, productId: ing.productId,
+        quantity: ing.quantity.toString(), unitId: ing.unitId,
+        wastageRate: (ing.wastageRate ?? 0).toString()
       });
     }
   }
+
   res.status(201).json(await buildRecipeResponse(recipe));
 });
 
@@ -77,7 +144,7 @@ router.get("/recipes/:id", requireAuth, requirePermission(P.recipes.view), async
 
 router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, yield: yieldQty, steps, notes, ingredients } = req.body;
+  const { name, yield: yieldQty, steps, notes, ingredients, components } = req.body;
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = name;
   if (yieldQty != null) updates.yield = yieldQty.toString();
@@ -85,15 +152,28 @@ router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), asy
   if (notes != null) updates.notes = notes;
   const [recipe] = await db.update(recipesTable).set(updates as any).where(eq(recipesTable.id, id)).returning();
   if (!recipe) { res.status(404).json({ error: "Recette introuvable" }); return; }
-  if (ingredients) {
+
+  if (components) {
+    await db.delete(recipeItemsTable).where(eq(recipeItemsTable.recipeId, id));
+    for (const c of components) {
+      await db.insert(recipeItemsTable).values({
+        recipeId: id, itemType: c.itemType ?? "product",
+        itemId: c.itemId ?? c.productId,
+        quantity: c.quantity.toString(), unitId: c.unitId,
+        wastageRate: (c.wastageRate ?? 0).toString()
+      });
+    }
+  } else if (ingredients) {
     await db.delete(recipeIngredientsTable).where(eq(recipeIngredientsTable.recipeId, id));
     for (const ing of ingredients) {
       await db.insert(recipeIngredientsTable).values({
-        recipeId: id, productId: ing.productId, quantity: ing.quantity.toString(),
-        unitId: ing.unitId, wastageRate: (ing.wastageRate ?? 0).toString()
+        recipeId: id, productId: ing.productId,
+        quantity: ing.quantity.toString(), unitId: ing.unitId,
+        wastageRate: (ing.wastageRate ?? 0).toString()
       });
     }
   }
+
   res.json(await buildRecipeResponse(recipe));
 });
 

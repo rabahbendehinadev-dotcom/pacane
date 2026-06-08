@@ -19,7 +19,7 @@ import {
   Plus, PlayCircle, CheckCircle, Factory, Lightbulb,
   AlertTriangle, XCircle, CheckCircle2, Package, MapPin,
   FlaskConical, User, Calendar, Shield, ChevronRight,
-  RefreshCw, Clock, ClipboardList, FileDown,
+  RefreshCw, Clock, ClipboardList, FileDown, Layers, GitBranch,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -61,6 +61,9 @@ type OverrideLog = {
   userName: string | null;
   createdAt: string;
 };
+type BomLeaf = { type: "product"; productId: number; productName: string; quantity: number; unitAbbreviation: string; wastageRate: number };
+type BomNode = { type: "recipe"; recipeId: number; recipeName: string; quantity: number; scaleFactor: number; children: Array<BomNode | BomLeaf> };
+type BomResult = { materials: Array<{ productId: number; productName: string; quantity: number; unitAbbreviation: string; costPrice: number; totalCost: number }>; tree: BomNode; totalCost: number };
 
 const statusConfig: Record<string, { label: string; cls: string; dot: string }> = {
   draft:       { label: "Brouillon",  cls: "bg-gray-100 text-gray-700",   dot: "bg-gray-400" },
@@ -109,6 +112,107 @@ function useProductionOverrides(orderId: number | null, enabled: boolean) {
   });
 }
 
+function useProductionBom(orderId: number | null, enabled: boolean) {
+  return useQuery<BomResult>({
+    queryKey: ["production-bom", orderId],
+    queryFn: async () => {
+      const r = await fetch(`${API}/production/${orderId}/bom`, { headers: authHeaders() });
+      if (!r.ok) throw new Error("Erreur BOM");
+      return r.json();
+    },
+    enabled: !!orderId && enabled,
+    staleTime: 60_000,
+  });
+}
+
+function BomTreeNode({ node, depth = 0 }: { node: BomNode | BomLeaf; depth?: number }) {
+  const indent = depth * 20;
+  if (node.type === "product") {
+    return (
+      <div className="flex items-center gap-2 py-1.5 text-sm" style={{ paddingLeft: indent + 8 }}>
+        <Package className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+        <span className="flex-1">{node.productName}</span>
+        <span className="font-mono text-xs text-muted-foreground">{fmt3(node.quantity)} {node.unitAbbreviation}</span>
+        {node.wastageRate > 0 && <span className="text-xs text-amber-600">+{node.wastageRate}%</span>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex items-center gap-2 py-1.5 text-sm font-semibold" style={{ paddingLeft: indent }}>
+        <Layers className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+        <span className="flex-1 text-purple-700">{node.recipeName}</span>
+        <span className="font-mono text-xs text-purple-600">×{fmt3(node.scaleFactor)}</span>
+      </div>
+      {node.children.map((child, i) => (
+        <BomTreeNode key={i} node={child} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function BomPanel({ orderId }: { orderId: number | null }) {
+  const { data: bom, isLoading, error } = useProductionBom(orderId, !!orderId);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+      <RefreshCw className="h-4 w-4 animate-spin" />Calcul de la nomenclature...
+    </div>
+  );
+  if (error || !bom) return (
+    <div className="text-center py-8 text-sm text-muted-foreground">Impossible de charger la nomenclature.</div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-purple-50/40 border-purple-100 p-4">
+        <div className="flex items-start gap-3">
+          <GitBranch className="h-5 w-5 text-purple-500 mt-0.5" />
+          <div>
+            <p className="font-semibold text-sm text-purple-700">Nomenclature (BOM) — Arbre de décomposition</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {bom.materials.length} matière{bom.materials.length > 1 ? "s" : ""} première{bom.materials.length > 1 ? "s" : ""} · Coût total: <span className="font-semibold text-amber-600">{formatDA(bom.totalCost)}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-md border overflow-hidden">
+        <div className="bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">Arbre de composition</div>
+        <div className="p-2 divide-y">
+          <BomTreeNode node={bom.tree} depth={0} />
+        </div>
+      </div>
+
+      <div className="rounded-md border overflow-hidden">
+        <div className="bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">Matières premières agrégées</div>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/20">
+              <TableHead className="text-xs py-2">Matière</TableHead>
+              <TableHead className="text-xs py-2 text-right">Quantité totale</TableHead>
+              <TableHead className="text-xs py-2 text-right">Coût unitaire</TableHead>
+              <TableHead className="text-xs py-2 text-right">Coût total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bom.materials.map((m, i) => (
+              <TableRow key={i}>
+                <TableCell className="py-2 text-sm font-medium">{m.productName}</TableCell>
+                <TableCell className="py-2 text-right font-mono text-sm">
+                  {fmt3(m.quantity)} <span className="text-muted-foreground">{m.unitAbbreviation}</span>
+                </TableCell>
+                <TableCell className="py-2 text-right text-sm text-muted-foreground">{formatDA(m.costPrice)}</TableCell>
+                <TableCell className="py-2 text-right font-semibold text-sm">{formatDA(m.totalCost)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 function AvailabilityPanel({ availability, loading }: { availability?: AvailabilityResult; loading: boolean }) {
   if (loading) return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
@@ -126,7 +230,6 @@ function AvailabilityPanel({ availability, loading }: { availability?: Availabil
 
   return (
     <div className="space-y-4">
-      {/* Summary card */}
       <div className={`rounded-lg border p-4 ${cfg.bg} ${cfg.border}`}>
         <div className="flex items-start gap-3">
           <Icon className={`h-5 w-5 mt-0.5 ${cfg.text}`} />
@@ -147,7 +250,6 @@ function AvailabilityPanel({ availability, loading }: { availability?: Availabil
         </div>
       </div>
 
-      {/* Per-ingredient table */}
       <div className="rounded-md border overflow-hidden">
         <Table>
           <TableHeader>
@@ -236,6 +338,8 @@ export default function Production() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  const [bomModalOpen, setBomModalOpen] = useState(false);
+  const [bomOrderId, setBomOrderId] = useState<number | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [actualQty, setActualQty] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -273,12 +377,18 @@ export default function Production() {
     }
   });
 
-  const detailOrder = orders.find(o => o.id === detailOrderId);
+  const detailOrder = orders.find((o: any) => o.id === detailOrderId);
+  const bomOrder = orders.find((o: any) => o.id === bomOrderId);
 
   function openDetail(orderId: number) {
     setDetailOrderId(orderId);
     setDetailTab("availability");
     setDetailOpen(true);
+  }
+
+  function openBom(orderId: number) {
+    setBomOrderId(orderId);
+    setBomModalOpen(true);
   }
 
   async function handleLaunch(withOverride = false) {
@@ -372,7 +482,7 @@ export default function Production() {
                     <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
                   ) : orders.length === 0 ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Aucun ordre de production</TableCell></TableRow>
-                  ) : orders.map(o => {
+                  ) : (orders as any[]).map(o => {
                     const s = statusConfig[o.status] ?? { label: o.status, cls: "bg-gray-100", dot: "bg-gray-400" };
                     return (
                       <TableRow key={o.id} className="cursor-pointer hover:bg-muted/40" onClick={() => openDetail(o.id)}>
@@ -397,6 +507,9 @@ export default function Production() {
                         <TableCell className="text-sm text-muted-foreground">{format(new Date(o.createdAt), "dd/MM/yyyy")}</TableCell>
                         <TableCell onClick={e => e.stopPropagation()}>
                           <div className="flex gap-1">
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={e => { e.stopPropagation(); openBom(o.id); }}>
+                              <GitBranch className="h-3 w-3" />BOM
+                            </Button>
                             {(o.status === "launched" || o.status === "in_progress") && (
                               <Button size="sm" className="h-7 text-xs gap-1" onClick={e => { e.stopPropagation(); setSelectedOrderId(o.id); setActualQty(String(o.plannedQuantity)); setCompleteDialogOpen(true); }}>
                                 <CheckCircle className="h-3.5 w-3.5" />Terminer
@@ -426,7 +539,7 @@ export default function Production() {
                   <p className="text-sm text-muted-foreground mt-1">Aucune production urgente nécessaire</p>
                 </CardContent>
               </Card>
-            ) : planning.map((s, i) => {
+            ) : (planning as any[]).map((s, i) => {
               const u = urgencyConfig[s.urgency] ?? { label: s.urgency, cls: "bg-gray-100" };
               return (
                 <Card key={i} className="hover:shadow-md transition-shadow">
@@ -456,6 +569,23 @@ export default function Production() {
         </TabsContent>
       </Tabs>
 
+      {/* BOM Modal */}
+      <Dialog open={bomModalOpen} onOpenChange={setBomModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-purple-500" />
+              Nomenclature BOM
+              {bomOrder && <span className="font-mono text-sm font-normal text-muted-foreground ml-1">— {bomOrder.reference}</span>}
+            </DialogTitle>
+            <DialogDescription>
+              Décomposition récursive complète de tous les composants de la recette
+            </DialogDescription>
+          </DialogHeader>
+          <BomPanel orderId={bomOrderId} />
+        </DialogContent>
+      </Dialog>
+
       {/* Production order detail sheet */}
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
@@ -464,258 +594,114 @@ export default function Production() {
               <SheetHeader className="pb-4 border-b">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <SheetTitle className="font-mono text-base">{detailOrder.reference}</SheetTitle>
-                    <p className="text-lg font-serif font-semibold mt-0.5">{detailOrder.recipeName}</p>
+                    <SheetTitle className="font-mono text-base">{(detailOrder as any).reference}</SheetTitle>
+                    <p className="text-lg font-serif font-semibold mt-0.5">{(detailOrder as any).recipeName}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {(() => {
-                      const s = statusConfig[detailOrder.status] ?? { label: detailOrder.status, cls: "bg-gray-100", dot: "bg-gray-400" };
+                      const s = statusConfig[(detailOrder as any).status] ?? { label: (detailOrder as any).status, cls: "bg-gray-100", dot: "bg-gray-400" };
                       return <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${s.cls}`}>{s.label}</span>;
                     })()}
-                    <Button
-                      variant="outline" size="sm" className="gap-1.5 h-8 text-xs"
-                      onClick={() => {
-                        if (!detailOrder || !companySettings) return;
-                        generateProductionOrderPdf({
-                          reference: detailOrder.reference, status: detailOrder.status,
-                          recipeName: detailOrder.recipeName,
-                          productName: (detailOrder as any).productName ?? null,
-                          branchName: detailOrder.branchName,
-                          plannedQuantity: parseFloat(String(detailOrder.plannedQuantity)),
-                          actualQuantity: detailOrder.actualQuantity != null ? parseFloat(String(detailOrder.actualQuantity)) : null,
-                          theoreticalCost: parseFloat(String(detailOrder.theoreticalCost)),
-                          actualCost: (detailOrder as any).actualCost != null ? parseFloat(String((detailOrder as any).actualCost)) : null,
-                          startedAt: (detailOrder as any).startedAt ?? null,
-                          completedAt: (detailOrder as any).completedAt ?? null,
-                          createdAt: detailOrder.createdAt,
-                          notes: (detailOrder as any).notes ?? null,
-                          ingredients: availability?.ingredients?.map((ing: any) => ({
-                            ingredientName: ing.ingredientName ?? ing.name,
-                            unitAbbreviation: ing.unitAbbreviation,
-                            requiredQty: ing.requiredQuantity ?? ing.required,
-                            availableQty: ing.availableQuantity ?? ing.available,
-                            status: ing.status ?? (ing.available >= ing.required ? "ok" : ing.available > 0 ? "short" : "missing"),
-                          })),
-                        }, companySettings as any);
-                      }}
-                    >
-                      <FileDown className="h-3.5 w-3.5" />PDF
+                    <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => { openBom(detailOrder.id); setDetailOpen(false); }}>
+                      <GitBranch className="h-3.5 w-3.5 text-purple-500" />Voir BOM
                     </Button>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3 text-sm mt-2">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5" />{(detailOrder as any).branchName}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Package className="h-3.5 w-3.5" />{fmt3((detailOrder as any).plannedQuantity)} unités planifiées
+                  </div>
+                  {(detailOrder as any).createdByName && (
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <User className="h-3.5 w-3.5" />{(detailOrder as any).createdByName}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" />{format(new Date((detailOrder as any).createdAt), "dd MMM yyyy", { locale: fr })}
+                  </div>
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <FlaskConical className="h-3.5 w-3.5 text-amber-500" />
+                    Coût théo.: {formatDA((detailOrder as any).theoreticalCost)}
+                  </div>
+                  {(detailOrder as any).actualCost != null && (
+                    <div className="flex items-center gap-1.5 font-medium text-green-700">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Coût réel: {formatDA((detailOrder as any).actualCost)}
+                    </div>
+                  )}
+                </div>
+                {["planned", "draft"].includes((detailOrder as any).status) && (
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" className="flex-1 gap-1.5 h-8" onClick={() => handleLaunch(false)} disabled={launching}>
+                      {launching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                      Lancer la production
+                    </Button>
+                  </div>
+                )}
+                {(detailOrder as any).status === "in_progress" && (
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" className="flex-1 gap-1.5 h-8 bg-green-600 hover:bg-green-700" onClick={() => { setSelectedOrderId(detailOrder.id); setActualQty(String((detailOrder as any).plannedQuantity)); setCompleteDialogOpen(true); }}>
+                      <CheckCircle className="h-3.5 w-3.5" />Terminer la production
+                    </Button>
+                  </div>
+                )}
               </SheetHeader>
 
-              {/* Order metadata */}
-              <div className="grid grid-cols-2 gap-3 py-4 border-b">
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Boutique / Labo</p>
-                    <p className="font-medium">{detailOrder.branchName}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <FlaskConical className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Quantité planifiée</p>
-                    <p className="font-medium font-mono">{fmt3(detailOrder.plannedQuantity)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Produit fini</p>
-                    <p className="font-medium">{detailOrder.productName ?? "Non défini"}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <ClipboardList className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Coût théorique</p>
-                    <p className="font-medium">{formatDA(detailOrder.theoreticalCost)}</p>
-                  </div>
-                </div>
-                {detailOrder.createdByName && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <User className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Créé par</p>
-                      <p className="font-medium">{detailOrder.createdByName}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Créé le</p>
-                    <p className="font-medium">{format(new Date(detailOrder.createdAt), "dd MMM yyyy", { locale: fr })}</p>
-                  </div>
-                </div>
-                {detailOrder.startedAt && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Lancé le</p>
-                      <p className="font-medium">{format(new Date(detailOrder.startedAt), "dd MMM yyyy HH:mm", { locale: fr })}</p>
-                    </div>
-                  </div>
-                )}
+              <div className="pt-4">
+                <Tabs value={detailTab} onValueChange={setDetailTab}>
+                  <TabsList className="w-full">
+                    <TabsTrigger value="availability" className="flex-1 text-xs">
+                      <ClipboardList className="h-3.5 w-3.5 mr-1" />Disponibilité
+                    </TabsTrigger>
+                    <TabsTrigger value="bom" className="flex-1 text-xs">
+                      <GitBranch className="h-3.5 w-3.5 mr-1" />Nomenclature BOM
+                    </TabsTrigger>
+                    <TabsTrigger value="overrides" className="flex-1 text-xs">
+                      <Shield className="h-3.5 w-3.5 mr-1" />Dérogations
+                      {overrideLogs.length > 0 && <Badge variant="secondary" className="ml-1 text-xs">{overrideLogs.length}</Badge>}
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="availability" className="mt-4">
+                    <AvailabilityPanel availability={availability} loading={availLoading} />
+                  </TabsContent>
+                  <TabsContent value="bom" className="mt-4">
+                    <BomPanel orderId={detailOrderId} />
+                  </TabsContent>
+                  <TabsContent value="overrides" className="mt-4">
+                    <OverrideLogsPanel logs={overrideLogs} />
+                  </TabsContent>
+                </Tabs>
               </div>
-
-              {detailOrder.notes && (
-                <div className="py-3 border-b">
-                  <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                  <p className="text-sm">{detailOrder.notes}</p>
-                </div>
-              )}
-
-              {/* Detail tabs */}
-              <Tabs value={detailTab} onValueChange={setDetailTab} className="mt-4">
-                <TabsList className="w-full">
-                  <TabsTrigger value="availability" className="flex-1 text-xs gap-1">
-                    <FlaskConical className="h-3.5 w-3.5" />Disponibilité ingrédients
-                    {availability && !availability.canLaunch && (
-                      <span className="ml-1 w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="overrides" className="flex-1 text-xs gap-1">
-                    <Shield className="h-3.5 w-3.5" />Dérogations
-                    {overrideLogs.length > 0 && (
-                      <Badge variant="secondary" className="text-xs ml-1">{overrideLogs.length}</Badge>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="availability" className="mt-4">
-                  <AvailabilityPanel availability={availability} loading={availLoading} />
-
-                  {/* Launch action */}
-                  {(detailOrder.status === "planned" || detailOrder.status === "draft") && (
-                    <div className="mt-6 pt-4 border-t">
-                      {availability?.canLaunch ? (
-                        <div className="space-y-3">
-                          <Alert className="bg-green-50 border-green-200">
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            <AlertDescription className="text-green-700 text-sm">
-                              Tous les ingrédients sont disponibles. La production peut être lancée.
-                            </AlertDescription>
-                          </Alert>
-                          <Button className="w-full gap-2" onClick={() => handleLaunch(false)} disabled={launching}>
-                            {launching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-                            Lancer la production
-                          </Button>
-                        </div>
-                      ) : availability && !availability.canLaunch ? (
-                        <div className="space-y-3">
-                          <Alert className="bg-amber-50 border-amber-200">
-                            <AlertTriangle className="h-4 w-4 text-amber-600" />
-                            <AlertDescription className="text-amber-700 text-sm">
-                              Des ingrédients sont insuffisants. Un responsable peut autoriser le lancement avec dérogation.
-                            </AlertDescription>
-                          </Alert>
-                          <Button variant="outline" className="w-full gap-2 border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => handleLaunch(false)} disabled={launching}>
-                            <Shield className="h-4 w-4" />
-                            Demander dérogation et lancer
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {(detailOrder.status === "launched" || detailOrder.status === "in_progress") && (
-                    <div className="mt-6 pt-4 border-t">
-                      <Button className="w-full gap-2" onClick={() => { setSelectedOrderId(detailOrder.id); setActualQty(String(detailOrder.plannedQuantity)); setCompleteDialogOpen(true); }}>
-                        <CheckCircle className="h-4 w-4" />Finaliser la production
-                      </Button>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="overrides" className="mt-4">
-                  <OverrideLogsPanel logs={overrideLogs} />
-                </TabsContent>
-              </Tabs>
             </>
           )}
         </SheetContent>
       </Sheet>
 
-      {/* Override dialog */}
-      <Dialog open={overrideDialogOpen} onOpenChange={v => { setOverrideDialogOpen(v); if (!v) setOverrideReason(""); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-amber-600" />
-              Lancement avec dérogation
-            </DialogTitle>
-            <DialogDescription>
-              Des ingrédients sont insuffisants. En tant que responsable, vous pouvez autoriser le lancement. La raison sera enregistrée dans le journal d'audit.
-            </DialogDescription>
-          </DialogHeader>
-
-          {availability && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 my-2">
-              <p className="text-xs font-semibold text-amber-700 mb-2">Ingrédients insuffisants :</p>
-              <div className="space-y-1">
-                {availability.rows.filter(r => r.status !== "ok").map((r, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-amber-800">{r.ingredientName}</span>
-                    <span className="font-mono text-red-600">−{fmt3(r.shortageQty)} {r.unitAbbreviation}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <Label>Raison de la dérogation <span className="text-red-500">*</span></Label>
-            <Textarea
-              className="mt-1.5"
-              rows={3}
-              placeholder="Ex: Livraison fournisseur attendue demain. Lancement autorisé pour honorer la commande client..."
-              value={overrideReason}
-              onChange={e => setOverrideReason(e.target.value)}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setOverrideDialogOpen(false); setOverrideReason(""); }}>Annuler</Button>
-            <Button
-              className="bg-amber-600 hover:bg-amber-700 gap-2"
-              onClick={() => handleLaunch(true)}
-              disabled={!overrideReason.trim() || launching}
-            >
-              {launching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
-              Autoriser et lancer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create dialog */}
+      {/* Create Order Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader><DialogTitle>Nouvel ordre de production</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Recette <span className="text-red-500">*</span></Label>
+              <Label>Recette *</Label>
               <Select value={form.recipeId} onValueChange={v => setForm(f => ({ ...f, recipeId: v }))}>
                 <SelectTrigger><SelectValue placeholder="Choisir une recette..." /></SelectTrigger>
-                <SelectContent>{recipes.map(r => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{(recipes as any[]).map((r: any) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Quantité planifiée <span className="text-red-500">*</span></Label>
-                <Input type="number" step="0.001" min="0" value={form.plannedQuantity} onChange={e => setForm(f => ({ ...f, plannedQuantity: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Boutique <span className="text-red-500">*</span></Label>
-                <Select value={form.branchId} onValueChange={v => setForm(f => ({ ...f, branchId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                  <SelectContent>{branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label>Quantité planifiée *</Label>
+              <Input type="number" step="0.001" value={form.plannedQuantity} onChange={e => setForm(f => ({ ...f, plannedQuantity: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Boutique *</Label>
+              <Select value={form.branchId} onValueChange={v => setForm(f => ({ ...f, branchId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Choisir une boutique..." /></SelectTrigger>
+                <SelectContent>{(branches as any[]).map((b: any) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Statut initial</Label>
@@ -727,38 +713,52 @@ export default function Production() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Instructions, remarques..." />
-            </div>
+            <div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-            <Button
-              onClick={() => createMutation.mutate({ data: { recipeId: parseInt(form.recipeId), plannedQuantity: parseFloat(form.plannedQuantity), branchId: parseInt(form.branchId), status: form.status as any, notes: form.notes || null } })}
-              disabled={!form.recipeId || !form.plannedQuantity || !form.branchId || createMutation.isPending}
-            >
-              {createMutation.isPending ? "Création..." : "Créer l'ordre"}
+            <Button onClick={() => createMutation.mutate({ data: { recipeId: parseInt(form.recipeId), plannedQuantity: parseFloat(form.plannedQuantity), branchId: parseInt(form.branchId), status: form.status as any, notes: form.notes || null } as any })} disabled={!form.recipeId || !form.plannedQuantity || !form.branchId}>
+              Créer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Complete dialog */}
+      {/* Complete Dialog */}
       <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Finaliser la production</DialogTitle>
-            <DialogDescription>Saisir la quantité réellement produite. Le stock sera ajusté automatiquement.</DialogDescription>
+            <DialogTitle>Terminer la production</DialogTitle>
+            <DialogDescription>Saisir la quantité réellement produite. Le stock sera mis à jour automatiquement.</DialogDescription>
           </DialogHeader>
           <div>
-            <Label>Quantité produite <span className="text-red-500">*</span></Label>
-            <Input type="number" step="0.001" value={actualQty} onChange={e => setActualQty(e.target.value)} />
+            <Label>Quantité réelle produite *</Label>
+            <Input type="number" step="0.001" value={actualQty} onChange={e => setActualQty(e.target.value)} className="mt-1" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Annuler</Button>
-            <Button onClick={() => selectedOrderId && completeMutation.mutate({ id: selectedOrderId, data: { actualQuantity: parseFloat(actualQty) } })} disabled={!actualQty || completeMutation.isPending}>
-              {completeMutation.isPending ? "Finalisation..." : "Terminer la production"}
+            <Button className="bg-green-600 hover:bg-green-700" onClick={() => { if (selectedOrderId && actualQty) completeMutation.mutate({ id: selectedOrderId, data: { actualQuantity: parseFloat(actualQty) } as any }); }} disabled={!actualQty || completeMutation.isPending}>
+              {completeMutation.isPending ? "En cours..." : "Confirmer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Override Dialog */}
+      <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-500" />Ingrédients insuffisants</DialogTitle>
+            <DialogDescription>Des ingrédients manquent. Vous pouvez lancer avec dérogation si vous avez les droits.</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Raison de la dérogation *</Label>
+            <Textarea value={overrideReason} onChange={e => setOverrideReason(e.target.value)} rows={3} placeholder="Expliquez pourquoi vous lancez malgré les manques..." className="mt-1" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverrideDialogOpen(false)}>Annuler</Button>
+            <Button variant="destructive" onClick={() => handleLaunch(true)} disabled={!overrideReason.trim() || launching}>
+              {launching ? "Lancement..." : "Lancer avec dérogation"}
             </Button>
           </DialogFooter>
         </DialogContent>

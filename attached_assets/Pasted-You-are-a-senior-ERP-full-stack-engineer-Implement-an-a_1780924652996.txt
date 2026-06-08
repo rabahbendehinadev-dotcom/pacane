@@ -1,0 +1,200 @@
+You are a senior ERP full-stack engineer.
+
+Implement an advanced BILL OF MATERIALS (BOM) system inside an existing ERP for bakery / pastry production.
+
+This system must support:
+
+==================================================
+1. CORE CONCEPT
+==================================================
+
+We now support 2 types of recipes:
+
+- FINISHED PRODUCT (Produit fini)
+- SEMI-FINISHED PRODUCT (Semi-fini / intermediate product)
+
+A semi-finished product is composed of:
+- other recipes (nested recipes)
+- and/or raw ingredients
+
+This means we need a RECURSIVE RECIPE ENGINE.
+
+==================================================
+2. DATABASE CHANGES
+==================================================
+
+Add or extend tables:
+
+## recipes
+- id
+- name
+- type: ENUM('FINISHED', 'SEMI_FINISHED')
+- output_product_id (nullable)
+- yield_quantity (default 1)
+- created_at
+
+## recipe_items (NEW CRITICAL TABLE)
+- id
+- recipe_id
+- item_type ENUM('RECIPE', 'PRODUCT')
+- item_id
+- quantity
+- unit
+
+This allows:
+- recipe inside recipe (SEMI-FINISHED logic)
+- product ingredients (raw materials)
+
+==================================================
+3. RECURSIVE ENGINE (MOST IMPORTANT)
+==================================================
+
+Implement a function:
+
+calculateRecipeExplosion(recipeId, quantity)
+
+It must:
+
+- recursively expand all nested recipes
+- convert all SEMI-FINISHED into final raw materials
+- avoid infinite loops (cycle protection required)
+- aggregate quantities of same product
+
+Example:
+
+TARTE FRAISE
+  - Fond de tarte (recipe)
+  - Crème pâtissière (recipe)
+  - Fraise (product)
+
+Fond de tarte:
+  - flour 200g
+  - butter 50g
+
+Crème:
+  - milk 100ml
+  - sugar 20g
+
+Output must be:
+
+- flour 200g
+- butter 50g
+- milk 100ml
+- sugar 20g
+- fraise X pcs
+
+==================================================
+4. PRODUCTION MODULE UPDATE
+==================================================
+
+Modify Production system:
+
+When creating a production order:
+
+CASE A: FINISHED PRODUCT
+- increase stock directly
+
+CASE B: SEMI-FINISHED PRODUCT
+- expand recipe recursively
+- generate full ingredient breakdown
+- increase stock only at FINAL OUTPUT LEVEL (not intermediate recipes unless configured)
+
+Production order must store:
+- recipe snapshot
+- exploded BOM snapshot
+- calculated materials list
+
+==================================================
+5. STOCK MOVEMENT RULES
+==================================================
+
+IMPORTANT:
+
+- Only final consumption affects stock OUT
+- Only final production affects stock IN
+- Semi-finished recipes do NOT directly move stock unless explicitly enabled
+
+Stock movements must include:
+- product_id
+- quantity
+- type: IN / OUT
+- source: PRODUCTION
+- reference production_id
+
+==================================================
+6. UI FEATURES
+==================================================
+
+## Recipes Page
+
+Add:
+
+- Recipe Type selector:
+  - Finished Product
+  - Semi-Finished Product
+
+If Semi-Finished selected:
+- allow adding sub-recipes + raw products
+- drag & add components
+
+## Production Page
+
+Add:
+- Button: "View BOM Breakdown"
+- Modal showing full recursive explosion tree:
+
+Tarte Fraise
+ → Fond de tarte
+   → flour
+   → butter
+ → Crème
+   → milk
+   → sugar
+
+==================================================
+7. VALIDATIONS
+==================================================
+
+- Prevent circular reference (recipe A includes B, B includes A)
+- Prevent invalid recipe linking
+- Ensure quantities always > 0
+- Ensure missing ingredients block production
+
+==================================================
+8. PERFORMANCE RULES
+==================================================
+
+- Cache recipe explosion result
+- Avoid recomputing same recipe tree inside loop
+- Optimize recursive calls
+
+==================================================
+9. EDGE CASES
+==================================================
+
+- Recipe with no ingredients → reject
+- Deep nesting (5+ levels) → must still work
+- Multiple recipes using same sub-recipe → aggregate correctly
+- Partial stock availability → warning system (optional)
+
+==================================================
+10. OUTPUT EXPECTATION
+==================================================
+
+Return:
+
+- Updated DB schema
+- Backend recursion engine
+- Production integration logic
+- Minimal UI changes
+- Safety rules for stock integrity
+
+System must remain stable with existing ERP modules:
+- sales
+- purchases
+- stock
+- POS
+
+DO NOT break existing stock logic.
+
+Only extend production + recipes system.

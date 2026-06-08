@@ -1,0 +1,243 @@
+You are a senior ERP AI architect.
+
+Extend the existing ERP system (Production + BOM + Costing) with a full INTELLIGENT FORECASTING AND DECISION ENGINE.
+
+This is Phase 3 (Pro Level).
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Build a smart ERP layer that can:
+
+- Predict future product demand
+- Suggest automatic purchasing needs
+- Forecast stock shortages
+- Analyze consumption per boutique
+- Generate intelligent replenishment suggestions
+- Detect waste and anomalies
+
+This is NOT UI only.
+This is a DATA INTELLIGENCE ENGINE.
+
+==================================================
+2. DATA SOURCES
+==================================================
+
+Use existing ERP data:
+
+- sales table (historical sales)
+- stock_movements
+- production_orders
+- recipes consumption
+- branch/boutique data
+- product catalog
+
+==================================================
+3. CORE MODULES TO BUILD
+==================================================
+
+## A. Demand Forecast Engine
+
+Create function:
+
+forecastProductDemand(productId, branchId, period)
+
+Logic:
+- Use historical sales data
+- Apply weighted moving average
+- Give more weight to recent data
+- Consider day-of-week patterns
+- Consider branch-specific behavior
+
+Output:
+- predicted daily demand
+- weekly demand
+- confidence score (0-100%)
+
+==================================================
+
+## B. Stock Risk Engine
+
+Create function:
+
+calculateStockRisk(productId, branchId)
+
+Rules:
+- If stock coverage < 2 days → HIGH RISK
+- If 2–5 days → MEDIUM RISK
+- If > 5 days → SAFE
+
+Output:
+- current coverage days
+- risk level
+- suggested reorder quantity
+
+==================================================
+
+## C. Automatic Purchase Suggestion Engine
+
+Create function:
+
+generatePurchaseSuggestions(branchId)
+
+Logic:
+- For each raw material:
+  - calculate expected consumption from forecasted production
+  - subtract current stock
+  - compute required purchase quantity
+
+Output:
+- list of materials to buy
+- quantity
+- urgency level
+- estimated cost (using latest purchase price)
+
+==================================================
+
+## D. Boutique Consumption Analytics
+
+Create function:
+
+analyzeBranchConsumption(branchId)
+
+Output:
+- top consumed products
+- daily average consumption per product
+- consumption trends (up/down)
+- anomalies detection (sudden spikes or drops)
+
+==================================================
+
+## E. Waste / Overproduction Detection
+
+Create function:
+
+detectWasteAndOverproduction()
+
+Logic:
+- compare production vs sales
+- detect unsold production batches
+- detect recurring waste patterns
+
+Output:
+- waste percentage per product
+- worst performing recipes
+- overproduction alerts
+
+==================================================
+4. SMART REPLENISHMENT ENGINE (BON DE COMMANDE UPGRADE)
+==================================================
+
+Enhance automatic replenishment:
+
+Instead of static rules:
+
+Replace with:
+
+- dynamic threshold per product per branch
+- based on forecast demand
+- safety stock buffer (configurable)
+- seasonal adjustment factor
+
+Formula:
+
+reorder_point =
+  (avg_daily_demand * lead_time_days) + safety_stock
+
+==================================================
+5. DAILY INTELLIGENCE DASHBOARD
+==================================================
+
+Create new endpoint:
+
+GET /dashboard/intelligence
+
+Return:
+
+- predicted sales today
+- predicted stock shortages
+- recommended purchases
+- high-risk products
+- waste alerts
+- production recommendations
+
+==================================================
+6. ALERT SYSTEM (CRITICAL FEATURE)
+==================================================
+
+Generate alerts:
+
+- STOCK_OUT_IMMINENT
+- OVERPRODUCTION_RISK
+- PURCHASE_REQUIRED
+- UNUSUAL_CONSUMPTION_SPIKE
+
+Each alert contains:
+- severity (low / medium / high)
+- product
+- branch
+- recommended action
+
+==================================================
+7. UI FEATURES
+==================================================
+
+## New Page: "Intelligence Dashboard"
+
+Show:
+
+- Forecast cards per product
+- Risk indicators (red/orange/green)
+- Purchase suggestions list
+- Consumption graphs per boutique
+- Alerts panel
+
+## Existing pages enhancements:
+- Products page: show "predicted stock depletion date"
+- Stock page: show "forecasted consumption"
+- Production page: show "recommended quantity"
+
+==================================================
+8. ALGORITHMIC RULES
+==================================================
+
+- Do NOT modify existing stock logic
+- Do NOT break sales or production modules
+- Forecasting must be read-only (no DB mutation)
+- Cache results for performance
+- Allow fallback if insufficient data
+
+==================================================
+9. EDGE CASES
+==================================================
+
+Handle:
+- new products with no history → use category average
+- missing sales data → fallback to default demand
+- seasonal spikes → smoothing logic
+- branch with low activity → global average fallback
+
+==================================================
+10. PERFORMANCE REQUIREMENTS
+==================================================
+
+- All forecasts must be cached per day
+- Avoid recalculating full history every request
+- Use aggregation queries where possible
+- Optimize for large datasets (100k+ rows)
+
+==================================================
+11. FINAL OUTPUT
+==================================================
+
+Return:
+
+- forecasting engine code structure
+- API endpoints
+- DB query optimizations
+- dashboard UI additions
+- alert system logic
+- integration with existing ERP modules
+
+This system must be production-ready and scalable ERP intelligence layer.

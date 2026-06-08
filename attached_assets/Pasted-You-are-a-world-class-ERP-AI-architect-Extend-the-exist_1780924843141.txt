@@ -1,0 +1,235 @@
+You are a world-class ERP AI architect.
+
+Extend the existing system (Production + BOM + Costing + Forecasting) with a full AI DECISION + SIMULATION + OPTIMIZATION ENGINE.
+
+This is Phase 4 (Ultra Pro Level).
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Transform the ERP from:
+- reactive system (record & calculate)
+to:
+- proactive system (predict, simulate, optimize, decide)
+
+The system must:
+- simulate future scenarios
+- optimize production planning
+- optimize purchasing decisions
+- optimize stock distribution across branches
+- recommend best operational decisions
+
+==================================================
+2. CORE CONCEPT: WHAT-IF ENGINE
+==================================================
+
+Create a simulation engine:
+
+simulateScenario(params)
+
+Where params include:
+- date range
+- production capacity
+- demand multiplier
+- branch constraints
+- stock limits
+
+Output:
+- predicted stock evolution
+- predicted shortages
+- predicted overstock
+- recommended actions
+
+Example:
+
+"What happens if demand increases 20% next week?"
+
+System returns:
+- stock breakdown
+- shortages per product
+- extra production needed
+- extra purchasing required
+
+==================================================
+3. PRODUCTION OPTIMIZER ENGINE
+==================================================
+
+Create:
+
+optimizeProductionPlan(branchId, dateRange)
+
+Logic:
+- Use forecast engine (Phase 3)
+- Use BOM (Phase 1)
+- Use cost engine (Phase 2)
+
+Goal:
+- minimize cost
+- avoid waste
+- avoid stockouts
+
+Output:
+- daily production plan
+- per recipe quantities
+- per worker workload distribution
+- bottleneck detection
+
+==================================================
+4. MULTI-BRANCH STOCK OPTIMIZER
+==================================================
+
+Create:
+
+optimizeStockDistribution()
+
+Goal:
+- balance stock between branches
+- reduce overstock in one branch
+- avoid shortages in another
+
+Rules:
+- consider transfer cost (if exists)
+- prioritize critical shortages
+- respect branch constraints
+
+Output:
+- suggested transfers
+- redistribution plan
+- risk reduction score
+
+==================================================
+5. SMART PURCHASING ENGINE (UPGRADED)
+==================================================
+
+Extend Phase 3 purchasing:
+
+generateOptimizedPurchasePlan()
+
+Now include:
+- supplier lead time
+- price variation trends
+- bulk purchase optimization
+- minimum order quantity rules
+
+Output:
+- best purchase schedule
+- cost optimized purchasing list
+- urgency ranking
+
+==================================================
+6. COST OPTIMIZATION AI
+==================================================
+
+Add engine:
+
+optimizeCostStructure()
+
+Analyze:
+- recipe cost changes over time
+- ingredient price fluctuations
+- production inefficiencies
+
+Output:
+- recipes that should be reformulated
+- ingredients causing cost spikes
+- cost reduction recommendations
+
+==================================================
+7. ALERT PRIORITY ENGINE (ADVANCED)
+==================================================
+
+Upgrade alerts:
+
+Each alert now has:
+- severity (low / medium / high / critical)
+- financial impact estimation
+- urgency score
+- recommended action
+
+Examples:
+- "Critical: stockout will cause 12% revenue loss"
+- "High: overproduction waste expected"
+- "Medium: ingredient price increasing"
+
+==================================================
+8. DASHBOARD: AI CONTROL CENTER
+==================================================
+
+Create new page:
+
+"AI CONTROL CENTER"
+
+Sections:
+
+A. Simulation Panel
+- run what-if scenarios
+- adjust sliders (demand, production, stock)
+
+B. Optimization Results
+- best production plan
+- best purchasing plan
+- best stock distribution
+
+C. Risk Map
+- heatmap of branches
+- red = shortage risk
+- green = stable
+
+D. Recommendations Feed
+- AI generated actions list
+
+==================================================
+9. DATA ENGINE REQUIREMENTS
+==================================================
+
+- Use all previous phases data:
+  - BOM tree
+  - cost engine
+  - forecasting engine
+  - stock movements
+  - sales history
+
+- Must be read-only engine
+- No direct mutation without user confirmation
+
+==================================================
+10. PERFORMANCE STRATEGY
+==================================================
+
+- heavy caching required
+- precompute daily simulations
+- incremental updates only
+- avoid full recomputation on every request
+
+==================================================
+11. EDGE CASES
+==================================================
+
+Handle:
+- missing data branches → fallback global averages
+- new products → estimation model
+- extreme demand spikes → capped simulation
+- incomplete BOM → block simulation with warning
+
+==================================================
+12. SAFETY RULES
+==================================================
+
+- Never auto-execute stock changes
+- Never auto-create purchases without approval
+- Always provide recommendations, not forced actions
+
+==================================================
+13. FINAL OUTPUT
+==================================================
+
+Return:
+- AI engine architecture
+- simulation functions
+- optimization algorithms
+- API endpoints
+- UI dashboard structure
+- integration with existing ERP modules
+
+This must be a production-grade AI ERP decision system.

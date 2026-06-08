@@ -6,10 +6,15 @@ import { requirePermission, assertBranchAccess, visibleBranchIds } from "../midd
 import { P } from "../lib/permissions";
 import { adjustStock } from "./stock";
 import { checkIngredientAvailability } from "../lib/availability";
+import { calculateRecipeExplosion } from "../lib/bom";
 
 const router: IRouter = Router();
 
 function genRef() { return `PROD-${Date.now()}`; }
+
+function hasPermission(permissions: string[], perm: string): boolean {
+  return permissions.includes(perm) || permissions.includes("*");
+}
 
 async function buildOrderResponse(order: typeof productionOrdersTable.$inferSelect) {
   const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, order.recipeId));
@@ -98,6 +103,20 @@ router.get("/production/:id", requireAuth, requirePermission(P.production.view),
   res.json(await buildOrderResponse(order));
 });
 
+router.get("/production/:id/bom", requireAuth, requirePermission(P.production.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+  if (!order) { res.status(404).json({ error: "Ordre introuvable" }); return; }
+  if (!assertBranchAccess(req.user!, order.branchId, res)) return;
+  try {
+    const qty = parseFloat(order.plannedQuantity as string);
+    const explosion = await calculateRecipeExplosion(order.recipeId, qty);
+    res.json(explosion);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Erreur lors du calcul BOM" });
+  }
+});
+
 router.get("/production/:id/availability", requireAuth, requirePermission(P.production.view), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
@@ -126,17 +145,29 @@ router.post("/production", requireAuth, requirePermission(P.production.create), 
   if (!recipeId || !plannedQuantity || !branchId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   if (!assertBranchAccess(req.user!, parseInt(String(branchId), 10), res)) return;
   const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, recipeId));
-  const ingredients = await db.select({ ri: recipeIngredientsTable, costPrice: productsTable.costPrice })
-    .from(recipeIngredientsTable).leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
-    .where(eq(recipeIngredientsTable.recipeId, recipeId));
-  const yield_ = parseFloat(recipe?.yield as string ?? "1");
-  const ratio = plannedQuantity / yield_;
+
   let theoreticalCost = 0;
-  for (const i of ingredients) {
-    const qty = parseFloat(i.ri.quantity as string) * ratio;
-    const wastage = parseFloat(i.ri.wastageRate as string) / 100;
-    theoreticalCost += qty * (1 + wastage) * parseFloat(i.costPrice as string ?? "0");
+  let bomSnapshotStr: string | null = null;
+  let materialsSnapshotStr: string | null = null;
+
+  try {
+    const explosion = await calculateRecipeExplosion(recipeId, parseFloat(String(plannedQuantity)));
+    theoreticalCost = explosion.totalCost;
+    bomSnapshotStr = JSON.stringify(explosion.tree);
+    materialsSnapshotStr = JSON.stringify(explosion.materials);
+  } catch {
+    const ingredients = await db.select({ ri: recipeIngredientsTable, costPrice: productsTable.costPrice })
+      .from(recipeIngredientsTable).leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
+      .where(eq(recipeIngredientsTable.recipeId, recipeId));
+    const yield_ = parseFloat(recipe?.yield as string ?? "1");
+    const ratio = parseFloat(String(plannedQuantity)) / yield_;
+    for (const i of ingredients) {
+      const qty = parseFloat(i.ri.quantity as string) * ratio;
+      const wastage = parseFloat(i.ri.wastageRate as string) / 100;
+      theoreticalCost += qty * (1 + wastage) * parseFloat(i.costPrice as string ?? "0");
+    }
   }
+
   const [order] = await db.insert(productionOrdersTable).values({
     reference: genRef(),
     recipeId,
@@ -146,6 +177,8 @@ router.post("/production", requireAuth, requirePermission(P.production.create), 
     branchId,
     theoreticalCost: theoreticalCost.toString(),
     notes,
+    bomSnapshot: bomSnapshotStr,
+    explodedMaterialsSnapshot: materialsSnapshotStr,
     createdByUserId: (req as any).user?.id ?? null,
   }).returning();
   res.status(201).json(await buildOrderResponse(order));
@@ -218,28 +251,54 @@ router.post("/production/:id/complete", requireAuth, requirePermission(P.product
     res.status(409).json({ error: "L'ordre doit être en cours d'exécution pour être complété" }); return;
   }
   const { actualQuantity } = req.body;
-  const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, order.recipeId));
-  const yield_ = parseFloat(recipe?.yield as string ?? "1");
-  const ratio = actualQuantity / yield_;
-  const ingredients = await db.select({ ri: recipeIngredientsTable, costPrice: productsTable.costPrice })
-    .from(recipeIngredientsTable).leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
-    .where(eq(recipeIngredientsTable.recipeId, order.recipeId));
+
   let actualCost = 0;
-  for (const i of ingredients) {
-    const qty = parseFloat(i.ri.quantity as string) * ratio;
-    const wastage = parseFloat(i.ri.wastageRate as string) / 100;
-    const consumed = qty * (1 + wastage);
-    actualCost += consumed * parseFloat(i.costPrice as string ?? "0");
-    await adjustStock(i.ri.productId, order.branchId, -consumed, "production_consumption", order.reference, parseFloat(i.costPrice as string ?? "0"), order.id);
+  let bomSnapshotStr = order.bomSnapshot;
+  let materialsSnapshotStr = order.explodedMaterialsSnapshot;
+
+  try {
+    const explosion = await calculateRecipeExplosion(order.recipeId, parseFloat(String(actualQuantity)));
+    actualCost = explosion.totalCost;
+    bomSnapshotStr = JSON.stringify(explosion.tree);
+    materialsSnapshotStr = JSON.stringify(explosion.materials);
+
+    for (const mat of explosion.materials) {
+      await adjustStock(
+        mat.productId, order.branchId, -mat.quantity,
+        "production_consumption", order.reference, mat.costPrice, order.id
+      );
+    }
+  } catch {
+    const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, order.recipeId));
+    const yield_ = parseFloat(recipe?.yield as string ?? "1");
+    const ratio = parseFloat(String(actualQuantity)) / yield_;
+    const ingredients = await db.select({ ri: recipeIngredientsTable, costPrice: productsTable.costPrice })
+      .from(recipeIngredientsTable).leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
+      .where(eq(recipeIngredientsTable.recipeId, order.recipeId));
+    for (const i of ingredients) {
+      const qty = parseFloat(i.ri.quantity as string) * ratio;
+      const wastage = parseFloat(i.ri.wastageRate as string) / 100;
+      const consumed = qty * (1 + wastage);
+      const cost = parseFloat(i.costPrice as string ?? "0");
+      actualCost += consumed * cost;
+      await adjustStock(i.ri.productId, order.branchId, -consumed, "production_consumption", order.reference, cost, order.id);
+    }
   }
+
   if (order.productId) {
-    const costPerUnit = actualCost / actualQuantity;
-    await adjustStock(order.productId, order.branchId, actualQuantity, "production_output", order.reference, costPerUnit, order.id);
+    const costPerUnit = parseFloat(String(actualQuantity)) > 0 ? actualCost / parseFloat(String(actualQuantity)) : 0;
+    await adjustStock(order.productId, order.branchId, parseFloat(String(actualQuantity)), "production_output", order.reference, costPerUnit, order.id);
   }
+
   const [updated] = await db.update(productionOrdersTable).set({
-    status: "completed", actualQuantity: actualQuantity.toString(),
-    actualCost: actualCost.toString(), completedAt: new Date()
+    status: "completed",
+    actualQuantity: actualQuantity.toString(),
+    actualCost: actualCost.toString(),
+    completedAt: new Date(),
+    bomSnapshot: bomSnapshotStr,
+    explodedMaterialsSnapshot: materialsSnapshotStr,
   }).where(eq(productionOrdersTable.id, id)).returning();
+
   res.json(await buildOrderResponse(updated));
 });
 

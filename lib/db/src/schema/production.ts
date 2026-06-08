@@ -14,6 +14,8 @@ export const productionOrdersTable = pgTable("production_orders", {
   theoreticalCost: numeric("theoretical_cost", { precision: 15, scale: 2 }).notNull().default("0"),
   actualCost: numeric("actual_cost", { precision: 15, scale: 2 }),
   notes: text("notes"),
+  bomSnapshot: text("bom_snapshot"),
+  explodedMaterialsSnapshot: text("exploded_materials_snapshot"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdByUserId: integer("created_by_user_id"),

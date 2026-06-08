@@ -1,0 +1,195 @@
+Act as a senior ERP QA engineer.
+
+Your task is to perform a COMPLETE END-TO-END TEST of the existing system:
+
+RECETTE + PRODUCTION MODULE ONLY
+
+IMPORTANT RULES:
+- DO NOT add new features
+- DO NOT modify business logic
+- ONLY test, validate, and report issues
+- Focus ONLY on Recette & Production
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Verify that the entire Recette + Production system is:
+
+- stable
+- logically correct
+- bug-free
+- stock-safe
+- production-ready
+
+==================================================
+2. MODULES TO TEST
+==================================================
+
+Only test:
+
+A. RECETTES
+- finished products
+- semi-finished products
+- ingredients
+- nested recipes (if exists)
+
+B. PRODUCTION
+- production creation
+- production confirmation
+- stock updates
+- recipe usage
+
+==================================================
+3. TEST SCENARIOS (CRITICAL)
+==================================================
+
+Run the following real-world scenarios:
+
+--------------------------------------------------
+SCENARIO 1: BASIC RECIPE
+--------------------------------------------------
+- Create simple finished product recipe
+- Add ingredients (raw materials)
+- Save recipe
+Expected:
+- recipe saved correctly
+- ingredients linked properly
+
+--------------------------------------------------
+SCENARIO 2: SEMI-FINISHED RECIPE
+--------------------------------------------------
+- Create semi-finished recipe
+- Add sub-recipes + ingredients
+Expected:
+- sub-recipes linked correctly
+- no broken relations
+- correct structure displayed
+
+--------------------------------------------------
+SCENARIO 3: NESTED RECIPE
+--------------------------------------------------
+- Create recipe inside recipe (multi-level)
+Example:
+Tarte → Fond → Crème → Ingredients
+Expected:
+- correct recursive structure
+- no infinite loop
+- correct display
+
+--------------------------------------------------
+SCENARIO 4: PRODUCTION CREATION
+--------------------------------------------------
+- Select a recipe
+- Create production order
+- Confirm production
+Expected:
+- stock increases correctly
+- recipe is consumed correctly
+- no duplicate stock movements
+
+--------------------------------------------------
+SCENARIO 5: STOCK INTEGRITY
+--------------------------------------------------
+After production:
+Check:
+- stock is correct
+- no negative stock errors (unless allowed)
+- no duplicate entries
+- no missing updates
+
+--------------------------------------------------
+SCENARIO 6: EDGE CASES
+--------------------------------------------------
+Test:
+- recipe with no ingredients
+- missing unit values
+- large quantity production
+- invalid recipe links
+- repeated production of same recipe
+
+Expected:
+- system handles errors gracefully
+- no crashes
+- proper validation messages
+
+==================================================
+4. DATA INTEGRITY CHECKS
+==================================================
+
+Verify:
+
+- no orphan recipes
+- no orphan production items
+- all foreign keys valid
+- no null crashes
+- correct units (kg, g, pcs consistency)
+
+==================================================
+5. UI CHECKS (ONLY EXISTING UI)
+==================================================
+
+Check:
+- recipe list displays correctly
+- recipe detail view correct
+- production page correct
+- totals displayed correctly
+- no broken tables or missing fields
+
+DO NOT redesign UI.
+
+==================================================
+6. STOCK RULE VERIFICATION
+==================================================
+
+Ensure:
+
+- production is the ONLY operation that affects stock increase
+- no duplicate stock movements
+- no unintended stock changes from recipes
+- stock movements are traceable
+
+==================================================
+7. PERFORMANCE CHECK
+==================================================
+
+Check:
+- no slow loading on recipe pages
+- no infinite loops in nested recipes
+- no excessive API calls
+
+==================================================
+8. OUTPUT FORMAT
+==================================================
+
+Return a structured QA report:
+
+1. Executive status:
+- PASS / FAIL / PARTIAL
+
+2. What is working correctly
+
+3. Bugs found (if any)
+For each bug:
+- severity
+- module (Recette / Production)
+- description
+- impact
+
+4. Stock integrity verdict:
+- SAFE / RISKY
+
+5. Data integrity verdict:
+- CLEAN / BROKEN
+
+6. Final conclusion:
+- READY FOR PRODUCTION or NEED FIXES
+
+==================================================
+IMPORTANT
+==================================================
+
+- Be strict
+- Do not assume correctness
+- Verify actual behavior
+- Focus only on Recette + Production

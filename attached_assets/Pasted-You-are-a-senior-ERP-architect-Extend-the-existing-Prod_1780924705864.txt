@@ -1,0 +1,210 @@
+You are a senior ERP architect.
+
+Extend the existing Production + BOM system with a full COSTING ENGINE (COGS) for recipes, including semi-finished products, nested BOM, and real-time profitability calculation.
+
+This is Phase 2 of the system.
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+We want to calculate:
+
+- Cost per recipe (FINISHED + SEMI-FINISHED)
+- Cost per production order
+- Real-time ingredient cost impact
+- Profit margin estimation
+- Waste / loss tracking
+
+This must work with recursive BOM (Phase 1 system).
+
+==================================================
+2. CORE COSTING LOGIC
+==================================================
+
+Each recipe must compute:
+
+TOTAL COST = SUM of all ingredients + sub-recipes costs
+
+Rules:
+- If item_type = PRODUCT → take purchase cost from stock table
+- If item_type = RECIPE → recursively calculate cost of that recipe
+- Quantity multiplier must be applied at every level
+- Currency always DA
+
+==================================================
+3. DATABASE ADDITIONS
+==================================================
+
+## recipes (extend)
+- total_cost (cached)
+- cost_per_unit (cached)
+- last_cost_update
+
+## production_orders (extend)
+- estimated_cost
+- actual_cost
+- theoretical_cost
+- cost_variance
+
+## production_order_items (NEW if not existing)
+- id
+- production_order_id
+- product_id / recipe_id
+- quantity
+- unit_cost
+- total_cost
+
+==================================================
+4. COST ENGINE FUNCTION
+==================================================
+
+Implement:
+
+calculateRecipeCost(recipeId)
+
+AND
+
+calculateProductionCost(productionOrderId)
+
+Logic:
+
+- Walk recursively through BOM tree
+- Fetch latest stock purchase cost for raw materials
+- Multiply quantities at each level
+- Aggregate cost safely
+- Cache results for performance
+
+==================================================
+5. REAL-TIME COST PREVIEW (VERY IMPORTANT)
+==================================================
+
+In Production page BEFORE confirming order:
+
+Show:
+
+- Total estimated cost
+- Cost per ingredient breakdown
+- Cost per sub-recipe breakdown
+- Total quantity impact
+- Expected cost per unit
+
+Example UI:
+
+Tarte Fraise
+----------------------
+Fond de tarte → 12 DA
+Crème → 18 DA
+Fraise → 25 DA
+----------------------
+TOTAL COST: 55 DA
+EXPECTED MARGIN: 45%
+
+==================================================
+6. PROFITABILITY ENGINE
+==================================================
+
+If product has selling price:
+
+profit = selling_price - cost_per_unit
+margin% = (profit / selling_price) * 100
+
+Display:
+
+- profit per unit
+- total profit per production batch
+- margin color indicator:
+  - green > 30%
+  - orange 10–30%
+  - red < 10%
+
+==================================================
+7. STOCK COST INTEGRITY
+==================================================
+
+Rules:
+
+- NEVER overwrite purchase cost history
+- Always use last known valid purchase price
+- If multiple purchase prices exist → use weighted average cost
+- If no cost found → flag warning
+
+==================================================
+8. WASTE / LOSS TRACKING (NEW MODULE)
+==================================================
+
+Add optional field in production:
+
+- waste_percentage (default 0%)
+
+Apply:
+
+final_cost = theoretical_cost + waste_cost
+
+Waste is calculated per recipe:
+- ingredient loss
+- production inefficiency
+
+==================================================
+9. CACHE STRATEGY
+==================================================
+
+To avoid performance issues:
+
+- Cache recipe cost result
+- Invalidate cache when:
+  - stock cost changes
+  - recipe modified
+  - production completed
+
+==================================================
+10. UI REQUIREMENTS
+==================================================
+
+## Production Page Add:
+
+- Cost Breakdown panel
+- Margin indicator
+- Real-time recalculation button
+
+## Recipe Page Add:
+
+- "Cost Preview" button
+- Show:
+  - cost per unit
+  - cost breakdown tree
+  - profitability if linked product exists
+
+==================================================
+11. EDGE CASES
+==================================================
+
+Handle:
+
+- missing purchase price → warn but continue
+- recursive recipe loops → block system
+- zero-cost ingredients → allow but flag
+- large BOM trees → optimize performance
+
+==================================================
+12. BACKWARD COMPATIBILITY
+==================================================
+
+- Do NOT break existing stock logic
+- Do NOT modify sales logic
+- Only extend production + recipes modules
+- Must work with Phase 1 recursive BOM system
+
+==================================================
+13. FINAL OUTPUT
+==================================================
+
+Return:
+
+- DB schema updates
+- Cost calculation engine
+- Production integration
+- UI cost breakdown additions
+- Safety and caching logic
+
+This system must be production-ready ERP grade.

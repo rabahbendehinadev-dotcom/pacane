@@ -1,5 +1,6 @@
-import { db, recipesTable, recipeIngredientsTable, productsTable, stockLevelsTable, unitsTable, branchesTable } from "@workspace/db";
+import { db, recipesTable, productsTable, stockLevelsTable, unitsTable, branchesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { calculateRecipeExplosion } from "./bom";
 
 export type IngredientAvailabilityRow = {
   ingredientProductId: number;
@@ -34,55 +35,31 @@ export async function checkIngredientAvailability(
   if (!recipe) throw new Error("Recette introuvable");
 
   const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, branchId));
-
   const recipeYield = parseFloat(recipe.yield as string);
   const scaleFactor = plannedQuantity / recipeYield;
 
-  const ingredients = await db
-    .select({
-      ri: recipeIngredientsTable,
-      product: productsTable,
-      unit: unitsTable,
-    })
-    .from(recipeIngredientsTable)
-    .leftJoin(productsTable, eq(recipeIngredientsTable.productId, productsTable.id))
-    .leftJoin(unitsTable, eq(recipeIngredientsTable.unitId, unitsTable.id))
-    .where(eq(recipeIngredientsTable.recipeId, recipeId));
-
+  const explosion = await calculateRecipeExplosion(recipeId, plannedQuantity);
   const rows: IngredientAvailabilityRow[] = [];
 
-  for (const i of ingredients) {
-    const baseQty = parseFloat(i.ri.quantity as string);
-    const wastageRate = parseFloat(i.ri.wastageRate as string);
-    const requiredQty = baseQty * scaleFactor * (1 + wastageRate / 100);
-
+  for (const mat of explosion.materials) {
     const [stockRow] = await db
       .select()
       .from(stockLevelsTable)
-      .where(
-        and(
-          eq(stockLevelsTable.productId, i.ri.productId),
-          eq(stockLevelsTable.branchId, branchId)
-        )
-      );
+      .where(and(eq(stockLevelsTable.productId, mat.productId), eq(stockLevelsTable.branchId, branchId)));
 
     const availableQty = stockRow ? parseFloat(stockRow.quantity as string) : 0;
-    const shortageQty = Math.max(0, requiredQty - availableQty);
+    const shortageQty = Math.max(0, mat.quantity - availableQty);
     const status: "ok" | "short" | "missing" =
-      availableQty === 0 && requiredQty > 0
-        ? "missing"
-        : shortageQty > 0
-        ? "short"
-        : "ok";
+      availableQty === 0 && mat.quantity > 0 ? "missing" : shortageQty > 0 ? "short" : "ok";
 
     rows.push({
-      ingredientProductId: i.ri.productId,
-      ingredientName: i.product?.name ?? `Produit #${i.ri.productId}`,
-      unitAbbreviation: i.unit?.abbreviation ?? "u",
-      requiredQty: Math.round(requiredQty * 1000) / 1000,
+      ingredientProductId: mat.productId,
+      ingredientName: mat.productName,
+      unitAbbreviation: mat.unitAbbreviation,
+      requiredQty: mat.quantity,
       availableQty: Math.round(availableQty * 1000) / 1000,
       shortageQty: Math.round(shortageQty * 1000) / 1000,
-      wastageRate,
+      wastageRate: 0,
       status,
     });
   }
@@ -90,7 +67,9 @@ export async function checkIngredientAvailability(
   const anyMissing = rows.some(r => r.status === "missing");
   const anyShort = rows.some(r => r.status === "short");
   const overallStatus: "available" | "partial" | "unavailable" =
-    anyMissing && rows.every(r => r.status === "missing")
+    rows.length === 0
+      ? "unavailable"
+      : anyMissing && rows.every(r => r.status === "missing")
       ? "unavailable"
       : anyMissing || anyShort
       ? "partial"

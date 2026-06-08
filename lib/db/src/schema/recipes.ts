@@ -25,7 +25,19 @@ export const recipeIngredientsTable = pgTable("recipe_ingredients", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const recipeItemsTable = pgTable("recipe_items", {
+  id: serial("id").primaryKey(),
+  recipeId: integer("recipe_id").notNull(),
+  itemType: text("item_type").notNull().default("product"),
+  itemId: integer("item_id").notNull(),
+  quantity: numeric("quantity", { precision: 15, scale: 3 }).notNull(),
+  unitId: integer("unit_id").notNull(),
+  wastageRate: numeric("wastage_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertRecipeSchema = createInsertSchema(recipesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
 export type Recipe = typeof recipesTable.$inferSelect;
 export type RecipeIngredient = typeof recipeIngredientsTable.$inferSelect;
+export type RecipeItem = typeof recipeItemsTable.$inferSelect;

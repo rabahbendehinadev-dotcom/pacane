@@ -21,7 +21,7 @@ timeoutMs = 20000
 
 [[ports]]
 localPort = 8080
-externalPort = 8080
+externalPort = 80
 
 [[ports]]
 localPort = 8081
@@ -29,10 +29,6 @@ externalPort = 8081
 
 [[ports]]
 localPort = 18996
-externalPort = 80
-
-[[ports]]
-localPort = 23023
 externalPort = 3000
 
 [nix]
