@@ -72,15 +72,17 @@ export default function Login() {
     setToggling(task.id);
     try {
       const action = nowDone ? "complete" : "uncomplete";
-      await fetch(`/api/checklist/${task.id}/${action}`, {
+      const r = await fetch(`/api/checklist/${task.id}/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${checklistToken}` },
       });
-      setLocalDone(prev => {
-        const next = new Set(prev);
-        if (nowDone) next.add(task.id); else next.delete(task.id);
-        return next;
-      });
+      if (r.ok) {
+        setLocalDone(prev => {
+          const next = new Set(prev);
+          if (nowDone) next.add(task.id); else next.delete(task.id);
+          return next;
+        });
+      }
     } catch {
       // silent
     } finally {

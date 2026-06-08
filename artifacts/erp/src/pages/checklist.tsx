@@ -156,7 +156,7 @@ function WorkerView() {
 // ─── Admin View ───────────────────────────────────────────────────────────────
 function AdminView() {
   const qc = useQueryClient();
-  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [selectedUserId, setSelectedUserId] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [formTitle, setFormTitle] = useState("");
@@ -178,7 +178,7 @@ function AdminView() {
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ["checklist-all", selectedUserId],
     queryFn: async () => {
-      const url = selectedUserId ? `/api/checklist?userId=${selectedUserId}` : "/api/checklist";
+      const url = selectedUserId && selectedUserId !== "all" ? `/api/checklist?userId=${selectedUserId}` : "/api/checklist";
       const r = await fetch(url, { headers: AUTH() });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
@@ -189,7 +189,7 @@ function AdminView() {
     setEditing(null);
     setFormTitle("");
     setFormDesc("");
-    setFormUserId(selectedUserId || (users[0]?.id.toString() ?? ""));
+    setFormUserId(selectedUserId !== "all" ? selectedUserId : (users[0]?.id.toString() ?? ""));
     setFormOrder("0");
     setDialogOpen(true);
   }
@@ -272,7 +272,7 @@ function AdminView() {
             <SelectValue placeholder="جميع العاملين" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">جميع العاملين</SelectItem>
+            <SelectItem value="all">جميع العاملين</SelectItem>
             {users.map(u => (
               <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
             ))}
