@@ -552,7 +552,7 @@ function AdminView() {
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Choisir un ouvrier" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-56">
                   {users.map(u => (
                     <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                   ))}
