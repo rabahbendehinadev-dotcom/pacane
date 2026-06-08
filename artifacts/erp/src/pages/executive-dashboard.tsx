@@ -314,7 +314,7 @@ export default function ExecutiveDashboard() {
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [activePreset, setActivePreset] = useState(3); // "Mois"
-  const [showCompare, setShowCompare] = useState(false);
+  const [showCompare, setShowCompare] = useState(true);
   const [compareMode, setCompareMode] = useState<"day" | "month" | "year" | "custom">("month");
   const [customFromA, setCustomFromA] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [customToA,   setCustomToA]   = useState(format(new Date(), "yyyy-MM-dd"));
