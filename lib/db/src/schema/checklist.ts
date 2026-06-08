@@ -10,6 +10,8 @@ export const checklistTasksTable = pgTable("checklist_tasks", {
   createdByUserId: integer("created_by_user_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  recurrence: text("recurrence").notNull().default("daily"),
+  recurringDays: integer("recurring_days").array(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

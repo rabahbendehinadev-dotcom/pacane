@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp } from "lucide-react";
+import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({
@@ -18,11 +18,17 @@ const AUTH = () => ({
   Authorization: `Bearer ${localStorage.getItem("erp_token")}`,
 });
 
+const DAY_NAMES = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+
+type RecurrenceType = "daily" | "weekly" | "specific_days";
+
 interface Task {
   id: number;
   title: string;
   description: string | null;
   sortOrder: number;
+  recurrence: RecurrenceType;
+  recurringDays: number[];
   isDone?: boolean;
   isDoneToday?: boolean;
   assignedToUserId?: number;
@@ -57,6 +63,16 @@ function hasPerm(userPerms: string[], p: string): boolean {
   if (userPerms.includes(p)) return true;
   const mod = p.split(".")[0];
   return userPerms.includes(`${mod}.*`);
+}
+
+function recurrenceLabel(recurrence: RecurrenceType, recurringDays: number[]): string {
+  if (recurrence === "daily") return "يومياً";
+  if (recurrence === "weekly") {
+    if (recurringDays.length === 1) return `أسبوعياً (${DAY_NAMES[recurringDays[0]]})`;
+    return "أسبوعياً";
+  }
+  if (recurringDays.length === 0) return "أيام محددة";
+  return recurringDays.map(d => DAY_NAMES[d]).join("، ");
 }
 
 export default function ChecklistPage() {
@@ -118,7 +134,7 @@ function WorkerView() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
             <ClipboardCheck className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">لا توجد مهام مخصّصة لك</p>
+            <p className="text-muted-foreground">لا توجد مهام مخصّصة لك اليوم</p>
           </CardContent>
         </Card>
       ) : (
@@ -261,6 +277,35 @@ function DailySummaryCard() {
   );
 }
 
+// ─── Recurrence Days Picker ──────────────────────────────────────────────────
+function DaysPicker({ selected, onChange }: { selected: number[]; onChange: (days: number[]) => void }) {
+  function toggle(d: number) {
+    if (selected.includes(d)) {
+      onChange(selected.filter(x => x !== d));
+    } else {
+      onChange([...selected, d].sort());
+    }
+  }
+  return (
+    <div className="flex gap-1.5 flex-wrap mt-1">
+      {DAY_NAMES.map((name, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => toggle(i)}
+          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+            selected.includes(i)
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-background border-border text-muted-foreground hover:border-primary/50"
+          }`}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Admin View ───────────────────────────────────────────────────────────────
 function AdminView() {
   const qc = useQueryClient();
@@ -271,6 +316,8 @@ function AdminView() {
   const [formDesc, setFormDesc] = useState("");
   const [formUserId, setFormUserId] = useState("");
   const [formOrder, setFormOrder] = useState("0");
+  const [formRecurrence, setFormRecurrence] = useState<RecurrenceType>("daily");
+  const [formDays, setFormDays] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
@@ -299,6 +346,8 @@ function AdminView() {
     setFormDesc("");
     setFormUserId(selectedUserId !== "all" ? selectedUserId : (users[0]?.id.toString() ?? ""));
     setFormOrder("0");
+    setFormRecurrence("daily");
+    setFormDays([]);
     setDialogOpen(true);
   }
 
@@ -308,12 +357,18 @@ function AdminView() {
     setFormDesc(task.description ?? "");
     setFormUserId(task.assignedToUserId?.toString() ?? "");
     setFormOrder(task.sortOrder.toString());
+    setFormRecurrence((task.recurrence as RecurrenceType) ?? "daily");
+    setFormDays(task.recurringDays ?? []);
     setDialogOpen(true);
   }
 
   async function save() {
     if (!formTitle.trim()) { toast({ title: "العنوان مطلوب", variant: "destructive" }); return; }
     if (!formUserId) { toast({ title: "اختر عاملاً", variant: "destructive" }); return; }
+    if (formRecurrence !== "daily" && formDays.length === 0) {
+      toast({ title: "حدّد يوماً واحداً على الأقل", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -321,6 +376,8 @@ function AdminView() {
         description: formDesc.trim() || null,
         assignedToUserId: parseInt(formUserId, 10),
         sortOrder: parseInt(formOrder, 10) || 0,
+        recurrence: formRecurrence,
+        recurringDays: formRecurrence !== "daily" ? formDays : [],
       };
       if (editing) {
         const r = await fetch(`/api/checklist/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify(body) });
@@ -432,6 +489,12 @@ function AdminView() {
                           {task.description && (
                             <p className="text-xs text-muted-foreground">{task.description}</p>
                           )}
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <RepeatIcon className="h-3 w-3 text-muted-foreground/50" />
+                            <span className="text-xs text-muted-foreground/70">
+                              {recurrenceLabel(task.recurrence as RecurrenceType, task.recurringDays ?? [])}
+                            </span>
+                          </div>
                         </div>
                         <span className="text-xs text-muted-foreground/50 shrink-0">#{task.sortOrder}</span>
                         <div className="flex gap-1 shrink-0">
@@ -495,6 +558,36 @@ function AdminView() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>التكرار</Label>
+              <Select value={formRecurrence} onValueChange={v => { setFormRecurrence(v as RecurrenceType); setFormDays([]); }}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">يومياً (كل يوم)</SelectItem>
+                  <SelectItem value="weekly">أسبوعياً (يوم محدد)</SelectItem>
+                  <SelectItem value="specific_days">أيام محددة من الأسبوع</SelectItem>
+                </SelectContent>
+              </Select>
+              {formRecurrence !== "daily" && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {formRecurrence === "weekly" ? "اختر يوم الأسبوع:" : "اختر الأيام:"}
+                  </p>
+                  <DaysPicker
+                    selected={formDays}
+                    onChange={days => {
+                      if (formRecurrence === "weekly") {
+                        setFormDays(days.length > 0 ? [days[days.length - 1]] : []);
+                      } else {
+                        setFormDays(days);
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
             <div>
               <Label>الترتيب</Label>

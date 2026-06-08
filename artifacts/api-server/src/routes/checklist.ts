@@ -11,16 +11,30 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function todayDow(): number {
+  return new Date().getDay();
+}
+
+function taskAppearsToday(recurrence: string, recurringDays: number[] | null): boolean {
+  if (recurrence === "daily") return true;
+  const dow = todayDow();
+  if (!recurringDays || recurringDays.length === 0) return false;
+  return recurringDays.includes(dow);
+}
+
 // GET /checklist/summary — daily completion summary (manage perm)
 router.get("/checklist/summary", requireAuth, requirePermission(P.checklist.manage), async (req, res): Promise<void> => {
   const dateParam = typeof req.query.date === "string" ? req.query.date : todayStr();
 
-  // Get all active tasks with their completion status for the given date
+  const dow = new Date(dateParam + "T12:00:00Z").getUTCDay();
+
   const rows = await db
     .select({
       userId: checklistTasksTable.assignedToUserId,
       userName: usersTable.name,
       taskId: checklistTasksTable.id,
+      recurrence: checklistTasksTable.recurrence,
+      recurringDays: checklistTasksTable.recurringDays,
       isDone: checklistCompletionsTable.isDone,
     })
     .from(checklistTasksTable)
@@ -36,10 +50,10 @@ router.get("/checklist/summary", requireAuth, requirePermission(P.checklist.mana
     .where(eq(checklistTasksTable.isActive, true))
     .orderBy(asc(usersTable.name));
 
-  // Group by worker
   const workerMap = new Map<number, { userId: number; userName: string; total: number; done: number }>();
   for (const row of rows) {
     if (row.userId === null) continue;
+    if (!taskAppearsOnDow(row.recurrence, row.recurringDays, dow)) continue;
     if (!workerMap.has(row.userId)) {
       workerMap.set(row.userId, { userId: row.userId, userName: row.userName ?? "—", total: 0, done: 0 });
     }
@@ -63,10 +77,17 @@ router.get("/checklist/summary", requireAuth, requirePermission(P.checklist.mana
   });
 });
 
+function taskAppearsOnDow(recurrence: string, recurringDays: number[] | null, dow: number): boolean {
+  if (recurrence === "daily") return true;
+  if (!recurringDays || recurringDays.length === 0) return false;
+  return recurringDays.includes(dow);
+}
+
 // GET /checklist/my — مهامي اليوم (any authenticated user)
 router.get("/checklist/my", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as any).user.id;
   const today = todayStr();
+  const dow = todayDow();
 
   const tasks = await db
     .select({
@@ -74,6 +95,8 @@ router.get("/checklist/my", requireAuth, async (req, res): Promise<void> => {
       title: checklistTasksTable.title,
       description: checklistTasksTable.description,
       sortOrder: checklistTasksTable.sortOrder,
+      recurrence: checklistTasksTable.recurrence,
+      recurringDays: checklistTasksTable.recurringDays,
       completionId: checklistCompletionsTable.id,
       isDone: checklistCompletionsTable.isDone,
     })
@@ -94,11 +117,15 @@ router.get("/checklist/my", requireAuth, async (req, res): Promise<void> => {
     )
     .orderBy(asc(checklistTasksTable.sortOrder), asc(checklistTasksTable.createdAt));
 
-  res.json(tasks.map(t => ({
+  const filtered = tasks.filter(t => taskAppearsOnDow(t.recurrence, t.recurringDays, dow));
+
+  res.json(filtered.map(t => ({
     id: t.id,
     title: t.title,
     description: t.description,
     sortOrder: t.sortOrder,
+    recurrence: t.recurrence,
+    recurringDays: t.recurringDays ?? [],
     isDone: t.isDone ?? false,
   })));
 });
@@ -127,6 +154,8 @@ router.get("/checklist", requireAuth, requirePermission(P.checklist.manage), asy
       assignedToUserName: usersTable.name,
       sortOrder: checklistTasksTable.sortOrder,
       isActive: checklistTasksTable.isActive,
+      recurrence: checklistTasksTable.recurrence,
+      recurringDays: checklistTasksTable.recurringDays,
       createdAt: checklistTasksTable.createdAt,
       completionId: checklistCompletionsTable.id,
       isDoneToday: checklistCompletionsTable.isDone,
@@ -152,6 +181,8 @@ router.get("/checklist", requireAuth, requirePermission(P.checklist.manage), asy
     assignedToUserName: t.assignedToUserName ?? "—",
     sortOrder: t.sortOrder,
     isActive: t.isActive,
+    recurrence: t.recurrence,
+    recurringDays: t.recurringDays ?? [],
     createdAt: t.createdAt,
     isDoneToday: t.isDoneToday ?? false,
   })));
@@ -159,11 +190,13 @@ router.get("/checklist", requireAuth, requirePermission(P.checklist.manage), asy
 
 // POST /checklist — create task
 router.post("/checklist", requireAuth, requirePermission(P.checklist.manage), async (req, res): Promise<void> => {
-  const { title, description, assignedToUserId, sortOrder } = req.body;
+  const { title, description, assignedToUserId, sortOrder, recurrence, recurringDays } = req.body;
   if (!title?.trim()) { res.status(400).json({ error: "Titre requis" }); return; }
   if (!assignedToUserId) { res.status(400).json({ error: "Utilisateur requis" }); return; }
 
   const userId = parseInt(String(assignedToUserId), 10);
+  const rec = recurrence ?? "daily";
+  const recDays: number[] | null = Array.isArray(recurringDays) && recurringDays.length > 0 ? recurringDays : null;
 
   const [task] = await db.insert(checklistTasksTable).values({
     title: title.trim(),
@@ -171,6 +204,8 @@ router.post("/checklist", requireAuth, requirePermission(P.checklist.manage), as
     assignedToUserId: userId,
     createdByUserId: (req as any).user.id,
     sortOrder: sortOrder ?? 0,
+    recurrence: rec,
+    recurringDays: recDays,
   }).returning();
 
   try {
@@ -193,12 +228,16 @@ router.patch("/checklist/:id", requireAuth, requirePermission(P.checklist.manage
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
 
-  const { title, description, sortOrder, isActive } = req.body;
+  const { title, description, sortOrder, isActive, recurrence, recurringDays } = req.body;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (title != null) updates.title = title.trim();
   if (description !== undefined) updates.description = description?.trim() || null;
   if (sortOrder != null) updates.sortOrder = sortOrder;
   if (isActive != null) updates.isActive = isActive;
+  if (recurrence != null) updates.recurrence = recurrence;
+  if (recurringDays !== undefined) {
+    updates.recurringDays = Array.isArray(recurringDays) && recurringDays.length > 0 ? recurringDays : null;
+  }
 
   const [task] = await db.update(checklistTasksTable)
     .set(updates as any)
