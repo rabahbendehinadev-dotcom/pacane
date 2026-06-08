@@ -18,7 +18,7 @@ const AUTH = () => ({
   Authorization: `Bearer ${localStorage.getItem("erp_token")}`,
 });
 
-const DAY_NAMES = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+const DAY_NAMES = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 
 type RecurrenceType = "daily" | "weekly" | "specific_days";
 
@@ -66,13 +66,13 @@ function hasPerm(userPerms: string[], p: string): boolean {
 }
 
 function recurrenceLabel(recurrence: RecurrenceType, recurringDays: number[]): string {
-  if (recurrence === "daily") return "يومياً";
+  if (recurrence === "daily") return "Quotidien";
   if (recurrence === "weekly") {
-    if (recurringDays.length === 1) return `أسبوعياً (${DAY_NAMES[recurringDays[0]]})`;
-    return "أسبوعياً";
+    if (recurringDays.length === 1) return `Hebdo (${DAY_NAMES[recurringDays[0]]})`;
+    return "Hebdomadaire";
   }
-  if (recurringDays.length === 0) return "أيام محددة";
-  return recurringDays.map(d => DAY_NAMES[d]).join("، ");
+  if (recurringDays.length === 0) return "Jours spécifiques";
+  return recurringDays.map(d => DAY_NAMES[d]).join(", ");
 }
 
 export default function ChecklistPage() {
@@ -98,7 +98,7 @@ function WorkerView() {
     },
   });
 
-  const today = new Date().toLocaleDateString("ar-DZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   async function toggle(task: Task) {
     setToggling(task.id);
@@ -108,7 +108,7 @@ function WorkerView() {
       if (!r.ok) throw new Error((await r.json()).error);
       qc.invalidateQueries({ queryKey: ["checklist-my"] });
     } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
     } finally {
       setToggling(null);
     }
@@ -121,7 +121,7 @@ function WorkerView() {
       <div>
         <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
           <ClipboardCheck className="h-6 w-6 text-primary" />
-          قائمة مهامي
+          Mes tâches
         </h1>
         <p className="text-sm text-muted-foreground mt-1">{today}</p>
       </div>
@@ -134,16 +134,16 @@ function WorkerView() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
             <ClipboardCheck className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">لا توجد مهام مخصّصة لك اليوم</p>
+            <p className="text-muted-foreground">Aucune tâche assignée pour aujourd'hui</p>
           </CardContent>
         </Card>
       ) : (
         <>
           <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
-            <span>{doneCount} من {tasks.length} مهمة مُنجزة</span>
+            <span>{doneCount} / {tasks.length} tâche{tasks.length !== 1 ? "s" : ""} accomplie{doneCount !== 1 ? "s" : ""}</span>
             {doneCount === tasks.length && tasks.length > 0 && (
               <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> أُنجز الكل!
+                <CheckCircle2 className="h-3.5 w-3.5" /> Tout accompli !
               </Badge>
             )}
           </div>
@@ -218,12 +218,12 @@ function DailySummaryCard() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            ملخّص إنجاز اليوم
+            Résumé du jour
           </CardTitle>
           <div className="flex items-center gap-3 text-sm">
             <span className="flex items-center gap-1 text-muted-foreground">
               <Users className="h-3.5 w-3.5" />
-              {summary.workersCompleted}/{summary.totalWorkers} عامل أنجز
+              {summary.workersCompleted}/{summary.totalWorkers} ouvrier{summary.totalWorkers !== 1 ? "s" : ""}
             </span>
             <Badge
               className={
@@ -241,7 +241,7 @@ function DailySummaryCard() {
         <div className="mt-2 space-y-1">
           <Progress value={overallPct} className="h-2" />
           <p className="text-xs text-muted-foreground text-left">
-            {summary.totalDone} من {summary.totalTasks} مهمة مُنجزة
+            {summary.totalDone} / {summary.totalTasks} tâche{summary.totalTasks !== 1 ? "s" : ""} accomplie{summary.totalDone !== 1 ? "s" : ""}
           </p>
         </div>
       </CardHeader>
@@ -363,10 +363,10 @@ function AdminView() {
   }
 
   async function save() {
-    if (!formTitle.trim()) { toast({ title: "العنوان مطلوب", variant: "destructive" }); return; }
-    if (!formUserId) { toast({ title: "اختر عاملاً", variant: "destructive" }); return; }
+    if (!formTitle.trim()) { toast({ title: "Le titre est requis", variant: "destructive" }); return; }
+    if (!formUserId) { toast({ title: "Veuillez choisir un ouvrier", variant: "destructive" }); return; }
     if (formRecurrence !== "daily" && formDays.length === 0) {
-      toast({ title: "حدّد يوماً واحداً على الأقل", variant: "destructive" });
+      toast({ title: "Sélectionnez au moins un jour", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -382,16 +382,16 @@ function AdminView() {
       if (editing) {
         const r = await fetch(`/api/checklist/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify(body) });
         if (!r.ok) throw new Error((await r.json()).error);
-        toast({ title: "تمّ التعديل" });
+        toast({ title: "Tâche modifiée" });
       } else {
         const r = await fetch("/api/checklist", { method: "POST", headers: AUTH(), body: JSON.stringify(body) });
         if (!r.ok) throw new Error((await r.json()).error);
-        toast({ title: "تمّت الإضافة" });
+        toast({ title: "Tâche ajoutée" });
       }
       qc.invalidateQueries({ queryKey: ["checklist-all"] });
       setDialogOpen(false);
     } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
     } finally { setSaving(false); }
   }
 
@@ -400,10 +400,10 @@ function AdminView() {
     try {
       const r = await fetch(`/api/checklist/${id}`, { method: "DELETE", headers: AUTH() });
       if (!r.ok) throw new Error((await r.json()).error);
-      toast({ title: "تمّ الحذف" });
+      toast({ title: "Tâche supprimée" });
       qc.invalidateQueries({ queryKey: ["checklist-all"] });
     } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
     } finally { setDeleting(null); }
   }
 
@@ -414,7 +414,7 @@ function AdminView() {
     return acc;
   }, {});
 
-  const today = new Date().toLocaleDateString("ar-DZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   return (
     <div className="space-y-6">
@@ -422,12 +422,12 @@ function AdminView() {
         <div>
           <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
             <ClipboardCheck className="h-6 w-6 text-primary" />
-            إدارة مهام العاملين
+            Gestion des tâches
           </h1>
           <p className="text-sm text-muted-foreground mt-1">{today}</p>
         </div>
         <Button onClick={openNew} className="gap-2">
-          <Plus className="h-4 w-4" /> إضافة مهمة
+          <Plus className="h-4 w-4" /> Ajouter une tâche
         </Button>
       </div>
 
@@ -436,16 +436,16 @@ function AdminView() {
       <div className="flex items-center gap-3">
         <Select value={selectedUserId} onValueChange={setSelectedUserId}>
           <SelectTrigger className="w-56">
-            <SelectValue placeholder="جميع العاملين" />
+            <SelectValue placeholder="Tous les ouvriers" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">جميع العاملين</SelectItem>
+            <SelectItem value="all">Tous les ouvriers</SelectItem>
             {users.map(u => (
               <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <span className="text-sm text-muted-foreground">{tasks.length} مهمة</span>
+        <span className="text-sm text-muted-foreground">{tasks.length} tâche{tasks.length !== 1 ? "s" : ""}</span>
       </div>
 
       {isLoading ? (
@@ -456,7 +456,7 @@ function AdminView() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
             <AlertCircle className="h-10 w-10 text-muted-foreground/30" />
-            <p className="text-muted-foreground">لا توجد مهام. أضف مهمة للبدء.</p>
+            <p className="text-muted-foreground">Aucune tâche. Ajoutez-en une pour commencer.</p>
           </CardContent>
         </Card>
       ) : (
@@ -470,7 +470,7 @@ function AdminView() {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{userName}</CardTitle>
                     <span className="text-xs text-muted-foreground">
-                      {doneCount}/{userTasks.length} اليوم
+                      {doneCount}/{userTasks.length} aujourd'hui
                     </span>
                   </div>
                 </CardHeader>
@@ -521,36 +521,36 @@ function AdminView() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-sm" dir="rtl">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{editing ? "تعديل المهمة" : "مهمة جديدة"}</DialogTitle>
+            <DialogTitle>{editing ? "Modifier la tâche" : "Nouvelle tâche"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>العنوان <span className="text-destructive">*</span></Label>
+              <Label>Titre <span className="text-destructive">*</span></Label>
               <Input
                 className="mt-1"
                 value={formTitle}
                 onChange={e => setFormTitle(e.target.value)}
-                placeholder="مثال: تنظيف محطة العمل"
+                placeholder="Ex : nettoyage du poste de travail"
                 autoFocus
               />
             </div>
             <div>
-              <Label>وصف إضافي (اختياري)</Label>
+              <Label>Description (facultatif)</Label>
               <Textarea
                 className="mt-1 resize-none"
                 rows={2}
                 value={formDesc}
                 onChange={e => setFormDesc(e.target.value)}
-                placeholder="تفاصيل إضافية..."
+                placeholder="Détails supplémentaires..."
               />
             </div>
             <div>
-              <Label>العامل <span className="text-destructive">*</span></Label>
+              <Label>Ouvrier <span className="text-destructive">*</span></Label>
               <Select value={formUserId} onValueChange={setFormUserId}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="اختر عاملاً" />
+                  <SelectValue placeholder="Choisir un ouvrier" />
                 </SelectTrigger>
                 <SelectContent>
                   {users.map(u => (
@@ -560,21 +560,21 @@ function AdminView() {
               </Select>
             </div>
             <div>
-              <Label>التكرار</Label>
+              <Label>Récurrence</Label>
               <Select value={formRecurrence} onValueChange={v => { setFormRecurrence(v as RecurrenceType); setFormDays([]); }}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">يومياً (كل يوم)</SelectItem>
-                  <SelectItem value="weekly">أسبوعياً (يوم محدد)</SelectItem>
-                  <SelectItem value="specific_days">أيام محددة من الأسبوع</SelectItem>
+                  <SelectItem value="daily">Quotidien (chaque jour)</SelectItem>
+                  <SelectItem value="weekly">Hebdomadaire (un jour fixe)</SelectItem>
+                  <SelectItem value="specific_days">Jours spécifiques de la semaine</SelectItem>
                 </SelectContent>
               </Select>
               {formRecurrence !== "daily" && (
                 <div className="mt-2">
                   <p className="text-xs text-muted-foreground mb-1">
-                    {formRecurrence === "weekly" ? "اختر يوم الأسبوع:" : "اختر الأيام:"}
+                    {formRecurrence === "weekly" ? "Choisir le jour :" : "Choisir les jours :"}
                   </p>
                   <DaysPicker
                     selected={formDays}
@@ -590,7 +590,7 @@ function AdminView() {
               )}
             </div>
             <div>
-              <Label>الترتيب</Label>
+              <Label>Ordre</Label>
               <Input
                 className="mt-1"
                 type="number"
@@ -601,9 +601,9 @@ function AdminView() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
             <Button onClick={save} disabled={saving || !formTitle.trim() || !formUserId}>
-              {saving ? "جارٍ الحفظ..." : "حفظ"}
+              {saving ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </DialogFooter>
         </DialogContent>
