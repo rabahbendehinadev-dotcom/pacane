@@ -139,6 +139,12 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       ],
     },
     {
+      title: "Équipe",
+      items: [
+        { label: "Checklist", href: "/checklist", icon: ClipboardCheck },
+      ],
+    },
+    {
       title: "Système",
       items: [
         { label: t("settings"), href: "/settings", icon: Settings, adminOnly: true },

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useLogout, useGetBranches } from "@workspace/api-client-react";
-import { Bell, Globe, LogOut, Menu, UserCircle } from "lucide-react";
+import { Bell, Globe, LogOut, Menu, UserCircle, CheckCircle2, Circle, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,15 +12,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { NotificationsDrawer } from "@/components/notifications/NotificationsDrawer";
+import { toast } from "@/hooks/use-toast";
+
+interface ChecklistTask {
+  id: number;
+  title: string;
+  description: string | null;
+  isDone: boolean;
+}
 
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const { t, language, setLanguage, isRtl } = useI18n();
   const { user, activeBranchId, setActiveBranchId } = useAuth();
   const logout = useLogout();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [checklistTasks, setChecklistTasks] = useState<ChecklistTask[]>([]);
+  const [localDone, setLocalDone] = useState<Set<number>>(new Set());
+  const [toggling, setToggling] = useState<number | null>(null);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const { data: branches = [] } = useGetBranches({
     query: {
@@ -30,10 +44,8 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   });
 
   const activeBranch = branches.find(b => b.id === activeBranchId);
-
   const token = () => localStorage.getItem("erp_token") ?? "";
 
-  // Badge count — lightweight poll every 60s
   const { data: badge } = useQuery<{ count: number }>({
     queryKey: ["notifications-badge"],
     queryFn: async () => {
@@ -47,16 +59,65 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   });
 
   const unreadCount = badge?.count ?? 0;
+  const isAdmin = !!(user as any)?.adminAccess;
 
-  const handleLogout = () => {
+  const performLogout = () => {
     localStorage.removeItem("erp_token");
     logout.mutate(undefined);
     window.location.href = "/login";
   };
 
+  const handleLogout = async () => {
+    if (isAdmin) { performLogout(); return; }
+    try {
+      const r = await fetch("/api/checklist/my", { headers: { Authorization: `Bearer ${token()}` } });
+      if (r.ok) {
+        const tasks: ChecklistTask[] = await r.json();
+        if (tasks.length > 0) {
+          const doneSet = new Set(tasks.filter(t => t.isDone).map(t => t.id));
+          setChecklistTasks(tasks);
+          setLocalDone(doneSet);
+          setLogoutModalOpen(true);
+          return;
+        }
+      }
+    } catch {
+      // ignore — just logout
+    }
+    performLogout();
+  };
+
+  const toggleTask = async (task: ChecklistTask) => {
+    const nowDone = !localDone.has(task.id);
+    setToggling(task.id);
+    try {
+      const action = nowDone ? "complete" : "uncomplete";
+      const r = await fetch(`/api/checklist/${task.id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+      });
+      if (!r.ok) throw new Error();
+      setLocalDone(prev => {
+        const next = new Set(prev);
+        if (nowDone) next.add(task.id); else next.delete(task.id);
+        return next;
+      });
+    } catch {
+      toast({ title: "خطأ في التحديث", variant: "destructive" });
+    } finally { setToggling(null); }
+  };
+
+  const confirmLogout = async () => {
+    setConfirmingLogout(true);
+    await new Promise(r => setTimeout(r, 200));
+    performLogout();
+  };
+
   const toggleLanguage = () => {
     setLanguage(language === "fr" ? "ar" : "fr");
   };
+
+  const doneCount = checklistTasks.filter(t => localDone.has(t.id)).length;
 
   return (
     <>
@@ -102,7 +163,6 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             <Globe className="h-5 w-5" />
           </Button>
 
-          {/* Bell with live badge */}
           <Button
             variant="ghost"
             size="icon"
@@ -148,6 +208,68 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       </header>
 
       <NotificationsDrawer open={notifOpen} onClose={() => setNotifOpen(false)} />
+
+      {/* Logout checklist modal */}
+      <Dialog open={logoutModalOpen} onOpenChange={v => { if (!confirmingLogout) setLogoutModalOpen(v); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-right">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              مراجعة المهام قبل الخروج
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground mb-3 text-right">
+              {doneCount} من {checklistTasks.length} مهمة مُنجزة اليوم
+            </p>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {checklistTasks.map(task => {
+                const isDone = localDone.has(task.id);
+                return (
+                  <button
+                    key={task.id}
+                    onClick={() => toggleTask(task)}
+                    disabled={toggling === task.id}
+                    className={`w-full flex items-start gap-3 p-3 rounded-lg border transition-all text-right ${
+                      isDone ? "bg-emerald-50 border-emerald-200" : "bg-card border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <span className="mt-0.5 shrink-0">
+                      {toggling === task.id ? (
+                        <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin inline-block" />
+                      ) : isDone ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground/50" />
+                      )}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
+                        {task.title}
+                      </p>
+                      {task.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setLogoutModalOpen(false)} disabled={confirmingLogout}>
+              إلغاء
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmLogout}
+              disabled={confirmingLogout}
+            >
+              {confirmingLogout ? "جارٍ الخروج..." : "تسجيل الخروج"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

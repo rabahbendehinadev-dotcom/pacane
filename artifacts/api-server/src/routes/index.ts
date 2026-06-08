@@ -44,6 +44,7 @@ import analyticsSellersRouter from "./analytics-sellers";
 import crmRouter from "./crm";
 import intelligenceRouter from "./intelligence";
 import aiControlRouter from "./ai-control";
+import checklistRouter from "./checklist";
 
 const router: IRouter = Router();
 
@@ -93,5 +94,6 @@ router.use(analyticsSellersRouter);
 router.use("/crm", crmRouter);
 router.use(intelligenceRouter);
 router.use(aiControlRouter);
+router.use(checklistRouter);
 
 export default router;

@@ -26,6 +26,7 @@ export const P = {
   workers:         { view: "workers.view", create: "workers.create", edit: "workers.edit", deactivate: "workers.deactivate" },
   preparationOrders: { view: "preparation_orders.view", create: "preparation_orders.create", send: "preparation_orders.send", cancel: "preparation_orders.cancel", print: "preparation_orders.print" },
   myPreparations:  { view: "my_preparations.view", updateStatus: "my_preparations.update_status" },
+  checklist:       { manage: "checklist.manage" },
 } as const;
 
 export function hasPermission(permissions: string[], permission: string): boolean {
