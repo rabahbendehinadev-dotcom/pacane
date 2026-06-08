@@ -43,6 +43,7 @@ import preparationOrdersRouter from "./preparation-orders";
 import analyticsSellersRouter from "./analytics-sellers";
 import crmRouter from "./crm";
 import intelligenceRouter from "./intelligence";
+import aiControlRouter from "./ai-control";
 
 const router: IRouter = Router();
 
@@ -91,5 +92,6 @@ router.use(preparationOrdersRouter);
 router.use(analyticsSellersRouter);
 router.use("/crm", crmRouter);
 router.use(intelligenceRouter);
+router.use(aiControlRouter);
 
 export default router;

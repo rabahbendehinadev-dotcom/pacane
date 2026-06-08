@@ -47,6 +47,7 @@ import MyPreparationsPage from "@/pages/my-preparations";
 import AnalyticsSellers from "@/pages/analytics-sellers";
 import WhatsappTemplatesPage from "@/pages/whatsapp-templates";
 import IntelligencePage from "@/pages/intelligence";
+import AiControlPage from "@/pages/ai-control";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -209,6 +210,9 @@ function AppRoutes() {
       </Route>
       <Route path="/intelligence">
         <DashboardLayout><IntelligencePage /></DashboardLayout>
+      </Route>
+      <Route path="/ai-control">
+        <DashboardLayout><AiControlPage /></DashboardLayout>
       </Route>
       <Route path="/whatsapp-templates">
         <DashboardLayout><WhatsappTemplatesPage /></DashboardLayout>

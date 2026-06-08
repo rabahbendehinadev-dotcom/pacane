@@ -37,6 +37,7 @@ import {
   Send,
   MessageCircle,
   Brain,
+  Cpu,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -64,6 +65,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       items: [
         { label: "Tableau de bord gérant", href: "/dashboard/executive", icon: Layers, perm: "reports.view" },
         { label: "Intelligence ERP", href: "/intelligence", icon: Brain, perm: "analytics.view" },
+        { label: "AI Control Center", href: "/ai-control", icon: Cpu, perm: "analytics.view" },
       ],
     },
     {
