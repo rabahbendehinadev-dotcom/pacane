@@ -42,7 +42,7 @@ export default function Login() {
               setChecklistTasks(tasks);
               setLocalDone(doneSet);
               setChecklistToken(data.token);
-              setShowChecklist(true);
+              setTimeout(() => setShowChecklist(true), 2000);
               return;
             }
           }
@@ -158,16 +158,16 @@ export default function Login() {
 
       {/* Post-login checklist modal */}
       <Dialog open={showChecklist} onOpenChange={() => {}}>
-        <DialogContent className="max-w-sm" dir="rtl" onInteractOutside={e => e.preventDefault()}>
+        <DialogContent className="max-w-sm" onInteractOutside={e => e.preventDefault()}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-right">
+            <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-primary" />
-              مهام اليوم
+              Tâches du jour
             </DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <p className="text-sm text-muted-foreground mb-3 text-right">
-              {doneCount} من {checklistTasks.length} مهمة مُنجزة — يمكنك تحديث الحالة الآن
+            <p className="text-sm text-muted-foreground mb-3">
+              {doneCount} sur {checklistTasks.length} tâche{checklistTasks.length > 1 ? "s" : ""} complétée{checklistTasks.length > 1 ? "s" : ""} — vous pouvez mettre à jour le statut maintenant
             </p>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {checklistTasks.map(task => {
@@ -177,7 +177,7 @@ export default function Login() {
                     key={task.id}
                     onClick={() => toggleTask(task)}
                     disabled={toggling === task.id}
-                    className={`w-full flex items-start gap-3 p-3 rounded-lg border transition-all text-right ${
+                    className={`w-full flex items-start gap-3 p-3 rounded-lg border transition-all text-left ${
                       isDone ? "bg-emerald-50 border-emerald-200" : "bg-card border-border hover:border-primary/40"
                     }`}
                   >
@@ -205,7 +205,7 @@ export default function Login() {
           </div>
           <DialogFooter>
             <Button className="w-full" onClick={() => { window.location.href = "/"; }}>
-              متابعة إلى لوحة التحكم
+              Accéder au tableau de bord
             </Button>
           </DialogFooter>
         </DialogContent>
