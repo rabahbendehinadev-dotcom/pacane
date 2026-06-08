@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
-import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetRecipes, useCreateRecipe, useUpdateRecipe, useGetProducts, useGetUnits, getGetRecipesQueryKey } from "@workspace/api-client-react";
+import { useCreateRecipe, useUpdateRecipe, useGetProducts, useGetUnits, getGetRecipesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -237,32 +236,31 @@ function CostAnalysisPanel({ recipeId, quantity, yieldQty }: { recipeId: number;
 }
 
 // ─── Excel Template Download ──────────────────────────────────────────────────
-function downloadRecipesTemplate() {
-  const wb = XLSX.utils.book_new();
-
-  const ws1 = XLSX.utils.aoa_to_sheet([
-    ["nom", "type", "rendement", "unité_rendement", "produit_lié", "étapes", "notes"],
-    ["Pain au chocolat", "finished", 12, "pièce", "Pain au chocolat", "1. Pétrir\n2. Garnir\n3. Cuire", "Exemple recette finie"],
-    ["Pâte feuilletée", "semi_finished", 1, "kg", "", "1. Détrempe\n2. Tourage", ""],
-  ]);
-  ws1["!cols"] = [{ wch: 25 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 30 }, { wch: 20 }];
-  XLSX.utils.book_append_sheet(wb, ws1, "Recettes");
-
-  const ws2 = XLSX.utils.aoa_to_sheet([
-    ["nom_recette", "nom_composant", "quantité", "unité", "taux_de_perte"],
-    ["Pain au chocolat", "Farine T55", 0.5, "kg", 2],
-    ["Pain au chocolat", "Beurre", 0.25, "kg", 0],
-    ["Pain au chocolat", "Chocolat noir", 0.2, "kg", 1],
-    ["Pâte feuilletée", "Farine T55", 1, "kg", 0],
-    ["Pâte feuilletée", "Beurre", 0.5, "kg", 0],
-  ]);
-  ws2["!cols"] = [{ wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws2, "Composants");
-
-  XLSX.writeFile(wb, "recettes_template.xlsx");
+function toCsvRow(fields: (string | number | null | undefined)[]): string {
+  return fields.map(f => {
+    const s = f == null ? "" : String(f);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(",");
 }
 
-// ─── Excel Import Dialog ──────────────────────────────────────────────────────
+function downloadRecipesTemplate() {
+  const rows = [
+    ["nom", "type", "rendement", "unite_rendement", "produit_lie", "etapes", "notes", "nom_composant", "quantite", "unite", "taux_de_perte"],
+    ["Pain au chocolat", "finished", 12, "pièce", "Pain au chocolat", "1. Pétrir | 2. Garnir | 3. Cuire", "Exemple recette finie", "Farine T55", 0.5, "kg", 2],
+    ["Pain au chocolat", "finished", 12, "pièce", "Pain au chocolat", "1. Pétrir | 2. Garnir | 3. Cuire", "Exemple recette finie", "Beurre", 0.25, "kg", 0],
+    ["Pain au chocolat", "finished", 12, "pièce", "Pain au chocolat", "1. Pétrir | 2. Garnir | 3. Cuire", "Exemple recette finie", "Chocolat noir", 0.2, "kg", 1],
+    ["Pâte feuilletée", "semi_finished", 1, "kg", "", "1. Détrempe | 2. Tourage", "", "Farine T55", 1, "kg", 0],
+    ["Pâte feuilletée", "semi_finished", 1, "kg", "", "1. Détrempe | 2. Tourage", "", "Beurre", 0.5, "kg", 0],
+  ];
+  const csv = rows.map(toCsvRow).join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "recettes_template.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── CSV Import Dialog ────────────────────────────────────────────────────────
 interface ParsedRecipeRow {
   name: string;
   type: string;
@@ -275,6 +273,28 @@ interface ParsedRecipeRow {
   notes: string | null;
   components: { itemId: number | null; compName: string; quantity: number; unitId: number | null; unitName: string; wastageRate: number }[];
   errors: string[];
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.trim().replace(/^\uFEFF/, ""));
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells: string[] = [];
+    let cur = "", inQ = false;
+    for (const ch of lines[i]) {
+      if (ch === '"' && !inQ) { inQ = true; }
+      else if (ch === '"' && inQ) { inQ = false; }
+      else if (ch === "," && !inQ) { cells.push(cur); cur = ""; }
+      else { cur += ch; }
+    }
+    cells.push(cur);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => { row[h] = (cells[idx] ?? "").trim(); });
+    rows.push(row);
+  }
+  return rows;
 }
 
 function ImportRecipesDialog({ open, onClose, products, units, onSuccess }: {
@@ -318,65 +338,55 @@ function ImportRecipesDialog({ open, onClose, products, units, onSuccess }: {
     setParsed([]);
 
     try {
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const ws1 = wb.Sheets["Recettes"];
-      const ws2 = wb.Sheets["Composants"];
+      const text = await file.text();
+      const rows = parseCsv(text);
 
-      if (!ws1) {
-        toast({ title: "Feuille 'Recettes' introuvable dans le fichier", variant: "destructive" });
+      if (rows.length === 0) {
+        toast({ title: "Aucune donnée trouvée dans le fichier CSV", variant: "destructive" });
         reset();
         return;
       }
 
-      const recipeRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws1);
-      const compRows: Record<string, any>[] = ws2 ? XLSX.utils.sheet_to_json(ws2) : [];
-
-      const compsByRecipe: Record<string, Record<string, any>[]> = {};
-      for (const row of compRows) {
-        const rName = String(row["nom_recette"] ?? "").trim();
-        if (rName) { if (!compsByRecipe[rName]) compsByRecipe[rName] = []; compsByRecipe[rName].push(row); }
-      }
-
-      const result: ParsedRecipeRow[] = [];
-      for (const row of recipeRows) {
-        const name = String(row["nom"] ?? "").trim();
+      const recipeMap = new Map<string, ParsedRecipeRow>();
+      for (const row of rows) {
+        const name = (row["nom"] ?? "").trim();
         if (!name) continue;
 
-        const type = String(row["type"] ?? "finished").trim();
-        const yieldVal = parseFloat(String(row["rendement"] ?? "0")) || 0;
-        const yieldUnitName = String(row["unité_rendement"] ?? "").trim();
-        const productLineName = String(row["produit_lié"] ?? "").trim();
-        const steps = String(row["étapes"] ?? "").trim() || null;
-        const notes = String(row["notes"] ?? "").trim() || null;
+        if (!recipeMap.has(name)) {
+          const type = (row["type"] ?? "finished").trim();
+          const yieldVal = parseFloat(row["rendement"] ?? "0") || 0;
+          const yieldUnitName = (row["unite_rendement"] ?? "").trim();
+          const productLineName = (row["produit_lie"] ?? "").trim();
+          const steps = (row["etapes"] ?? "").trim().replace(/ \| /g, "\n") || null;
+          const notes = (row["notes"] ?? "").trim() || null;
 
-        const errors: string[] = [];
-        const yieldUnit = findUnit(yieldUnitName);
-        if (yieldUnitName && !yieldUnit) errors.push(`Unité rendement introuvable: "${yieldUnitName}"`);
-        if (!yieldUnitName) errors.push("Unité rendement manquante");
+          const errors: string[] = [];
+          const yieldUnit = findUnit(yieldUnitName);
+          if (!yieldUnitName) errors.push("Unité rendement manquante");
+          else if (!yieldUnit) errors.push(`Unité rendement introuvable: "${yieldUnitName}"`);
+          const linkedProduct = productLineName ? findProduct(productLineName) : null;
+          if (productLineName && !linkedProduct) errors.push(`Produit lié introuvable: "${productLineName}"`);
 
-        const linkedProduct = productLineName ? findProduct(productLineName) : null;
-        if (productLineName && !linkedProduct) errors.push(`Produit lié introuvable: "${productLineName}"`);
+          recipeMap.set(name, { name, type, yieldVal, yieldUnitId: yieldUnit?.id ?? null, yieldUnitName, productId: linkedProduct?.id ?? null, productName: productLineName, steps, notes, components: [], errors });
+        }
 
-        const recipeComps = compsByRecipe[name] ?? [];
-        const parsedComps = recipeComps.map(c => {
-          const compName = String(c["nom_composant"] ?? "").trim();
-          const qty = parseFloat(String(c["quantité"] ?? "0")) || 0;
-          const uName = String(c["unité"] ?? "").trim();
-          const wastage = parseFloat(String(c["taux_de_perte"] ?? "0")) || 0;
+        const compName = (row["nom_composant"] ?? "").trim();
+        if (compName) {
+          const recipe = recipeMap.get(name)!;
+          const qty = parseFloat(row["quantite"] ?? "0") || 0;
+          const uName = (row["unite"] ?? "").trim();
+          const wastage = parseFloat(row["taux_de_perte"] ?? "0") || 0;
           const prod = findProduct(compName);
           const unit = findUnit(uName);
-          if (!prod) errors.push(`Composant introuvable: "${compName}"`);
-          if (!unit) errors.push(`Unité introuvable: "${uName}" (composant: "${compName}")`);
-          return { itemId: prod?.id ?? null, compName, quantity: qty, unitId: unit?.id ?? null, unitName: uName, wastageRate: wastage };
-        });
-
-        result.push({ name, type, yieldVal, yieldUnitId: yieldUnit?.id ?? null, yieldUnitName, productId: linkedProduct?.id ?? null, productName: productLineName, steps, notes, components: parsedComps, errors });
+          if (!prod) recipe.errors.push(`Composant introuvable: "${compName}"`);
+          if (!unit) recipe.errors.push(`Unité introuvable: "${uName}" (composant: "${compName}")`);
+          recipe.components.push({ itemId: prod?.id ?? null, compName, quantity: qty, unitId: unit?.id ?? null, unitName: uName, wastageRate: wastage });
+        }
       }
 
-      setParsed(result);
+      setParsed(Array.from(recipeMap.values()));
     } catch {
-      toast({ title: "Impossible de lire le fichier Excel", variant: "destructive" });
+      toast({ title: "Impossible de lire le fichier CSV", variant: "destructive" });
       reset();
     }
   }
@@ -423,23 +433,23 @@ function ImportRecipesDialog({ open, onClose, products, units, onSuccess }: {
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-4 w-4" /> Importer des recettes
           </DialogTitle>
-          <DialogDescription>Fichier Excel (.xlsx) avec les feuilles "Recettes" et "Composants".</DialogDescription>
+          <DialogDescription>Fichier CSV — une ligne par composant, colonnes: nom, type, rendement, unite_rendement, produit_lie, etapes, notes, nom_composant, quantite, unite, taux_de_perte.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div>
-            <Label>Fichier Excel (.xlsx)</Label>
+            <Label>Fichier CSV (.csv)</Label>
             <input
               ref={fileRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".csv"
               className="mt-1.5 block w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
               onChange={handleFile}
             />
           </div>
 
           {hasFile && parsed.length === 0 && (
-            <Alert><AlertDescription>Aucune recette trouvée dans la feuille "Recettes".</AlertDescription></Alert>
+            <Alert><AlertDescription>Aucune recette trouvée dans le fichier CSV.</AlertDescription></Alert>
           )}
 
           {parsed.length > 0 && (
@@ -524,8 +534,18 @@ export default function Recipes() {
   const [newComp, setNewComp] = useState({ itemType: "product", itemId: "", quantity: "", unitId: "", wastageRate: "0" });
   const [compTab, setCompTab] = useState("product");
 
-  const { data: recipesRaw = [], isLoading } = useGetRecipes({});
-  const recipes = recipesRaw as unknown as Recipe[];
+  const { data: recipesRaw, isLoading, error: recipesError } = useQuery<Recipe[]>({
+    queryKey: getGetRecipesQueryKey(),
+    queryFn: async () => {
+      const r = await fetch(`/api/recipes`, { headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` } });
+      if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error((b as any).error ?? `Erreur ${r.status}`); }
+      const json = await r.json();
+      return Array.isArray(json) ? json : (json.data ?? []);
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const recipes: Recipe[] = recipesRaw ?? [];
   const { data: productsRaw = [] } = useGetProducts({});
   const products = productsRaw as any[];
   const { data: unitsRaw = [] } = useGetUnits();
@@ -618,14 +638,22 @@ export default function Recipes() {
             <Download className="h-3.5 w-3.5" />Télécharger le modèle
           </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="gap-1.5">
-            <Upload className="h-3.5 w-3.5" />Importer Excel
+            <Upload className="h-3.5 w-3.5" />Importer CSV
           </Button>
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nouvelle recette</Button>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {isLoading ? <p className="text-muted-foreground col-span-3">Chargement...</p> : recipes.length === 0 ? (
+        {isLoading ? <p className="text-muted-foreground col-span-3">Chargement...</p>
+          : recipesError ? (
+            <Card className="col-span-3 border-red-200 bg-red-50">
+              <CardContent className="text-center py-8">
+                <p className="text-red-700 font-medium">Impossible de charger les recettes</p>
+                <p className="text-red-500 text-sm mt-1 font-mono">{(recipesError as Error).message}</p>
+              </CardContent>
+            </Card>
+          ) : recipes.length === 0 ? (
           <Card className="col-span-3"><CardContent className="text-center py-12 text-muted-foreground">Aucune recette</CardContent></Card>
         ) : recipes.map(r => {
           const displayCost = r.cachedTotalCost ?? r.theoreticalCost;
