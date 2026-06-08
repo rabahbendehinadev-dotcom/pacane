@@ -82,7 +82,10 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
     inArray(productionOrdersTable.status, ["planned", "in_progress"]),
     ...prodBranchConds,
   ];
-  const pendingOrders = await db.select().from(productionOrdersTable).where(and(...prodConditions));
+  let pendingOrders: typeof productionOrdersTable.$inferSelect[] = [];
+  try {
+    pendingOrders = await db.select().from(productionOrdersTable).where(and(...prodConditions));
+  } catch { pendingOrders = []; }
 
   const delivConds: any[] = [
     eq(salesTable.fulfillmentStatus, "ready"),

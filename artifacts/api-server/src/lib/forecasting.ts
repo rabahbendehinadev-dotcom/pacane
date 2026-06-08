@@ -417,18 +417,26 @@ export async function detectWasteAndOverproduction(): Promise<WasteAlert[]> {
   if (cached) return cached;
 
   const since = daysAgo(30);
-  const completedOrders = await db
-    .select({
-      id: productionOrdersTable.id,
-      recipeId: productionOrdersTable.recipeId,
-      productId: productionOrdersTable.productId,
-      branchId: productionOrdersTable.branchId,
-      actualQty: productionOrdersTable.actualQuantity,
-      actualCost: productionOrdersTable.actualCost,
-      wastePercentage: productionOrdersTable.wastePercentage,
-    })
-    .from(productionOrdersTable)
-    .where(and(eq(productionOrdersTable.status, "completed"), gte(productionOrdersTable.completedAt, since)));
+  let completedOrders: Array<{
+    id: number; recipeId: number; productId: number | null;
+    branchId: number; actualQty: unknown; actualCost: unknown; wastePercentage: unknown;
+  }>;
+  try {
+    completedOrders = await db
+      .select({
+        id: productionOrdersTable.id,
+        recipeId: productionOrdersTable.recipeId,
+        productId: productionOrdersTable.productId,
+        branchId: productionOrdersTable.branchId,
+        actualQty: productionOrdersTable.actualQuantity,
+        actualCost: productionOrdersTable.actualCost,
+        wastePercentage: productionOrdersTable.wastePercentage,
+      })
+      .from(productionOrdersTable)
+      .where(and(eq(productionOrdersTable.status, "completed"), gte(productionOrdersTable.completedAt, since)));
+  } catch {
+    return [];
+  }
 
   const alerts: WasteAlert[] = [];
 
