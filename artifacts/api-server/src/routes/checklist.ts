@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, checklistTasksTable, checklistCompletionsTable, usersTable } from "@workspace/db";
+import { db, checklistTasksTable, checklistCompletionsTable, usersTable, userNotificationsTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
@@ -163,13 +163,27 @@ router.post("/checklist", requireAuth, requirePermission(P.checklist.manage), as
   if (!title?.trim()) { res.status(400).json({ error: "Titre requis" }); return; }
   if (!assignedToUserId) { res.status(400).json({ error: "Utilisateur requis" }); return; }
 
+  const userId = parseInt(String(assignedToUserId), 10);
+
   const [task] = await db.insert(checklistTasksTable).values({
     title: title.trim(),
     description: description?.trim() || null,
-    assignedToUserId: parseInt(String(assignedToUserId), 10),
+    assignedToUserId: userId,
     createdByUserId: (req as any).user.id,
     sortOrder: sortOrder ?? 0,
   }).returning();
+
+  try {
+    await db.insert(userNotificationsTable).values({
+      userId,
+      type: "task_assigned",
+      title: "لديك مهمة جديدة",
+      message: `لديك مهمة جديدة: ${title.trim()}`,
+      meta: { taskId: task.id },
+    });
+  } catch (notifErr) {
+    req.log.warn({ err: notifErr, taskId: task.id }, "Failed to insert user notification for task assignment");
+  }
 
   res.status(201).json(task);
 });

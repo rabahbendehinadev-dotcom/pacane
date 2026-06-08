@@ -9,6 +9,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   alertsTable,
+  userNotificationsTable,
   productsTable,
   stockLevelsTable,
   branchesTable,
@@ -377,9 +378,10 @@ router.get("/notifications", requireAuth, async (req, res) => {
   res.json(alerts);
 });
 
-// GET /api/notifications/badge — fast unread count
+// GET /api/notifications/badge — fast unread count (operational alerts + user notifications)
 router.get("/notifications/badge", requireAuth, async (req, res) => {
   const allowed = visibleBranchIds(req.user!);
+  const userId = req.user!.id;
 
   const conditions = [isNull(alertsTable.resolvedAt), eq(alertsTable.isRead, false)];
   if (allowed !== null && allowed.length > 0) {
@@ -388,12 +390,53 @@ router.get("/notifications/badge", requireAuth, async (req, res) => {
     conditions.push(sql`false`);
   }
 
-  const [row] = await db
+  const [alertRow] = await db
     .select({ count: sql<string>`COUNT(*)` })
     .from(alertsTable)
     .where(and(...conditions));
 
-  res.json({ count: parseInt(row?.count ?? "0", 10) });
+  const [userRow] = await db
+    .select({ count: sql<string>`COUNT(*)` })
+    .from(userNotificationsTable)
+    .where(and(eq(userNotificationsTable.userId, userId), eq(userNotificationsTable.isRead, false)));
+
+  const total = parseInt(alertRow?.count ?? "0", 10) + parseInt(userRow?.count ?? "0", 10);
+  res.json({ count: total });
+});
+
+// GET /api/notifications/user — personal notifications for current user
+router.get("/notifications/user", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const notifications = await db
+    .select()
+    .from(userNotificationsTable)
+    .where(eq(userNotificationsTable.userId, userId))
+    .orderBy(sql`${userNotificationsTable.createdAt} DESC`)
+    .limit(100);
+  res.json(notifications);
+});
+
+// POST /api/notifications/user/:id/read — mark single user notification as read
+router.post("/notifications/user/:id/read", requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const userId = req.user!.id;
+  const [updated] = await db
+    .update(userNotificationsTable)
+    .set({ isRead: true })
+    .where(and(eq(userNotificationsTable.id, id), eq(userNotificationsTable.userId, userId)))
+    .returning();
+  res.json(updated ?? { error: "Not found" });
+});
+
+// POST /api/notifications/user/read-all — mark all user notifications as read
+router.post("/notifications/user/read-all", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const updated = await db
+    .update(userNotificationsTable)
+    .set({ isRead: true })
+    .where(and(eq(userNotificationsTable.userId, userId), eq(userNotificationsTable.isRead, false)))
+    .returning({ id: userNotificationsTable.id });
+  res.json({ updated: updated.length });
 });
 
 // POST /api/notifications/:id/read — mark single alert as read

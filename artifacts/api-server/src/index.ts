@@ -68,6 +68,20 @@ async function runMigrations() {
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
     `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS erp_user_notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT 'task_assigned',
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        meta JSONB,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS erp_user_notifications_user_id_is_read ON erp_user_notifications (user_id, is_read);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS erp_user_notifications_created_at ON erp_user_notifications (created_at DESC);`);
     // Remove old columns from internal_consumptions that conflict with current schema
     await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS branch_id;`);
     await db.execute(sql`ALTER TABLE internal_consumptions DROP COLUMN IF EXISTS date;`);
