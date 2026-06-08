@@ -334,11 +334,15 @@ export default function IntelligencePage() {
     queryKey: ["intelligence-dashboard"],
     queryFn: async () => {
       const r = await fetch(`${API}/dashboard/intelligence`, { headers: authHeaders() });
-      if (!r.ok) throw new Error("Erreur intelligence");
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error((body as any).error ?? `Erreur ${r.status}`);
+      }
       return r.json();
     },
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    retry: 1,
   });
 
   async function handleRefresh() {
@@ -398,6 +402,9 @@ export default function IntelligencePage() {
         <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
           <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-2" />
           <p className="text-red-700 font-medium">Impossible de charger l'intelligence</p>
+          {(error as Error).message && (error as Error).message !== "Erreur intelligence" && (
+            <p className="text-red-500 text-sm mt-1 font-mono">{(error as Error).message}</p>
+          )}
           <Button size="sm" variant="outline" className="mt-3" onClick={() => refetch()}>Réessayer</Button>
         </div>
       )}
