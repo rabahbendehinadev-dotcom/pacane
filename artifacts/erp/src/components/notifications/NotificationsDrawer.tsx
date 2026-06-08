@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { fr, arDZ } from "date-fns/locale";
+import { fr } from "date-fns/locale";
 import { useLocation } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ function UserNotifCard({ notif, onRead }: {
   notif: UserNotif;
   onRead: (id: number) => void;
 }) {
-  const age = formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: arDZ });
+  const age = formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: fr });
 
   return (
     <div
@@ -159,7 +159,7 @@ function UserNotifCard({ notif, onRead }: {
           : "border-primary/30 bg-primary/5"
       }`}
       onClick={() => { if (!notif.isRead) onRead(notif.id); }}
-      title={notif.isRead ? "مقروء" : "انقر للتحديد كمقروء"}
+      title={notif.isRead ? "Lu" : "Cliquer pour marquer comme lu"}
     >
       {!notif.isRead && (
         <span className="absolute top-3 left-3 h-2 w-2 rounded-full bg-primary" />
@@ -169,7 +169,7 @@ function UserNotifCard({ notif, onRead }: {
         <ClipboardList className={`h-3.5 w-3.5 ${notif.isRead ? "text-muted-foreground" : "text-primary"}`} />
       </div>
 
-      <div className="flex-1 min-w-0 space-y-1 text-right" dir="rtl">
+      <div className="flex-1 min-w-0 space-y-1">
         <p className={`text-sm font-semibold leading-tight ${notif.isRead ? "text-muted-foreground" : "text-foreground"}`}>
           {notif.title}
         </p>
@@ -271,7 +271,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
           <div className="flex items-center justify-between">
             <SheetTitle className="text-base flex items-center gap-2">
               <Bell className="h-4 w-4" />
-              الإشعارات
+              Notifications
             </SheetTitle>
           </div>
 
@@ -286,7 +286,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
               }`}
             >
               <ClipboardList className="h-3.5 w-3.5" />
-              إشعاراتي
+              Mes notifications
               {unreadUserNotifs > 0 && (
                 <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full text-[9px] font-bold bg-primary text-primary-foreground">
                   {unreadUserNotifs}
@@ -302,7 +302,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
               }`}
             >
               <AlertTriangle className="h-3.5 w-3.5" />
-              تنبيهات النظام
+              Alertes système
               {unreadAlerts > 0 && (
                 <span className={`h-4 min-w-4 px-1 flex items-center justify-center rounded-full text-[9px] font-bold text-white ${
                   criticalCount > 0 ? "bg-red-500" : "bg-amber-500"
@@ -320,21 +320,21 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
             {unreadUserNotifs > 0 && (
               <div className="px-4 py-2 border-b shrink-0 flex justify-end">
                 <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => readAllUserNotifsMutation.mutate()}>
-                  <CheckCheck className="h-3.5 w-3.5" />تحديد الكل كمقروء
+                  <CheckCheck className="h-3.5 w-3.5" />Tout marquer comme lu
                 </Button>
               </div>
             )}
             <ScrollArea className="flex-1">
-              <div className="p-3 space-y-2" dir="rtl">
+              <div className="p-3 space-y-2">
                 {userNotifsLoading ? (
-                  <div className="py-12 text-center text-muted-foreground text-sm">جارٍ التحميل…</div>
+                  <div className="py-12 text-center text-muted-foreground text-sm">Chargement…</div>
                 ) : userNotifs.length === 0 ? (
                   <div className="py-16 text-center space-y-2">
                     <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
                       <Bell className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <p className="text-sm font-medium text-muted-foreground">لا توجد إشعارات</p>
-                    <p className="text-xs text-muted-foreground">ستظهر هنا إشعارات المهام الموكلة إليك.</p>
+                    <p className="text-sm font-medium text-muted-foreground">Aucune notification</p>
+                    <p className="text-xs text-muted-foreground">Les notifications de tâches qui vous sont assignées apparaîtront ici.</p>
                   </div>
                 ) : (
                   userNotifs.map(n => (
@@ -455,7 +455,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
         <div className="px-4 py-3 border-t shrink-0 bg-muted/20">
           <p className="text-[10px] text-muted-foreground text-center">
             {activeTab === "personal"
-              ? "الإشعارات الشخصية — المهام الموكلة إليك"
+              ? "Notifications personnelles — tâches qui vous sont assignées"
               : "Alertes générées en temps réel à partir des données du système"}
           </p>
         </div>
