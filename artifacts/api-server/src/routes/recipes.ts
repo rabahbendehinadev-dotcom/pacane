@@ -105,6 +105,30 @@ async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
   };
 }
 
+/**
+ * Detect if a component (recipe or product chain) would create a circular reference.
+ * Returns true if recipeId appears in the ancestor chain being built.
+ */
+async function wouldCreateCycle(
+  recipeId: number,
+  components: Array<{ itemType: string; itemId: number }>,
+  visited: Set<number> = new Set()
+): Promise<boolean> {
+  if (visited.has(recipeId)) return true;
+  const next = new Set(visited);
+  next.add(recipeId);
+
+  for (const c of components) {
+    if (c.itemType !== "recipe") continue;
+    if (next.has(c.itemId)) return true;
+    // Recurse into existing sub-recipe
+    const subItems = await db.select().from(recipeItemsTable).where(eq(recipeItemsTable.recipeId, c.itemId));
+    const subComponents = subItems.map(i => ({ itemType: i.itemType, itemId: i.itemId }));
+    if (await wouldCreateCycle(c.itemId, subComponents, next)) return true;
+  }
+  return false;
+}
+
 router.get("/recipes", requireAuth, requirePermission(P.recipes.view), async (req, res): Promise<void> => {
   const { type, search } = req.query as Record<string, string>;
   let recipes = await db.select().from(recipesTable).orderBy(recipesTable.name);
@@ -138,11 +162,23 @@ router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async 
     res.status(400).json({ error: "Champs requis manquants" }); return;
   }
 
+  // ── GUARD: yield must be positive ─────────────────────────────────────────
+  const yieldNum = parseFloat(String(yieldQty));
+  if (!isFinite(yieldNum) || yieldNum <= 0) {
+    res.status(400).json({ error: "Le rendement doit être un nombre positif" }); return;
+  }
+
   const [recipe] = await db.insert(recipesTable).values({
-    name, productId, type, yield: yieldQty.toString(), yieldUnitId, steps, notes
+    name, productId, type, yield: yieldNum.toString(), yieldUnitId, steps, notes
   }).returning();
 
   if (components?.length) {
+    // ── GUARD: cycle detection on creation ──────────────────────────────────
+    const hasCycle = await wouldCreateCycle(recipe.id, components);
+    if (hasCycle) {
+      await db.delete(recipesTable).where(eq(recipesTable.id, recipe.id));
+      res.status(400).json({ error: "Référence circulaire détectée dans les composants", code: "CIRCULAR_REFERENCE" }); return;
+    }
     for (const c of components) {
       await db.insert(recipeItemsTable).values({
         recipeId: recipe.id, itemType: c.itemType ?? "product",
@@ -174,32 +210,55 @@ router.get("/recipes/:id", requireAuth, requirePermission(P.recipes.view), async
 
 router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  const [existing] = await db.select().from(recipesTable).where(eq(recipesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Recette introuvable" }); return; }
+
   const { name, yield: yieldQty, steps, notes, ingredients, components } = req.body;
+
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = name;
-  if (yieldQty != null) updates.yield = yieldQty.toString();
+  if (yieldQty != null) {
+    const yieldNum = parseFloat(String(yieldQty));
+    if (!isFinite(yieldNum) || yieldNum <= 0) {
+      res.status(400).json({ error: "Le rendement doit être un nombre positif" }); return;
+    }
+    updates.yield = yieldNum.toString();
+  }
   if (steps != null) updates.steps = steps;
   if (notes != null) updates.notes = notes;
+
+  // ── FIX: always set updatedAt so db.update() has at least one field ───────
+  updates.updatedAt = new Date();
+
   const [recipe] = await db.update(recipesTable).set(updates as any).where(eq(recipesTable.id, id)).returning();
   if (!recipe) { res.status(404).json({ error: "Recette introuvable" }); return; }
 
-  if (components) {
+  if (components != null) {
+    // ── GUARD: cycle detection ───────────────────────────────────────────────
+    const hasCycle = await wouldCreateCycle(id, components);
+    if (hasCycle) {
+      res.status(400).json({ error: "Référence circulaire détectée dans les composants", code: "CIRCULAR_REFERENCE" }); return;
+    }
+
     await db.delete(recipeItemsTable).where(eq(recipeItemsTable.recipeId, id));
     for (const c of components) {
+      if (!c.itemId && !c.productId) continue; // skip malformed entries
       await db.insert(recipeItemsTable).values({
         recipeId: id, itemType: c.itemType ?? "product",
         itemId: c.itemId ?? c.productId,
-        quantity: c.quantity.toString(), unitId: c.unitId,
-        wastageRate: (c.wastageRate ?? 0).toString()
+        quantity: String(c.quantity ?? 0), unitId: c.unitId,
+        wastageRate: String(c.wastageRate ?? 0)
       });
     }
-  } else if (ingredients) {
+  } else if (ingredients != null) {
     await db.delete(recipeIngredientsTable).where(eq(recipeIngredientsTable.recipeId, id));
     for (const ing of ingredients) {
+      if (!ing.productId) continue;
       await db.insert(recipeIngredientsTable).values({
         recipeId: id, productId: ing.productId,
-        quantity: ing.quantity.toString(), unitId: ing.unitId,
-        wastageRate: (ing.wastageRate ?? 0).toString()
+        quantity: String(ing.quantity ?? 0), unitId: ing.unitId,
+        wastageRate: String(ing.wastageRate ?? 0)
       });
     }
   }

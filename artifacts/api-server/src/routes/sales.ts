@@ -4,7 +4,7 @@ import { eq, and, sql, inArray, or, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
-import { adjustStock } from "./stock";
+import { adjustStock, deductStockChecked } from "./stock";
 import { computeCreditStatus, logCreditOverride } from "../lib/credit";
 import { hasPermission } from "../lib/permissions";
 
@@ -128,7 +128,6 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
   } else if (reqBranchId) {
     conditions.push(eq(salesTable.branchId, reqBranchId));
   }
-  // type filter: 'comptoir' means sale + pos
   if (type === "comptoir") {
     conditions.push(eq(salesTable.type, "sale"));
     conditions.push(eq(salesTable.fulfillmentType, "pos"));
@@ -218,7 +217,8 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
 
 router.post("/sales", requireAuth, async (req, res): Promise<void> => {
   const { type, customerId, branchId, status, fulfillmentType, promisedDate, dueDate, discount, tax, shippingFee, notes, items, creditOverrideReason } = req.body;
-  // POS sales: pos.sell OR sales.create ; regular sales: sales.create only
+
+  // Permission check
   const perms = req.userPermissions ?? [];
   const isPOS = fulfillmentType === "pos";
   const allowed = isPOS
@@ -230,15 +230,17 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
   }
   if (!type || !branchId || !items?.length) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   if (!assertBranchAccess(req.user!, parseInt(String(branchId), 10), res)) return;
+
+  const branchIdNum = parseInt(String(branchId), 10);
   const subtotal = items.reduce((s: number, i: any) => s + i.quantity * i.unitPrice - (i.discount ?? 0), 0);
   const d = discount ?? 0; const t = tax ?? 0; const sf = shippingFee ?? 0;
   const total = subtotal - d + t + sf;
   const resolvedStatus = status ?? defaultStatus(type);
 
+  // ── Credit check (outside transaction — read-only) ─────────────────────────
   if (type === "sale" && customerId) {
     const credit = await computeCreditStatus(customerId, total);
     if (credit && credit.state === "exceeded") {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
       const userCanOverride = hasPermission(req.userPermissions ?? [], P.sales.overrideCredit);
       if (!creditOverrideReason) {
         res.status(402).json({
@@ -259,9 +261,9 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  // Stock check uniquement pour les ventes finales confirmées (POS ou comptoir)
-  if (type === "sale") {
-    const branchIdNum = parseInt(String(branchId), 10);
+  // ── Non-atomic pre-check for fast UX (optimization only — NOT the safety net) ──
+  // The real protection is the atomic deductStockChecked inside the transaction below.
+  if (type === "sale" && resolvedStatus === "confirmed") {
     for (const item of items) {
       const [prod] = await db.select({ name: productsTable.name, isManaged: productsTable.isManaged })
         .from(productsTable).where(eq(productsTable.id, item.productId));
@@ -272,7 +274,8 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
       const available = parseFloat(sl?.quantity as string ?? "0");
       if (item.quantity > available) {
         res.status(409).json({
-          error: "stock_insufficient",
+          error: "Insufficient stock",
+          status: 409,
           productId: item.productId,
           productName: prod.name,
           available,
@@ -282,28 +285,111 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
       }
     }
   }
-  // draft / quotation / order / proforma → aucun check stock à la création
 
   const paymentMethod = req.body.paymentMethod ?? "cash";
   const sellerIdVal = req.body.sellerId ? parseInt(String(req.body.sellerId), 10) : null;
   const sellerNameVal = req.body.sellerName ? String(req.body.sellerName).trim() : null;
-  const [sale] = await db.insert(salesTable).values({
-    reference: await genRef(type), type, customerId, branchId,
-    status: resolvedStatus,
-    paymentStatus: "unpaid", fulfillmentType: fulfillmentType ?? "pos", fulfillmentStatus: "pending",
-    promisedDate, dueDate: dueDate ? new Date(dueDate) : null,
-    subtotal: subtotal.toString(), discount: d.toString(), tax: t.toString(),
-    shippingFee: sf.toString(), total: total.toString(), paid: "0", notes,
-    paymentMethod: type === "sale" ? paymentMethod : null,
-    sellerId: sellerIdVal,
-    sellerName: sellerNameVal,
-    createdByUserId: req.userId
-  }).returning();
 
+  // Generate reference before transaction (uses in-memory counter, must be outside)
+  const reference = await genRef(type);
+
+  // ── ATOMIC TRANSACTION: insert sale + items + stock deductions ────────────
+  let createdSale: typeof salesTable.$inferSelect;
+  try {
+    createdSale = await db.transaction(async (tx) => {
+      const [sale] = await tx.insert(salesTable).values({
+        reference, type, customerId, branchId: branchIdNum,
+        status: resolvedStatus,
+        paymentStatus: "unpaid", fulfillmentType: fulfillmentType ?? "pos", fulfillmentStatus: "pending",
+        promisedDate, dueDate: dueDate ? new Date(dueDate) : null,
+        subtotal: subtotal.toString(), discount: d.toString(), tax: t.toString(),
+        shippingFee: sf.toString(), total: total.toString(), paid: "0", notes,
+        paymentMethod: type === "sale" ? paymentMethod : null,
+        sellerId: sellerIdVal,
+        sellerName: sellerNameVal,
+        createdByUserId: req.userId
+      }).returning();
+
+      for (const item of items) {
+        await tx.insert(saleItemsTable).values({
+          saleId: sale.id, productId: item.productId, quantity: item.quantity.toString(),
+          unitPrice: item.unitPrice.toString(), discount: (item.discount ?? 0).toString(),
+          total: (item.quantity * item.unitPrice - (item.discount ?? 0)).toString()
+        });
+
+        // ── Atomic stock deduction for confirmed sales ───────────────────────
+        if (type === "sale" && resolvedStatus === "confirmed") {
+          const [prod] = await tx.select({ name: productsTable.name, isManaged: productsTable.isManaged })
+            .from(productsTable).where(eq(productsTable.id, item.productId));
+          if (prod?.isManaged) {
+            await deductStockChecked(
+              tx,
+              item.productId, branchIdNum, item.quantity,
+              "sale", sale.reference, item.unitPrice, sale.id,
+              prod.name ?? ""
+            );
+          }
+        }
+      }
+
+      // ── Order: initial deposit ───────────────────────────────────────────
+      if (type === "order") {
+        const depositAmount = parseFloat(req.body.initialDeposit ?? "0");
+        if (depositAmount > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          await tx.insert(salePaymentsTable).values({
+            saleId: sale.id, amount: depositAmount.toString(), method: "cash", date: today, notes: "Versement initial"
+          });
+          const paymentStatus = depositAmount >= total ? "paid" : "partially_paid";
+          await tx.update(salesTable).set({ paid: depositAmount.toString(), paymentStatus })
+            .where(eq(salesTable.id, sale.id));
+        }
+      }
+
+      // ── POS: auto-payment + session update ──────────────────────────────
+      if (type === "sale" && fulfillmentType === "pos" && paymentMethod !== "credit") {
+        const today = new Date().toISOString().slice(0, 10);
+        await tx.insert(salePaymentsTable).values({
+          saleId: sale.id, amount: total.toString(), method: paymentMethod, date: today
+        });
+        await tx.update(salesTable).set({ paid: total.toString(), paymentStatus: "paid" })
+          .where(eq(salesTable.id, sale.id));
+
+        const [openSession] = await tx.select().from(posSessionsTable)
+          .where(and(eq(posSessionsTable.branchId, branchIdNum), eq(posSessionsTable.status, "open")));
+        if (openSession) {
+          const newTotal = parseFloat(openSession.totalSales as string) + total;
+          const newCashSales = parseFloat(openSession.totalCashSales as string) + (paymentMethod === "cash" ? total : 0);
+          const newCardSales = parseFloat(openSession.totalCardSales as string) + (paymentMethod === "card" ? total : 0);
+          await tx.update(posSessionsTable).set({
+            totalSales: newTotal.toString(),
+            totalCashSales: newCashSales.toString(),
+            totalCardSales: newCardSales.toString()
+          }).where(eq(posSessionsTable.id, openSession.id));
+        }
+      }
+
+      return sale;
+    });
+  } catch (err: any) {
+    if (err.message === "STOCK_INSUFFICIENT") {
+      res.status(409).json({
+        error: "Insufficient stock",
+        status: 409,
+        productId: err.productId,
+        productName: err.productName,
+        message: `Stock insuffisant pour ${err.productName ?? "un produit"}.`
+      });
+      return;
+    }
+    throw err;
+  }
+
+  // ── Credit override log (outside transaction — non-critical audit trail) ──
   if (type === "sale" && customerId && creditOverrideReason) {
     const credit = await computeCreditStatus(customerId, 0);
     await logCreditOverride({
-      customerId, saleId: sale.id, userId: req.userId!,
+      customerId, saleId: createdSale.id, userId: req.userId!,
       reason: creditOverrideReason,
       creditLimit: credit?.creditLimit ?? null,
       unpaidBalance: credit?.unpaidBalance ?? 0,
@@ -311,59 +397,11 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     });
   }
 
-  for (const item of items) {
-    await db.insert(saleItemsTable).values({
-      saleId: sale.id, productId: item.productId, quantity: item.quantity.toString(),
-      unitPrice: item.unitPrice.toString(), discount: (item.discount ?? 0).toString(),
-      total: (item.quantity * item.unitPrice - (item.discount ?? 0)).toString()
-    });
-    if (type === "sale" && resolvedStatus === "confirmed") {
-      await adjustStock(item.productId, branchId, -item.quantity, "sale", sale.reference, item.unitPrice, sale.id);
-    }
-    // draft / quotation / order / proforma → pas de déduction stock
-  }
-  // Versement initial pour les commandes (order)
-  if (type === "order") {
-    const depositAmount = parseFloat(req.body.initialDeposit ?? "0");
-    if (depositAmount > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-      await db.insert(salePaymentsTable).values({
-        saleId: sale.id, amount: depositAmount.toString(), method: "cash", date: today, notes: "Versement initial"
-      });
-      const paymentStatus = depositAmount >= total ? "paid" : "partially_paid";
-      await db.update(salesTable).set({ paid: depositAmount.toString(), paymentStatus })
-        .where(eq(salesTable.id, sale.id));
-    }
-  }
-
-  if (type === "sale" && fulfillmentType === "pos") {
-    // Auto-payment pour POS cash/card : enregistrer le règlement immédiatement
-    if (paymentMethod !== "credit") {
-      const today = new Date().toISOString().slice(0, 10);
-      await db.insert(salePaymentsTable).values({
-        saleId: sale.id, amount: total.toString(), method: paymentMethod, date: today
-      });
-      await db.update(salesTable).set({ paid: total.toString(), paymentStatus: "paid" })
-        .where(eq(salesTable.id, sale.id));
-    }
-    const [openSession] = await db.select().from(posSessionsTable)
-      .where(and(eq(posSessionsTable.branchId, branchId), eq(posSessionsTable.status, "open")));
-    if (openSession) {
-      const newTotal = parseFloat(openSession.totalSales as string) + total;
-      const newCashSales = parseFloat(openSession.totalCashSales as string) + (paymentMethod === "cash" ? total : 0);
-      const newCardSales = parseFloat(openSession.totalCardSales as string) + (paymentMethod === "card" ? total : 0);
-      await db.update(posSessionsTable).set({
-        totalSales: newTotal.toString(),
-        totalCashSales: newCashSales.toString(),
-        totalCardSales: newCardSales.toString()
-      }).where(eq(posSessionsTable.id, openSession.id));
-    }
-  }
-  res.status(201).json(await buildSaleResponse(sale));
+  res.status(201).json(await buildSaleResponse(createdSale));
 });
 
 router.get("/sales/:id", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [sale] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!sale) { res.status(404).json({ error: "Vente introuvable" }); return; }
   if (!assertBranchAccess(req.user!, sale.branchId, res)) return;
@@ -371,7 +409,7 @@ router.get("/sales/:id", requireAuth, requirePermission(P.sales.view), async (re
 });
 
 router.patch("/sales/:id", requireAuth, requirePermission(P.sales.edit), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [existing] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Vente introuvable" }); return; }
   if (!assertBranchAccess(req.user!, existing.branchId, res)) return;
@@ -387,7 +425,7 @@ router.patch("/sales/:id", requireAuth, requirePermission(P.sales.edit), async (
 });
 
 router.post("/sales/:id/payment", requireAuth, requirePermission(P.sales.edit), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [sale] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!sale) { res.status(404).json({ error: "Vente introuvable" }); return; }
   if (!assertBranchAccess(req.user!, sale.branchId, res)) return;
@@ -404,7 +442,7 @@ router.post("/sales/:id/payment", requireAuth, requirePermission(P.sales.edit), 
 });
 
 router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [sale] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!sale) { res.status(404).json({ error: "Document introuvable" }); return; }
   if (!assertBranchAccess(req.user!, sale.branchId, res)) return;
@@ -416,7 +454,6 @@ router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert
     const saleTotal = parseFloat(sale.total as string);
     const credit = await computeCreditStatus(sale.customerId, saleTotal);
     if (credit && credit.state === "exceeded") {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
       const userCanOverride = hasPermission(req.userPermissions ?? [], P.sales.overrideCredit);
       if (!creditOverrideReason) {
         res.status(402).json({
@@ -439,7 +476,7 @@ router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert
 
   const sourceItems = await db.select().from(saleItemsTable).where(eq(saleItemsTable.saleId, id));
 
-  // Stock check avant conversion vers vente finale
+  // ── Non-atomic pre-check for fast UX ──────────────────────────────────────
   if (targetType === "sale") {
     for (const item of sourceItems) {
       const [prod] = await db.select({ name: productsTable.name, isManaged: productsTable.isManaged })
@@ -451,7 +488,8 @@ router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert
       const available = parseFloat(sl?.quantity as string ?? "0");
       if (parseFloat(item.quantity as string) > available) {
         res.status(409).json({
-          error: "stock_insufficient",
+          error: "Insufficient stock",
+          status: 409,
           productId: item.productId,
           productName: prod.name,
           available,
@@ -462,27 +500,74 @@ router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert
     }
   }
 
-  await db.update(salesTable).set({ status: "converted" }).where(eq(salesTable.id, id));
+  const newReference = await genRef(targetType);
 
-  const [newSale] = await db.insert(salesTable).values({
-    reference: await genRef(targetType),
-    type: targetType,
-    customerId: sale.customerId,
-    branchId: sale.branchId,
-    status: defaultStatus(targetType),
-    paymentStatus: "unpaid",
-    fulfillmentType: sale.fulfillmentType,
-    fulfillmentStatus: "pending",
-    promisedDate: sale.promisedDate,
-    subtotal: sale.subtotal,
-    discount: sale.discount,
-    tax: sale.tax,
-    shippingFee: sale.shippingFee,
-    total: sale.total,
-    paid: "0",
-    notes: sale.notes,
-    createdByUserId: req.userId
-  }).returning();
+  let newSale: typeof salesTable.$inferSelect;
+  try {
+    newSale = await db.transaction(async (tx) => {
+      // Mark source as converted
+      await tx.update(salesTable).set({ status: "converted" }).where(eq(salesTable.id, id));
+
+      const [inserted] = await tx.insert(salesTable).values({
+        reference: newReference,
+        type: targetType,
+        customerId: sale.customerId,
+        branchId: sale.branchId,
+        status: defaultStatus(targetType),
+        paymentStatus: "unpaid",
+        fulfillmentType: sale.fulfillmentType,
+        fulfillmentStatus: "pending",
+        promisedDate: sale.promisedDate,
+        subtotal: sale.subtotal,
+        discount: sale.discount,
+        tax: sale.tax,
+        shippingFee: sale.shippingFee,
+        total: sale.total,
+        paid: "0",
+        notes: sale.notes,
+        createdByUserId: req.userId
+      }).returning();
+
+      for (const item of sourceItems) {
+        await tx.insert(saleItemsTable).values({
+          saleId: inserted.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discount: item.discount,
+          total: item.total
+        });
+
+        // ── Atomic stock deduction for conversions to sale ─────────────────
+        if (targetType === "sale") {
+          const [prod] = await tx.select({ name: productsTable.name, isManaged: productsTable.isManaged })
+            .from(productsTable).where(eq(productsTable.id, item.productId));
+          if (prod?.isManaged) {
+            await deductStockChecked(
+              tx,
+              item.productId, sale.branchId, parseFloat(item.quantity as string),
+              "sale", inserted.reference, parseFloat(item.unitPrice as string), inserted.id,
+              prod.name ?? ""
+            );
+          }
+        }
+      }
+
+      return inserted;
+    });
+  } catch (err: any) {
+    if (err.message === "STOCK_INSUFFICIENT") {
+      res.status(409).json({
+        error: "Insufficient stock",
+        status: 409,
+        productId: err.productId,
+        productName: err.productName,
+        message: `Stock insuffisant pour ${err.productName ?? "un produit"}.`
+      });
+      return;
+    }
+    throw err;
+  }
 
   if (targetType === "sale" && sale.customerId && creditOverrideReason) {
     const credit = await computeCreditStatus(sale.customerId, 0);
@@ -495,36 +580,21 @@ router.post("/sales/:id/convert", requireAuth, requirePermission(P.sales.convert
     });
   }
 
-  for (const item of sourceItems) {
-    await db.insert(saleItemsTable).values({
-      saleId: newSale.id,
-      productId: item.productId,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discount: item.discount,
-      total: item.total
-    });
-    if (targetType === "sale") {
-      await adjustStock(item.productId, newSale.branchId, -parseFloat(item.quantity as string), "sale", newSale.reference, parseFloat(item.unitPrice as string), newSale.id);
-    }
-  }
-
   res.status(201).json(await buildSaleResponse(newSale));
 });
 
 router.post("/sales/:id/cancel", requireAuth, requirePermission(P.sales.cancel), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [sale] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!sale) { res.status(404).json({ error: "Document introuvable" }); return; }
   if (!assertBranchAccess(req.user!, sale.branchId, res)) return;
   if (sale.status === "cancelled") { res.status(400).json({ error: "Document déjà annulé" }); return; }
-  // orders ne déduisent plus le stock à la création → pas de restauration à l'annulation
   const [updated] = await db.update(salesTable).set({ status: "cancelled" }).where(eq(salesTable.id, id)).returning();
   res.json(await buildSaleResponse(updated));
 });
 
 router.post("/sales/:id/duplicate", requireAuth, requirePermission(P.sales.create), async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [sale] = await db.select().from(salesTable).where(eq(salesTable.id, id));
   if (!sale) { res.status(404).json({ error: "Document introuvable" }); return; }
   if (!assertBranchAccess(req.user!, sale.branchId, res)) return;

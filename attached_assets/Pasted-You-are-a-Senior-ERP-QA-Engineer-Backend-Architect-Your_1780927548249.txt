@@ -1,0 +1,172 @@
+You are a Senior ERP QA Engineer + Backend Architect.
+
+Your mission is to fully STABILIZE the entire ERP system (Recette, Production, Stock, POS).
+
+This is NOT a feature request.
+
+This is a FULL SYSTEM STABILITY + BUG PREVENTION AUDIT.
+
+==================================================
+🚨 STRICT RULES
+==================================================
+- ❌ No new features
+- ❌ No new modules
+- ❌ No UI redesign
+- ❌ No AI / forecasting / optimization
+- ✅ Only bug fixes and stability improvements
+- ✅ Keep all API contracts unchanged
+- ✅ Do NOT break existing workflows
+
+==================================================
+🧠 CORE SYSTEMS TO PROTECT
+==================================================
+- POS (Sales system)
+- Stock system (stock_levels + movements)
+- Production system
+- Recipe (BOM system)
+- Internal consumption
+
+==================================================
+🔥 MAIN GOAL
+==================================================
+Make the system:
+
+- ZERO stock corruption
+- ZERO duplicate stock entries
+- ZERO negative stock (unless explicitly allowed)
+- ZERO double sales
+- ZERO production inconsistencies
+- FULL concurrency safety (multi-user safe)
+- PRODUCTION-GRADE STABILITY
+
+==================================================
+1. POS HARDENING (CRITICAL)
+==================================================
+
+Fix POS system to guarantee:
+
+- A product cannot be sold if stock is insufficient
+- No double deduction under concurrent sales
+- No race condition between cashiers
+
+Implement:
+- atomic stock check before sale
+- lock or transaction protection per product+branch
+- re-validation at final sale commit
+
+If stock is insufficient:
+Return:
+{
+  "error": "Insufficient stock",
+  "status": 409
+}
+
+==================================================
+2. STOCK INTEGRITY FIX
+==================================================
+
+Ensure:
+
+- UNIQUE constraint (product_id + branch_id)
+- No duplicate stock rows
+- UPSERT logic only (never insert duplicates)
+
+All stock updates must be:
+- atomic
+- consistent
+- traceable via stock_movements
+
+==================================================
+3. PRODUCTION SAFETY FIX
+==================================================
+
+Production must:
+
+- verify recipe exists before execution
+- verify recipe has valid ingredients
+- re-check stock before deduction
+- execute inside database transaction
+
+If any step fails:
+→ FULL ROLLBACK
+
+NO partial production updates allowed.
+
+==================================================
+4. RECIPE VALIDATION FIX
+==================================================
+
+Block invalid recipes:
+
+- empty ingredients
+- missing components
+- zero yield
+- broken references
+
+If invalid:
+Return HTTP 400:
+{
+  "error": "Invalid recipe"
+}
+
+==================================================
+5. CONCURRENCY SAFETY (CRITICAL)
+==================================================
+
+System must handle multiple users at same time:
+
+- multiple POS sales simultaneously
+- multiple production orders simultaneously
+
+Implement:
+- transaction locking OR equivalent safe mechanism
+- prevent race conditions
+- ensure stock consistency under parallel requests
+
+==================================================
+6. STOCK MOVEMENT CONSISTENCY
+==================================================
+
+Every stock change must:
+
+- be logged in stock_movements
+- never duplicated
+- always linked to source (POS / Production / Adjustment)
+- never partially applied
+
+==================================================
+7. EDGE CASES TO TEST
+==================================================
+
+- Two cashiers selling same product at same time
+- Production + sale happening simultaneously
+- Stock = 1, two operations try to use it
+- Failed production must not affect stock
+- Retry request must not duplicate stock movement
+
+==================================================
+8. ACCEPTANCE CRITERIA
+==================================================
+
+System is considered STABLE ONLY IF:
+
+- No stock goes negative unexpectedly
+- No duplicate stock rows exist
+- No double sales occur
+- Production is fully atomic
+- Concurrent operations are safe
+- POS never oversells stock
+- No inconsistent stock_movements
+
+==================================================
+9. OUTPUT REQUIREMENT
+==================================================
+
+Return:
+
+- list of bugs found
+- files modified
+- fixes applied
+- explanation of concurrency safety implementation
+- final verdict:
+  "SYSTEM IS PRODUCTION SAFE" OR "NOT SAFE YET"

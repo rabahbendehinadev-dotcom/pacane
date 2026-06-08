@@ -1,0 +1,222 @@
+You are a Senior ERP Auditor + Production Readiness Engineer.
+
+Your task is to perform a FINAL AUDIT before production deployment of the ERP system.
+
+Focus systems:
+- POS (Sales)
+- Stock Management
+- Production
+- Recipes (BOM)
+- Internal Consumption
+
+==================================================
+🚨 OBJECTIVE
+==================================================
+
+Determine if the system is SAFE to go LIVE in a real business environment.
+
+This is a GO-LIVE readiness audit.
+
+No new features must be added.
+
+Only validation, testing, and risk detection.
+
+==================================================
+1. STOCK SAFETY CHECK (CRITICAL)
+==================================================
+
+Verify:
+
+- No stock can go negative in any scenario
+- No duplicate stock rows exist
+- stock_levels table is consistent (1 row per product + branch)
+- All updates use UPSERT logic
+- All movements are logged in stock_movements
+- No missing stock movement logs
+
+FAIL IF:
+- any inconsistency exists in stock balance
+
+==================================================
+2. POS SYSTEM CHECK (CRITICAL)
+==================================================
+
+Verify:
+
+- A product cannot be sold if stock is insufficient
+- No double sale under fast repeated clicks
+- No race condition between multiple cashiers
+- Stock deduction is atomic
+- Sales are recorded once only per transaction
+
+TEST:
+- Sell same product from 2 terminals at same time
+Expected:
+→ stock must NEVER go negative
+→ only valid sales succeed
+
+==================================================
+3. PRODUCTION CHECK
+==================================================
+
+Verify:
+
+- Production cannot run without valid recipe
+- Recipe must have valid ingredients
+- Stock deduction is atomic
+- Production execution uses transaction safety
+- Failed production must NOT affect stock
+
+TEST:
+- invalid recipe → blocked
+- partial failure → full rollback
+
+==================================================
+4. RECIPE SYSTEM CHECK
+==================================================
+
+Verify:
+
+- No broken recipes
+- No empty ingredient lists
+- No circular recipe references
+- Semi-finished recipes resolve correctly
+- BOM structure is valid
+
+==================================================
+5. CONCURRENCY CHECK (CRITICAL)
+==================================================
+
+Simulate:
+
+- multiple POS sales at same time
+- multiple production orders at same time
+- mixed operations (sale + production)
+
+Verify:
+
+- no race conditions
+- no duplicate stock deduction
+- no inconsistent stock state
+
+SYSTEM MUST BE THREAD-SAFE / TRANSACTION SAFE
+
+==================================================
+6. INTERNAL CONSOMMATION CHECK
+==================================================
+
+Verify:
+
+- does NOT affect POS sales
+- does NOT affect revenue
+- stock moves correctly between branches
+- no duplication in cost tracking
+
+==================================================
+7. DATA INTEGRITY CHECK
+==================================================
+
+Verify:
+
+- no orphan records
+- no null crash risks
+- all foreign keys valid
+- consistent units (kg/g/pcs)
+- correct timestamps everywhere
+
+==================================================
+8. API STABILITY CHECK
+==================================================
+
+Verify:
+
+- no 500 errors
+- no unhandled exceptions
+- proper error responses:
+  - 400 invalid data
+  - 409 stock conflict
+  - 403 unauthorized
+- consistent API responses
+
+==================================================
+9. PERFORMANCE CHECK
+==================================================
+
+Verify:
+
+- POS response fast (< 300ms ideal)
+- stock queries optimized
+- no infinite loops in BOM recursion
+- no heavy recalculation per request
+
+==================================================
+10. SECURITY / RBAC CHECK
+==================================================
+
+Verify:
+
+- users cannot access unauthorized branches
+- workers only see their own data (if applicable)
+- no direct ID bypass access
+- endpoints protected properly
+
+==================================================
+11. FINAL GO-LIVE SCENARIOS (MUST PASS)
+==================================================
+
+Scenario A:
+Stock = 1, 2 cashiers sell same product
+→ only one sale succeeds
+
+Scenario B:
+Production + sale simultaneously
+→ stock remains consistent
+
+Scenario C:
+Invalid recipe production
+→ blocked safely
+
+Scenario D:
+Retry same API request
+→ no duplicate stock or sale
+
+Scenario E:
+System under rapid load
+→ no corruption
+
+==================================================
+12. FINAL VERDICT FORMAT
+==================================================
+
+Return:
+
+1. SYSTEM STATUS:
+- READY FOR GO LIVE / NOT READY
+
+2. CRITICAL ISSUES FOUND:
+- list
+
+3. HIGH RISK ISSUES:
+- list
+
+4. MEDIUM ISSUES:
+- list
+
+5. STOCK SAFETY VERDICT:
+SAFE / RISKY
+
+6. POS SAFETY VERDICT:
+SAFE / RISKY
+
+7. PRODUCTION SAFETY VERDICT:
+SAFE / RISKY
+
+8. FINAL RECOMMENDATION:
+- GO LIVE NOW
+- FIX BEFORE GO LIVE
+
+==================================================
+IMPORTANT RULE
+==================================================
+
+If ANY stock corruption risk exists → system is NOT ready for production.

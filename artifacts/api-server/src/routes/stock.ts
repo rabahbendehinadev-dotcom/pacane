@@ -110,8 +110,8 @@ router.get("/stock/movements", requireAuth, requirePermission(P.stock.view), asy
 
 // Admin: direct stock quantity override
 router.patch("/stock/:productId/:branchId", requireAuth, requirePermission(P.stock.adjust), async (req, res): Promise<void> => {
-  const productId = parseInt(req.params.productId, 10);
-  const branchId = parseInt(req.params.branchId, 10);
+  const productId = parseInt(req.params.productId as string, 10);
+  const branchId = parseInt(req.params.branchId as string, 10);
   const { newQuantity, reason } = req.body;
   if (newQuantity == null || newQuantity < 0) { res.status(400).json({ error: "Quantité invalide" }); return; }
 
@@ -121,14 +121,15 @@ router.patch("/stock/:productId/:branchId", requireAuth, requirePermission(P.sto
   const currentQty = existing ? parseFloat(existing.quantity as string) : 0;
   const delta = newQuantity - currentQty;
 
-  if (existing) {
-    await db.update(stockLevelsTable).set({ quantity: newQuantity.toString() })
-      .where(and(eq(stockLevelsTable.productId, productId), eq(stockLevelsTable.branchId, branchId)));
-  } else {
-    await db.insert(stockLevelsTable).values({ productId, branchId, quantity: newQuantity.toString() });
-  }
+  // Atomic UPSERT — safe against concurrent adjustments
+  await db.execute(
+    sql`INSERT INTO stock_levels (product_id, branch_id, quantity, updated_at)
+        VALUES (${productId}, ${branchId}, ${newQuantity}::numeric, NOW())
+        ON CONFLICT (product_id, branch_id) DO UPDATE
+        SET quantity = ${newQuantity}::numeric,
+            updated_at = NOW()`
+  );
 
-  // Record as manual adjustment movement
   await db.insert(stockMovementsTable).values({
     type: "adjustment",
     productId, branchId,
@@ -141,19 +142,84 @@ router.patch("/stock/:productId/:branchId", requireAuth, requirePermission(P.sto
   res.json({ productId, branchId, newQuantity, delta });
 });
 
-export async function adjustStock(productId: number, branchId: number, quantityChange: number, type: string, reference: string | null = null, unitCost: number = 0, referenceId: number | null = null) {
-  const [existing] = await db.select().from(stockLevelsTable)
-    .where(and(eq(stockLevelsTable.productId, productId), eq(stockLevelsTable.branchId, branchId)));
-  if (existing) {
-    const newQty = parseFloat(existing.quantity as string) + quantityChange;
-    await db.update(stockLevelsTable).set({ quantity: Math.max(0, newQty).toString() })
-      .where(and(eq(stockLevelsTable.productId, productId), eq(stockLevelsTable.branchId, branchId)));
-  } else {
-    await db.insert(stockLevelsTable).values({ productId, branchId, quantity: Math.max(0, quantityChange).toString() });
+/**
+ * Atomic stock adjustment using UPSERT.
+ * Safe for concurrent calls — no read-modify-write race condition.
+ * Floors at 0 for production/transfer/adjustment use-cases.
+ *
+ * @param txOrDb - pass a Drizzle transaction context to participate in a tx, or omit for standalone
+ */
+export async function adjustStock(
+  productId: number,
+  branchId: number,
+  quantityChange: number,
+  type: string,
+  reference: string | null = null,
+  unitCost: number = 0,
+  referenceId: number | null = null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  txOrDb: any = db
+) {
+  await txOrDb.execute(
+    sql`INSERT INTO stock_levels (product_id, branch_id, quantity, updated_at)
+        VALUES (${productId}, ${branchId}, GREATEST(0, ${quantityChange}::numeric), NOW())
+        ON CONFLICT (product_id, branch_id) DO UPDATE
+        SET quantity = GREATEST(0, stock_levels.quantity + ${quantityChange}::numeric),
+            updated_at = NOW()`
+  );
+  await txOrDb.insert(stockMovementsTable).values({
+    type, productId, branchId,
+    quantity: quantityChange.toString(),
+    unitCost: unitCost.toString(),
+    reference, referenceId,
+  });
+}
+
+/**
+ * Atomic check-and-deduct for POS/sale use-cases.
+ * Executes a single atomic UPDATE that only succeeds if stock >= qty.
+ * Must be called inside a db.transaction() so that a failed deduction
+ * rolls back all prior inserts in the same request.
+ *
+ * Throws an error with { message: "STOCK_INSUFFICIENT", productId, productName }
+ * if the deduction cannot be satisfied.
+ *
+ * @param txOrDb - Drizzle transaction context (required for atomicity)
+ */
+export async function deductStockChecked(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  txOrDb: any,
+  productId: number,
+  branchId: number,
+  qty: number,
+  type: string,
+  reference: string | null = null,
+  unitCost: number = 0,
+  referenceId: number | null = null,
+  productName = ""
+) {
+  const result = await txOrDb.execute(
+    sql`UPDATE stock_levels
+        SET quantity = quantity - ${qty}::numeric,
+            updated_at = NOW()
+        WHERE product_id = ${productId}
+          AND branch_id = ${branchId}
+          AND quantity >= ${qty}::numeric
+        RETURNING quantity`
+  );
+
+  if (!result.rows?.length) {
+    const err: Error & { productId?: number; productName?: string } = new Error("STOCK_INSUFFICIENT");
+    err.productId = productId;
+    err.productName = productName;
+    throw err;
   }
-  await db.insert(stockMovementsTable).values({
-    type, productId, branchId, quantity: quantityChange.toString(),
-    unitCost: unitCost.toString(), reference, referenceId
+
+  await txOrDb.insert(stockMovementsTable).values({
+    type, productId, branchId,
+    quantity: (-qty).toString(),
+    unitCost: unitCost.toString(),
+    reference, referenceId,
   });
 }
 
