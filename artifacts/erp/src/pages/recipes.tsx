@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetRecipes, useCreateRecipe, useUpdateRecipe, useGetProducts, useGetUnits, getGetRecipesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3 } from "lucide-react";
+import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3, Download, Upload } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 type RecipeItem = {
@@ -235,9 +236,286 @@ function CostAnalysisPanel({ recipeId, quantity, yieldQty }: { recipeId: number;
   );
 }
 
+// ─── Excel Template Download ──────────────────────────────────────────────────
+function downloadRecipesTemplate() {
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ["nom", "type", "rendement", "unité_rendement", "produit_lié", "étapes", "notes"],
+    ["Pain au chocolat", "finished", 12, "pièce", "Pain au chocolat", "1. Pétrir\n2. Garnir\n3. Cuire", "Exemple recette finie"],
+    ["Pâte feuilletée", "semi_finished", 1, "kg", "", "1. Détrempe\n2. Tourage", ""],
+  ]);
+  ws1["!cols"] = [{ wch: 25 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 30 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, ws1, "Recettes");
+
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ["nom_recette", "nom_composant", "quantité", "unité", "taux_de_perte"],
+    ["Pain au chocolat", "Farine T55", 0.5, "kg", 2],
+    ["Pain au chocolat", "Beurre", 0.25, "kg", 0],
+    ["Pain au chocolat", "Chocolat noir", 0.2, "kg", 1],
+    ["Pâte feuilletée", "Farine T55", 1, "kg", 0],
+    ["Pâte feuilletée", "Beurre", 0.5, "kg", 0],
+  ]);
+  ws2["!cols"] = [{ wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws2, "Composants");
+
+  XLSX.writeFile(wb, "recettes_template.xlsx");
+}
+
+// ─── Excel Import Dialog ──────────────────────────────────────────────────────
+interface ParsedRecipeRow {
+  name: string;
+  type: string;
+  yieldVal: number;
+  yieldUnitId: number | null;
+  yieldUnitName: string;
+  productId: number | null;
+  productName: string;
+  steps: string | null;
+  notes: string | null;
+  components: { itemId: number | null; compName: string; quantity: number; unitId: number | null; unitName: string; wastageRate: number }[];
+  errors: string[];
+}
+
+function ImportRecipesDialog({ open, onClose, products, units, onSuccess }: {
+  open: boolean;
+  onClose: () => void;
+  products: any[];
+  units: any[];
+  onSuccess: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [parsed, setParsed] = useState<ParsedRecipeRow[]>([]);
+  const [hasFile, setHasFile] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  function reset() {
+    setParsed([]);
+    setHasFile(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function handleClose() { reset(); onClose(); }
+
+  function findUnit(name: string) {
+    if (!name?.trim()) return null;
+    const n = name.trim().toLowerCase();
+    return units.find((u: any) =>
+      (u.abbreviation ?? "").toLowerCase() === n || (u.name ?? "").toLowerCase() === n
+    ) ?? null;
+  }
+
+  function findProduct(name: string) {
+    if (!name?.trim()) return null;
+    const n = name.trim().toLowerCase();
+    return products.find((p: any) => p.name.toLowerCase() === n) ?? null;
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setHasFile(true);
+    setParsed([]);
+
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws1 = wb.Sheets["Recettes"];
+      const ws2 = wb.Sheets["Composants"];
+
+      if (!ws1) {
+        toast({ title: "Feuille 'Recettes' introuvable dans le fichier", variant: "destructive" });
+        reset();
+        return;
+      }
+
+      const recipeRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws1);
+      const compRows: Record<string, any>[] = ws2 ? XLSX.utils.sheet_to_json(ws2) : [];
+
+      const compsByRecipe: Record<string, Record<string, any>[]> = {};
+      for (const row of compRows) {
+        const rName = String(row["nom_recette"] ?? "").trim();
+        if (rName) { if (!compsByRecipe[rName]) compsByRecipe[rName] = []; compsByRecipe[rName].push(row); }
+      }
+
+      const result: ParsedRecipeRow[] = [];
+      for (const row of recipeRows) {
+        const name = String(row["nom"] ?? "").trim();
+        if (!name) continue;
+
+        const type = String(row["type"] ?? "finished").trim();
+        const yieldVal = parseFloat(String(row["rendement"] ?? "0")) || 0;
+        const yieldUnitName = String(row["unité_rendement"] ?? "").trim();
+        const productLineName = String(row["produit_lié"] ?? "").trim();
+        const steps = String(row["étapes"] ?? "").trim() || null;
+        const notes = String(row["notes"] ?? "").trim() || null;
+
+        const errors: string[] = [];
+        const yieldUnit = findUnit(yieldUnitName);
+        if (yieldUnitName && !yieldUnit) errors.push(`Unité rendement introuvable: "${yieldUnitName}"`);
+        if (!yieldUnitName) errors.push("Unité rendement manquante");
+
+        const linkedProduct = productLineName ? findProduct(productLineName) : null;
+        if (productLineName && !linkedProduct) errors.push(`Produit lié introuvable: "${productLineName}"`);
+
+        const recipeComps = compsByRecipe[name] ?? [];
+        const parsedComps = recipeComps.map(c => {
+          const compName = String(c["nom_composant"] ?? "").trim();
+          const qty = parseFloat(String(c["quantité"] ?? "0")) || 0;
+          const uName = String(c["unité"] ?? "").trim();
+          const wastage = parseFloat(String(c["taux_de_perte"] ?? "0")) || 0;
+          const prod = findProduct(compName);
+          const unit = findUnit(uName);
+          if (!prod) errors.push(`Composant introuvable: "${compName}"`);
+          if (!unit) errors.push(`Unité introuvable: "${uName}" (composant: "${compName}")`);
+          return { itemId: prod?.id ?? null, compName, quantity: qty, unitId: unit?.id ?? null, unitName: uName, wastageRate: wastage };
+        });
+
+        result.push({ name, type, yieldVal, yieldUnitId: yieldUnit?.id ?? null, yieldUnitName, productId: linkedProduct?.id ?? null, productName: productLineName, steps, notes, components: parsedComps, errors });
+      }
+
+      setParsed(result);
+    } catch {
+      toast({ title: "Impossible de lire le fichier Excel", variant: "destructive" });
+      reset();
+    }
+  }
+
+  const allErrors = parsed.flatMap(r => r.errors.map(e => `${r.name}: ${e}`));
+  const hasErrors = allErrors.length > 0;
+  const totalComps = parsed.reduce((s, r) => s + r.components.length, 0);
+
+  async function doImport() {
+    setImporting(true);
+    let created = 0;
+    let failed = 0;
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` };
+
+    for (const recipe of parsed) {
+      try {
+        const body = {
+          name: recipe.name, type: recipe.type, yield: recipe.yieldVal,
+          yieldUnitId: recipe.yieldUnitId!, productId: recipe.productId,
+          steps: recipe.steps, notes: recipe.notes,
+          components: recipe.components
+            .filter(c => c.itemId && c.unitId)
+            .map(c => ({ itemType: "product", itemId: c.itemId!, quantity: c.quantity, unitId: c.unitId!, wastageRate: c.wastageRate })),
+        };
+        const r = await fetch("/api/recipes", { method: "POST", headers, body: JSON.stringify(body) });
+        if (r.ok) created++; else failed++;
+      } catch { failed++; }
+    }
+
+    setImporting(false);
+    onSuccess();
+    handleClose();
+    if (failed === 0) {
+      toast({ title: `${created} recette${created !== 1 ? "s" : ""} importée${created !== 1 ? "s" : ""} avec succès` });
+    } else {
+      toast({ title: `${created} importée${created !== 1 ? "s" : ""}, ${failed} échec${failed !== 1 ? "s" : ""}`, variant: "destructive" });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="h-4 w-4" /> Importer des recettes
+          </DialogTitle>
+          <DialogDescription>Fichier Excel (.xlsx) avec les feuilles "Recettes" et "Composants".</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Label>Fichier Excel (.xlsx)</Label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="mt-1.5 block w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+              onChange={handleFile}
+            />
+          </div>
+
+          {hasFile && parsed.length === 0 && (
+            <Alert><AlertDescription>Aucune recette trouvée dans la feuille "Recettes".</AlertDescription></Alert>
+          )}
+
+          {parsed.length > 0 && (
+            <>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{parsed.length} recette{parsed.length !== 1 ? "s" : ""}</span>
+                <span>·</span>
+                <span>{totalComps} composant{totalComps !== 1 ? "s" : ""}</span>
+              </div>
+
+              {hasErrors && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    <p className="font-medium mb-1">Erreurs à corriger avant d'importer :</p>
+                    <ul className="space-y-0.5 text-xs">
+                      {allErrors.slice(0, 8).map((e, i) => <li key={i}>• {e}</li>)}
+                      {allErrors.length > 8 && <li className="text-muted-foreground">... et {allErrors.length - 8} autre(s)</li>}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="text-xs py-2">Recette</TableHead>
+                      <TableHead className="text-xs py-2">Type</TableHead>
+                      <TableHead className="text-xs py-2 text-right">Composants</TableHead>
+                      <TableHead className="text-xs py-2 text-right">Statut</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {parsed.map((r, i) => (
+                      <TableRow key={i} className={r.errors.length > 0 ? "bg-red-50/50" : ""}>
+                        <TableCell className="text-sm py-2 font-medium">{r.name}</TableCell>
+                        <TableCell className="text-sm py-2">
+                          <Badge variant={r.type === "finished" ? "default" : "secondary"} className={`text-xs ${r.type === "semi_finished" ? "bg-purple-100 text-purple-700 hover:bg-purple-100" : ""}`}>
+                            {r.type === "finished" ? "Fini" : "Semi-fini"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm py-2 text-right text-muted-foreground">{r.components.length}</TableCell>
+                        <TableCell className="py-2 text-right">
+                          {r.errors.length > 0
+                            ? <Badge variant="destructive" className="text-xs">{r.errors.length} erreur{r.errors.length !== 1 ? "s" : ""}</Badge>
+                            : <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">✓ OK</Badge>
+                          }
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose} disabled={importing}>Annuler</Button>
+          <Button onClick={doImport} disabled={parsed.length === 0 || hasErrors || importing}>
+            {importing
+              ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Importation...</>
+              : <><Upload className="h-4 w-4 mr-2" />Importer {parsed.length > 0 ? `(${parsed.length})` : ""}</>
+            }
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Recipes() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
   const [detailTab, setDetailTab] = useState("components");
   const [editing, setEditing] = useState<Recipe | null>(null);
@@ -335,7 +613,15 @@ export default function Recipes() {
           <h1 className="text-2xl font-serif font-bold">Recettes</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{recipes.length} recette{recipes.length !== 1 ? "s" : ""}</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nouvelle recette</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={downloadRecipesTemplate} className="gap-1.5">
+            <Download className="h-3.5 w-3.5" />Télécharger le modèle
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="gap-1.5">
+            <Upload className="h-3.5 w-3.5" />Importer Excel
+          </Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nouvelle recette</Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -393,6 +679,14 @@ export default function Recipes() {
           );
         })}
       </div>
+
+      <ImportRecipesDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        products={products}
+        units={units}
+        onSuccess={() => qc.invalidateQueries({ queryKey: getGetRecipesQueryKey() })}
+      />
 
       {/* Detail dialog */}
       {detailRecipe && (
