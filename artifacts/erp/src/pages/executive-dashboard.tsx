@@ -181,6 +181,7 @@ async function exportCompareToPDF(opts: {
   fromA: string; toA: string; fromB: string; toB: string;
   pA: CmpPeriod; pB: CmpPeriod;
   cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[];
+  cmpCatRows: { category: string; revA: number; revB: number }[];
 }) {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
@@ -235,6 +236,20 @@ async function exportCompareToPDF(opts: {
       columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
       styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 },
     });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
+  if (opts.cmpCatRows.length > 0) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("CA par produit / catégorie — A vs B", 14, y); y += 3;
+    autoTable(doc, {
+      startY: y,
+      head: [["Catégorie", `CA A`, `CA B`, "Δ CA"]],
+      body: opts.cmpCatRows.map(c => [c.category || "—", fmtNum(c.revA), fmtNum(c.revB), deltaStr(c.revA, c.revB)]),
+      headStyles: { fillColor: INDIGO, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: LIGHT },
+      columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
+      styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 },
+    });
   }
   const pageCount = (doc.internal as any).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
@@ -250,6 +265,7 @@ async function exportCompareToExcel(opts: {
   fromA: string; toA: string; fromB: string; toB: string;
   pA: CmpPeriod; pB: CmpPeriod;
   cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[];
+  cmpCatRows: { category: string; revA: number; revB: number }[];
 }) {
   const XLSX = await import("xlsx");
   const deltaStr = (a: number, b: number) => {
@@ -278,6 +294,11 @@ async function exportCompareToExcel(opts: {
     ...(opts.cmpBrRows.length > 0 ? [
       ["CA par agence", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
       ...opts.cmpBrRows.map(b => [b.branchName, b.revA, b.revB, deltaStr(b.revA, b.revB)]),
+      [],
+    ] : []),
+    ...(opts.cmpCatRows.length > 0 ? [
+      ["CA par produit / catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
+      ...opts.cmpCatRows.map(c => [c.category || "—", c.revA, c.revB, deltaStr(c.revA, c.revB)]),
     ] : []),
   ]);
   ws["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 10 }];
@@ -444,6 +465,19 @@ export default function ExecutiveDashboard() {
   })();
 
   const cmpBranchMax = Math.max(...cmpBrRows.map(b => Math.max(b.revA, b.revB)), 1);
+
+  const cmpCatRows: { category: string; revA: number; revB: number }[] = (() => {
+    if (!pA || !pB) return [];
+    const m: Record<string, { category: string; revA: number; revB: number }> = {};
+    for (const c of (pA.byCategory ?? [])) m[c.category] = { category: c.category, revA: c.amount, revB: 0 };
+    for (const c of (pB.byCategory ?? [])) {
+      if (!m[c.category]) m[c.category] = { category: c.category, revA: 0, revB: 0 };
+      m[c.category].revB = c.amount;
+    }
+    return Object.values(m).sort((a, b) => (b.revA + b.revB) - (a.revA + a.revB));
+  })();
+
+  const cmpCatMax = Math.max(...cmpCatRows.map(c => Math.max(c.revA, c.revB)), 1);
 
   const totalAlertCount = (alerts?.erpAlerts?.length ?? 0) + (alerts?.computed?.lowStock?.count ?? 0)
     + (alerts?.computed?.pendingReturns?.count ?? 0) + (alerts?.computed?.pendingTransfers?.count ?? 0);
@@ -1003,12 +1037,12 @@ export default function ExecutiveDashboard() {
               <>
                 <Button variant="outline" size="sm"
                   className="text-xs h-7 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                  onClick={() => exportCompareToPDF({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows })}>
+                  onClick={() => exportCompareToPDF({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows, cmpCatRows })}>
                   <Download className="h-3.5 w-3.5" /> PDF
                 </Button>
                 <Button variant="outline" size="sm"
                   className="text-xs h-7 gap-1.5 border-green-200 text-green-700 hover:bg-green-50"
-                  onClick={() => exportCompareToExcel({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows })}>
+                  onClick={() => exportCompareToExcel({ labelA: compareRanges.labelA, labelB: compareRanges.labelB, fromA: compareRanges.fromA, toA: compareRanges.toA, fromB: compareRanges.fromB, toB: compareRanges.toB, pA, pB, cmpBrRows, cmpCatRows })}>
                   <Download className="h-3.5 w-3.5" /> Excel
                 </Button>
               </>
@@ -1286,6 +1320,60 @@ export default function ExecutiveDashboard() {
                                   </div>
                                   <span className="text-xs font-bold text-indigo-700 w-24 text-right tabular-nums">{fmtDA(b.revA)}</span>
                                   <span className="text-xs text-amber-700 w-24 text-right tabular-nums">{fmtDA(b.revB)}</span>
+                                  <div className="w-14 flex justify-center">
+                                    {d === 0
+                                      ? <span className="text-[9px] font-bold text-slate-400">—</span>
+                                      : <span className={`text-[9px] font-bold ${d > 0 ? "text-green-700" : "text-red-700"}`}>{d > 0 ? "▲" : "▼"}{Math.abs(d)}%</span>
+                                    }
+                                  </div>
+                                </div>
+                                {/* Progress bars */}
+                                <div className="space-y-0.5 pl-3.5">
+                                  <div className="h-1 rounded-full bg-indigo-100">
+                                    <div className="h-1 rounded-full bg-indigo-500 transition-all" style={{ width: `${barWA}%` }} />
+                                  </div>
+                                  <div className="h-1 rounded-full bg-amber-100">
+                                    <div className="h-1 rounded-full bg-amber-400 transition-all" style={{ width: `${barWB}%` }} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Category CA table */}
+                  {cmpCatRows.length > 0 && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-1">
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <Package className="h-3.5 w-3.5" /> CA par produit / catégorie — A vs B
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border/50">
+                          <div className="grid grid-cols-[1fr_auto_auto_auto] px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider gap-3">
+                            <span>Catégorie</span>
+                            <span className="text-right text-indigo-600 w-24">CA A</span>
+                            <span className="text-right text-amber-600 w-24">CA B</span>
+                            <span className="text-center w-14">Δ</span>
+                          </div>
+                          {cmpCatRows.map((c, i) => {
+                            const d = getDelta(c.revA, c.revB);
+                            const colors = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#14b8a6"];
+                            const barWA = Math.round((c.revA / cmpCatMax) * 100);
+                            const barWB = Math.round((c.revB / cmpCatMax) * 100);
+                            return (
+                              <div key={c.category} className="px-4 py-2.5 hover:bg-muted/30 transition-colors space-y-1.5">
+                                <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                                    <span className="text-xs font-medium truncate">{c.category || "—"}</span>
+                                  </div>
+                                  <span className="text-xs font-bold text-indigo-700 w-24 text-right tabular-nums">{fmtDA(c.revA)}</span>
+                                  <span className="text-xs text-amber-700 w-24 text-right tabular-nums">{fmtDA(c.revB)}</span>
                                   <div className="w-14 flex justify-center">
                                     {d === 0
                                       ? <span className="text-[9px] font-bold text-slate-400">—</span>
