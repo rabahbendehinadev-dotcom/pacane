@@ -104,7 +104,7 @@ function useSaleSearch(search: string) {
   if (search) params.set("search", search);
   return useQuery<SaleSearchResult[]>({
     queryKey: ["sale-search-for-return", search],
-    queryFn: () => apiFetch(`/api/sales?${params}`),
+    queryFn: () => apiFetch<{ data: SaleSearchResult[] }>(`/api/sales?${params}`).then(r => r.data ?? []),
     staleTime: 10000,
   });
 }
