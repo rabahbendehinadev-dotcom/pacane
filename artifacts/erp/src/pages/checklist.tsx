@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon } from "lucide-react";
+import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon, Search } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({
@@ -310,6 +310,7 @@ function DaysPicker({ selected, onChange }: { selected: number[]; onChange: (day
 function AdminView() {
   const qc = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string>("all");
+  const [searchText, setSearchText] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [formTitle, setFormTitle] = useState("");
@@ -364,7 +365,7 @@ function AdminView() {
 
   async function save() {
     if (!formTitle.trim()) { toast({ title: "Le titre est requis", variant: "destructive" }); return; }
-    if (!formUserId) { toast({ title: "Veuillez choisir un ouvrier", variant: "destructive" }); return; }
+    if (!formUserId) { toast({ title: "Veuillez choisir un utilisateur", variant: "destructive" }); return; }
     if (formRecurrence !== "daily" && formDays.length === 0) {
       toast({ title: "Sélectionnez au moins un jour", variant: "destructive" });
       return;
@@ -407,7 +408,11 @@ function AdminView() {
     } finally { setDeleting(null); }
   }
 
-  const grouped = tasks.reduce<Record<string, Task[]>>((acc, t) => {
+  const filteredTasks = searchText.trim()
+    ? tasks.filter(t => t.title.toLowerCase().includes(searchText.toLowerCase()))
+    : tasks;
+
+  const grouped = filteredTasks.reduce<Record<string, Task[]>>((acc, t) => {
     const key = `${t.assignedToUserId}__${t.assignedToUserName ?? "—"}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(t);
@@ -433,19 +438,28 @@ function AdminView() {
 
       <DailySummaryCard />
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="Tous les ouvriers" />
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Tous les utilisateurs" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les ouvriers</SelectItem>
+            <SelectItem value="all">Tous les utilisateurs</SelectItem>
             {users.map(u => (
               <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <span className="text-sm text-muted-foreground">{tasks.length} tâche{tasks.length !== 1 ? "s" : ""}</span>
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher une tâche..."
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
+        <span className="text-sm text-muted-foreground whitespace-nowrap">{filteredTasks.length} tâche{filteredTasks.length !== 1 ? "s" : ""}</span>
       </div>
 
       {isLoading ? (
@@ -547,10 +561,10 @@ function AdminView() {
               />
             </div>
             <div>
-              <Label>Ouvrier <span className="text-destructive">*</span></Label>
+              <Label>Utilisateur <span className="text-destructive">*</span></Label>
               <Select value={formUserId} onValueChange={setFormUserId}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Choisir un ouvrier" />
+                  <SelectValue placeholder="Choisir un utilisateur" />
                 </SelectTrigger>
                 <SelectContent className="max-h-56">
                   {users.map(u => (
