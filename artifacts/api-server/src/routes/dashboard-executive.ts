@@ -11,7 +11,7 @@ import { Router, type IRouter } from "express";
 import { and, eq, gte, lte, inArray, not, isNull, sql, desc, lt } from "drizzle-orm";
 import {
   db,
-  salesTable, salePaymentsTable,
+  salesTable, salePaymentsTable, saleItemsTable,
   purchasesTable,
   expensesTable,
   productionOrdersTable,
@@ -671,11 +671,33 @@ router.get("/compare", requireAuth, requirePermission(P.reports.view), async (re
       });
     }
 
+    const [uniqueClientsRow] = await db.select({
+      uniqueClients: sql<string>`COUNT(DISTINCT ${salesTable.customerId})`,
+    }).from(salesTable).where(and(...saleConds));
+
+    const topProductRows = await db.select({
+      productId: saleItemsTable.productId,
+      productName: productsTable.name,
+      revenue: sql<string>`COALESCE(SUM(${saleItemsTable.total}::numeric), 0)`,
+    }).from(saleItemsTable)
+      .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+      .leftJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+      .where(and(
+        eq(salesTable.type, "sale"),
+        eq(salesTable.status, "confirmed"),
+        ...dateConds(salesTable.createdAt, from, to),
+        ...brConds(salesTable.branchId),
+      ))
+      .groupBy(saleItemsTable.productId, productsTable.name)
+      .orderBy(sql`SUM(${saleItemsTable.total}::numeric) DESC`)
+      .limit(1);
+
     const grossRevenue  = parseFloat(saleAgg?.grossRevenue ?? "0");
     const returnAmount  = parseFloat(retAgg?.returnAmount ?? "0");
     const totalExpenses = parseFloat(expAgg?.totalExpenses ?? "0");
     const netRevenue    = grossRevenue - returnAmount;
     const encaisse      = parseFloat(saleAgg?.totalPaid ?? "0") + parseFloat(saleAgg?.totalCredit ?? "0");
+    const topProduct    = topProductRows[0] ? { name: topProductRows[0].productName ?? "—", revenue: parseFloat(topProductRows[0].revenue) } : null;
 
     return {
       grossRevenue, netRevenue,
@@ -684,6 +706,8 @@ router.get("/compare", requireAuth, requirePermission(P.reports.view), async (re
       saleCount: parseInt(saleAgg?.saleCount ?? "0", 10),
       returnAmount, returnCount: parseInt(retAgg?.returnCount ?? "0", 10),
       encaisse,
+      uniqueClients: parseInt(uniqueClientsRow?.uniqueClients ?? "0", 10),
+      topProduct,
       byCategory: byCategory.map(c => ({ category: c.category ?? "Autre", amount: parseFloat(c.amount) })),
       byBranch,
     };

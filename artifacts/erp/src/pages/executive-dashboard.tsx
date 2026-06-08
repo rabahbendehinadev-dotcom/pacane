@@ -174,7 +174,7 @@ function fmtNum(n: number) {
   return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA";
 }
 
-type CmpPeriod = { grossRevenue: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
+type CmpPeriod = { grossRevenue: number; saleCount: number; returnAmount: number; returnCount: number; encaisse: number; uniqueClients: number; topProduct: { name: string; revenue: number } | null; byCategory: { category: string; amount: number }[]; byBranch: { branchId: number; branchName: string; revenue: number; expenses: number; result: number; saleCount: number }[] };
 
 async function exportCompareToPDF(opts: {
   labelA: string; labelB: string;
@@ -1107,8 +1107,6 @@ export default function ExecutiveDashboard() {
 
               const bestDayA = sparkRevA.reduce((best, r) => r.v > (best?.v ?? -1) ? r : best, null as typeof sparkRevA[0] | null);
               const bestDayB = sparkRevB.reduce((best, r) => r.v > (best?.v ?? -1) ? r : best, null as typeof sparkRevB[0] | null);
-              const topCatA = [...(pA.byCategory ?? [])].sort((a, b) => b.amount - a.amount)[0];
-              const topCatB = [...(pB.byCategory ?? [])].sort((a, b) => b.amount - a.amount)[0];
 
               const areaData = (() => {
                 const maxLen = Math.max(sparkRevA.length, sparkRevB.length);
@@ -1119,7 +1117,7 @@ export default function ExecutiveDashboard() {
                 }));
               })();
 
-              const caDelta = getDelta(pA.grossRevenue, pB.grossRevenue);
+              const caDelta = getDelta(pB.grossRevenue, pA.grossRevenue);
 
               return (
                 <>
@@ -1194,29 +1192,30 @@ export default function ExecutiveDashboard() {
                         </div>
                       </CardContent>
                     </Card>
-                    {/* Top catégorie */}
+                    {/* Meilleur produit */}
                     <Card className="border-0 shadow-sm">
                       <CardContent className="p-3 space-y-2">
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">Top Catégorie</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">Meilleur produit</p>
                         <div className="grid grid-cols-2 gap-1.5">
                           <div className="rounded-lg bg-indigo-50/70 border border-indigo-100 p-2 text-center">
                             <p className="text-[9px] text-indigo-500 font-semibold mb-0.5">A</p>
-                            {topCatA
-                              ? <><p className="text-[9px] text-indigo-400 truncate" title={topCatA.category}>{topCatA.category}</p><p className="text-xs font-bold text-indigo-700 leading-tight">{fmtDA(topCatA.amount)}</p></>
+                            {pA.topProduct
+                              ? <><p className="text-[9px] text-indigo-400 truncate leading-tight" title={pA.topProduct.name}>{pA.topProduct.name}</p><p className="text-xs font-bold text-indigo-700 leading-tight">{fmtDA(pA.topProduct.revenue)}</p></>
                               : <p className="text-xs text-muted-foreground">—</p>
                             }
                           </div>
                           <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-2 text-center">
                             <p className="text-[9px] text-amber-500 font-semibold mb-0.5">B</p>
-                            {topCatB
-                              ? <><p className="text-[9px] text-amber-400 truncate" title={topCatB.category}>{topCatB.category}</p><p className="text-xs font-bold text-amber-700 leading-tight">{fmtDA(topCatB.amount)}</p></>
+                            {pB.topProduct
+                              ? <><p className="text-[9px] text-amber-400 truncate leading-tight" title={pB.topProduct.name}>{pB.topProduct.name}</p><p className="text-xs font-bold text-amber-700 leading-tight">{fmtDA(pB.topProduct.revenue)}</p></>
                               : <p className="text-xs text-muted-foreground">—</p>
                             }
                           </div>
                         </div>
                       </CardContent>
                     </Card>
-                    <KpiCmpCard label="Encaissé" valA={pA.encaisse} valB={pB.encaisse} fmt="money" />
+                    {/* Nb clients uniques */}
+                    <KpiCmpCard label="Clients uniques" valA={pA.uniqueClients} valB={pB.uniqueClients} />
                   </div>
 
                   {/* AreaChart daily CA trend */}
