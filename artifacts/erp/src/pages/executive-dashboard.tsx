@@ -1344,6 +1344,43 @@ export default function ExecutiveDashboard() {
                     </Card>
                   )}
 
+                  {/* Category CA bar chart */}
+                  {cmpCatRows.length > 0 && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-1">
+                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <Package className="h-3.5 w-3.5" /> CA par catégorie — comparaison A vs B
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-2 pb-3">
+                        <div className="flex gap-4 mb-2 text-[10px] font-semibold justify-end">
+                          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-indigo-500" /><span className="text-indigo-600">{compareRanges.labelA} (A)</span></span>
+                          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-amber-400" /><span className="text-amber-600">{compareRanges.labelB} (B)</span></span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={Math.max(160, cmpCatRows.length * 44)}>
+                          <BarChart
+                            layout="vertical"
+                            data={cmpCatRows.map(c => ({
+                              name: c.category?.length > 18 ? c.category.slice(0, 16) + "…" : (c.category || "—"),
+                              "CA A": c.revA,
+                              "CA B": c.revB,
+                            }))}
+                            margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
+                            barCategoryGap="30%"
+                            barGap={3}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                            <XAxis type="number" tickFormatter={(v) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}k` : String(v)} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+                            <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={90} />
+                            <Tooltip content={<ChartTip />} />
+                            <Bar dataKey="CA A" fill="#6366f1" radius={[0, 3, 3, 0]} maxBarSize={14} />
+                            <Bar dataKey="CA B" fill="#f59e0b" radius={[0, 3, 3, 0]} maxBarSize={14} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Category CA table */}
                   {cmpCatRows.length > 0 && (
                     <Card className="border-0 shadow-sm">
