@@ -153,6 +153,50 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE branch_sellers ADD COLUMN IF NOT EXISTS seller_name TEXT;`);
     await db.execute(sql`DELETE FROM branch_sellers WHERE seller_name IS NULL;`);
     await db.execute(sql`ALTER TABLE branch_sellers DROP COLUMN IF EXISTS user_id;`);
+    // Recipes feature
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS recipes (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        product_id INTEGER,
+        type TEXT NOT NULL DEFAULT 'finished',
+        yield NUMERIC(15,3) NOT NULL DEFAULT 1,
+        yield_unit_id INTEGER NOT NULL DEFAULT 1,
+        steps TEXT,
+        notes TEXT,
+        total_cost NUMERIC(15,2),
+        cost_per_unit NUMERIC(15,4),
+        last_cost_update TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2);`);
+    await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cost_per_unit NUMERIC(15,4);`);
+    await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS last_cost_update TIMESTAMP WITH TIME ZONE;`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS recipe_ingredients (
+        id SERIAL PRIMARY KEY,
+        recipe_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity NUMERIC(15,3) NOT NULL DEFAULT 0,
+        unit_id INTEGER NOT NULL DEFAULT 1,
+        wastage_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS recipe_items (
+        id SERIAL PRIMARY KEY,
+        recipe_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL DEFAULT 'product',
+        item_id INTEGER NOT NULL,
+        quantity NUMERIC(15,3) NOT NULL DEFAULT 0,
+        unit_id INTEGER NOT NULL DEFAULT 1,
+        wastage_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
