@@ -9,6 +9,7 @@ export * from "./stock";
 export * from "./purchases";
 export * from "./recipes";
 export * from "./production";
+export { productionOrderItemsTable } from "./production";
 export * from "./sales";
 export * from "./pos";
 export * from "./transfers";

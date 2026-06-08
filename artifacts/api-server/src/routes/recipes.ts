@@ -4,15 +4,18 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
+import { calculateRecipeCostBreakdown, invalidateRecipeCostCache } from "../lib/costing";
 
 const router: IRouter = Router();
 
 async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
   const [unit] = await db.select().from(unitsTable).where(eq(unitsTable.id, recipe.yieldUnitId));
   let productName: string | null = null;
+  let sellingPrice: number | null = null;
   if (recipe.productId) {
     const [p] = await db.select().from(productsTable).where(eq(productsTable.id, recipe.productId));
     productName = p?.name ?? null;
+    sellingPrice = p?.sellingPrice ? parseFloat(p.sellingPrice as string) : null;
   }
 
   const recipeItems = await db.select().from(recipeItemsTable).where(eq(recipeItemsTable.recipeId, recipe.id));
@@ -58,8 +61,12 @@ async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
       }));
 
     return {
-      ...recipe, productName, yieldUnitName: unit?.abbreviation ?? "",
-      yield: parseFloat(recipe.yield as string), theoreticalCost,
+      ...recipe, productName, sellingPrice, yieldUnitName: unit?.abbreviation ?? "",
+      yield: parseFloat(recipe.yield as string),
+      theoreticalCost,
+      cachedTotalCost: recipe.totalCost ? parseFloat(recipe.totalCost as string) : null,
+      cachedCostPerUnit: recipe.costPerUnit ? parseFloat(recipe.costPerUnit as string) : null,
+      lastCostUpdate: recipe.lastCostUpdate?.toISOString() ?? null,
       components, ingredients: ingredientsCompat,
     };
   }
@@ -88,8 +95,12 @@ async function buildRecipeResponse(recipe: typeof recipesTable.$inferSelect) {
   components = ingredients.map(i => ({ ...i, itemType: "product", itemId: i.productId, itemName: i.productName }));
 
   return {
-    ...recipe, productName, yieldUnitName: unit?.abbreviation ?? "",
-    yield: parseFloat(recipe.yield as string), theoreticalCost,
+    ...recipe, productName, sellingPrice, yieldUnitName: unit?.abbreviation ?? "",
+    yield: parseFloat(recipe.yield as string),
+    theoreticalCost,
+    cachedTotalCost: recipe.totalCost ? parseFloat(recipe.totalCost as string) : null,
+    cachedCostPerUnit: recipe.costPerUnit ? parseFloat(recipe.costPerUnit as string) : null,
+    lastCostUpdate: recipe.lastCostUpdate?.toISOString() ?? null,
     components, ingredients,
   };
 }
@@ -101,6 +112,24 @@ router.get("/recipes", requireAuth, requirePermission(P.recipes.view), async (re
   if (search) recipes = recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
   const result = await Promise.all(recipes.map(buildRecipeResponse));
   res.json(result);
+});
+
+router.get("/recipes/:id/cost", requireAuth, requirePermission(P.recipes.view), async (req, res): Promise<void> => {
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const quantity = req.query.quantity ? parseFloat(req.query.quantity as string) : null;
+  const wastePercentage = req.query.waste ? parseFloat(req.query.waste as string) : 0;
+  const forceRefresh = req.query.refresh === "true";
+
+  const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, id));
+  if (!recipe) { res.status(404).json({ error: "Recette introuvable" }); return; }
+
+  const qty = quantity ?? parseFloat(recipe.yield as string);
+  try {
+    const breakdown = await calculateRecipeCostBreakdown(id, qty, wastePercentage, forceRefresh);
+    res.json(breakdown);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Erreur calcul coût" });
+  }
 });
 
 router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async (req, res): Promise<void> => {
@@ -132,6 +161,7 @@ router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async 
     }
   }
 
+  invalidateRecipeCostCache(recipe.id);
   res.status(201).json(await buildRecipeResponse(recipe));
 });
 
@@ -174,6 +204,7 @@ router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), asy
     }
   }
 
+  invalidateRecipeCostCache(id);
   res.json(await buildRecipeResponse(recipe));
 });
 

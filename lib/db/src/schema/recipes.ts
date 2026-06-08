@@ -11,6 +11,9 @@ export const recipesTable = pgTable("recipes", {
   yieldUnitId: integer("yield_unit_id").notNull(),
   steps: text("steps"),
   notes: text("notes"),
+  totalCost: numeric("total_cost", { precision: 15, scale: 2 }),
+  costPerUnit: numeric("cost_per_unit", { precision: 15, scale: 4 }),
+  lastCostUpdate: timestamp("last_cost_update", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
-import { db, productionOrdersTable, productionOverrideLogsTable, recipesTable, recipeIngredientsTable, productsTable, branchesTable, usersTable, stockLevelsTable } from "@workspace/db";
+import { db, productionOrdersTable, productionOverrideLogsTable, productionOrderItemsTable, recipesTable, recipeIngredientsTable, productsTable, branchesTable, usersTable, stockLevelsTable } from "@workspace/db";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
+import { requirePermission, assertBranchAccess } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
 import { adjustStock } from "./stock";
 import { checkIngredientAvailability } from "../lib/availability";
 import { calculateRecipeExplosion } from "../lib/bom";
+import { calculateRecipeCostBreakdown, flattenBomForOrderItems, invalidateRecipeCostCache, invalidateWacCache } from "../lib/costing";
 
 const router: IRouter = Router();
 
@@ -20,9 +21,11 @@ async function buildOrderResponse(order: typeof productionOrdersTable.$inferSele
   const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, order.recipeId));
   const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, order.branchId));
   let productName: string | null = null;
+  let sellingPrice: number | null = null;
   if (order.productId) {
     const [p] = await db.select().from(productsTable).where(eq(productsTable.id, order.productId));
     productName = p?.name ?? null;
+    sellingPrice = p?.sellingPrice ? parseFloat(p.sellingPrice as string) : null;
   }
   let createdByName: string | null = null;
   if (order.createdByUserId) {
@@ -31,17 +34,44 @@ async function buildOrderResponse(order: typeof productionOrdersTable.$inferSele
   }
   const recipeYield = recipe?.yield ? parseFloat(recipe.yield as string) : 1;
   const plannedQty = parseFloat(order.plannedQuantity as string);
+  const theoreticalCost = parseFloat(order.theoreticalCost as string);
+  const actualCost = order.actualCost ? parseFloat(order.actualCost as string) : null;
+  const estimatedCost = order.estimatedCost ? parseFloat(order.estimatedCost as string) : null;
+  const costVariance = order.costVariance ? parseFloat(order.costVariance as string) : null;
+
+  // Profitability
+  let profitability: null | { profitPerUnit: number; totalProfit: number; marginPct: number; marginLevel: string } = null;
+  const qty = (order.actualQuantity ? parseFloat(order.actualQuantity as string) : plannedQty) || 1;
+  const costUsed = actualCost ?? estimatedCost ?? theoreticalCost;
+  const costPerUnit = costUsed / qty;
+  if (sellingPrice && sellingPrice > 0 && costPerUnit >= 0) {
+    const profitPerUnit = sellingPrice - costPerUnit;
+    const totalProfit = profitPerUnit * qty;
+    const marginPct = Math.round((profitPerUnit / sellingPrice) * 10000) / 100;
+    profitability = {
+      profitPerUnit: Math.round(profitPerUnit * 100) / 100,
+      totalProfit: Math.round(totalProfit * 100) / 100,
+      marginPct,
+      marginLevel: marginPct >= 30 ? "green" : marginPct >= 10 ? "orange" : "red",
+    };
+  }
+
   return {
     ...order,
     recipeName: recipe?.name ?? "",
     recipeYield,
     branchName: branch?.name ?? "",
     productName,
+    sellingPrice,
     createdByName,
     plannedQuantity: plannedQty,
     actualQuantity: order.actualQuantity ? parseFloat(order.actualQuantity as string) : null,
-    theoreticalCost: parseFloat(order.theoreticalCost as string),
-    actualCost: order.actualCost ? parseFloat(order.actualCost as string) : null,
+    theoreticalCost,
+    estimatedCost,
+    actualCost,
+    costVariance,
+    wastePercentage: parseFloat(order.wastePercentage as string),
+    profitability,
     startedAt: order.startedAt?.toISOString() ?? null,
     completedAt: order.completedAt?.toISOString() ?? null,
   };
@@ -69,6 +99,23 @@ router.get("/production/planning", requireAuth, requirePermission(P.production.v
       };
     });
   res.json(suggestions);
+});
+
+// Cost preview endpoint (before creating order)
+router.post("/production/cost-preview", requireAuth, requirePermission(P.production.view), async (req, res): Promise<void> => {
+  const { recipeId, quantity, wastePercentage = 0 } = req.body;
+  if (!recipeId || !quantity) { res.status(400).json({ error: "recipeId et quantity requis" }); return; }
+  try {
+    const breakdown = await calculateRecipeCostBreakdown(
+      parseInt(String(recipeId), 10),
+      parseFloat(String(quantity)),
+      parseFloat(String(wastePercentage)),
+      false
+    );
+    res.json(breakdown);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Erreur calcul coût" });
+  }
 });
 
 router.get("/production", requireAuth, requirePermission(P.production.view), async (req, res): Promise<void> => {
@@ -113,7 +160,32 @@ router.get("/production/:id/bom", requireAuth, requirePermission(P.production.vi
     const explosion = await calculateRecipeExplosion(order.recipeId, qty);
     res.json(explosion);
   } catch (err: any) {
-    res.status(400).json({ error: err.message ?? "Erreur lors du calcul BOM" });
+    res.status(400).json({ error: err.message ?? "Erreur BOM" });
+  }
+});
+
+router.get("/production/:id/cost", requireAuth, requirePermission(P.production.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+  if (!order) { res.status(404).json({ error: "Ordre introuvable" }); return; }
+  if (!assertBranchAccess(req.user!, order.branchId, res)) return;
+
+  const qty = req.query.quantity
+    ? parseFloat(req.query.quantity as string)
+    : parseFloat(order.plannedQuantity as string);
+  const wastePercentage = parseFloat(order.wastePercentage as string) || 0;
+  const forceRefresh = req.query.refresh === "true";
+
+  try {
+    const breakdown = await calculateRecipeCostBreakdown(order.recipeId, qty, wastePercentage, forceRefresh);
+    // Attach order items if they exist
+    const savedItems = await db
+      .select()
+      .from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, id));
+    res.json({ ...breakdown, savedItems });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Erreur calcul coût" });
   }
 });
 
@@ -141,12 +213,13 @@ router.get("/production/:id/overrides", requireAuth, requirePermission(P.product
 });
 
 router.post("/production", requireAuth, requirePermission(P.production.create), async (req, res): Promise<void> => {
-  const { recipeId, plannedQuantity, branchId, status, notes } = req.body;
+  const { recipeId, plannedQuantity, branchId, status, notes, wastePercentage = 0 } = req.body;
   if (!recipeId || !plannedQuantity || !branchId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   if (!assertBranchAccess(req.user!, parseInt(String(branchId), 10), res)) return;
   const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, recipeId));
 
   let theoreticalCost = 0;
+  let estimatedCost = 0;
   let bomSnapshotStr: string | null = null;
   let materialsSnapshotStr: string | null = null;
 
@@ -168,6 +241,18 @@ router.post("/production", requireAuth, requirePermission(P.production.create), 
     }
   }
 
+  // Calculate WAC-based estimated cost
+  try {
+    const costBreakdown = await calculateRecipeCostBreakdown(
+      recipeId,
+      parseFloat(String(plannedQuantity)),
+      parseFloat(String(wastePercentage))
+    );
+    estimatedCost = costBreakdown.totalCost;
+  } catch {
+    estimatedCost = theoreticalCost;
+  }
+
   const [order] = await db.insert(productionOrdersTable).values({
     reference: genRef(),
     recipeId,
@@ -176,11 +261,34 @@ router.post("/production", requireAuth, requirePermission(P.production.create), 
     status: status ?? "planned",
     branchId,
     theoreticalCost: theoreticalCost.toString(),
+    estimatedCost: estimatedCost.toString(),
+    wastePercentage: wastePercentage.toString(),
     notes,
     bomSnapshot: bomSnapshotStr,
     explodedMaterialsSnapshot: materialsSnapshotStr,
     createdByUserId: (req as any).user?.id ?? null,
   }).returning();
+
+  // Save order items for cost breakdown
+  try {
+    const explosion = await calculateRecipeExplosion(recipeId, parseFloat(String(plannedQuantity)));
+    const items = await flattenBomForOrderItems(explosion.tree);
+    for (const item of items) {
+      await db.insert(productionOrderItemsTable).values({
+        productionOrderId: order.id,
+        itemType: item.itemType,
+        itemId: item.itemId,
+        itemName: item.itemName,
+        quantity: item.quantity.toString(),
+        unitAbbreviation: item.unitAbbreviation,
+        unitCostPrice: item.unitCostPrice.toString(),
+        totalCost: item.totalCost.toString(),
+        wastageRate: item.wastageRate.toString(),
+        nestingLevel: item.nestingLevel,
+      });
+    }
+  } catch { /* non-critical */ }
+
   res.status(201).json(await buildOrderResponse(order));
 });
 
@@ -193,13 +301,11 @@ router.post("/production/:id/launch", requireAuth, requirePermission(P.productio
   if (!order) { res.status(404).json({ error: "Ordre introuvable" }); return; }
   if (!assertBranchAccess(req.user!, order.branchId, res)) return;
   if (!["planned", "draft"].includes(order.status)) {
-    res.status(409).json({ error: "Cet ordre ne peut pas être lancé dans son état actuel (attendu: planifié)" }); return;
+    res.status(409).json({ error: "Cet ordre ne peut pas être lancé dans son état actuel" }); return;
   }
 
   const availability = await checkIngredientAvailability(
-    order.recipeId,
-    parseFloat(order.plannedQuantity as string),
-    order.branchId
+    order.recipeId, parseFloat(order.plannedQuantity as string), order.branchId
   );
 
   if (!availability.canLaunch) {
@@ -212,17 +318,14 @@ router.post("/production/:id/launch", requireAuth, requirePermission(P.productio
       return;
     }
     await db.insert(productionOverrideLogsTable).values({
-      productionOrderId: id,
-      userId: user.id,
-      reason: overrideReason,
+      productionOrderId: id, userId: user.id, reason: overrideReason,
       availabilitySnapshot: JSON.stringify(availability),
     });
   }
 
   const [updated] = await db.update(productionOrdersTable)
     .set({ status: "in_progress", startedAt: new Date() })
-    .where(eq(productionOrdersTable.id, id))
-    .returning();
+    .where(eq(productionOrdersTable.id, id)).returning();
 
   res.json({ ...await buildOrderResponse(updated), availability });
 });
@@ -232,11 +335,12 @@ router.patch("/production/:id", requireAuth, requirePermission(P.production.edit
   const [existing] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
   if (!existing) { res.status(404).json({ error: "Ordre introuvable" }); return; }
   if (!assertBranchAccess(req.user!, existing.branchId, res)) return;
-  const { status, plannedQuantity, notes } = req.body;
+  const { status, plannedQuantity, notes, wastePercentage } = req.body;
   const updates: Record<string, unknown> = {};
   if (status != null) updates.status = status;
   if (plannedQuantity != null) updates.plannedQuantity = plannedQuantity.toString();
   if (notes != null) updates.notes = notes;
+  if (wastePercentage != null) updates.wastePercentage = wastePercentage.toString();
   const [order] = await db.update(productionOrdersTable).set(updates as any).where(eq(productionOrdersTable.id, id)).returning();
   if (!order) { res.status(404).json({ error: "Ordre introuvable" }); return; }
   res.json(await buildOrderResponse(order));
@@ -251,6 +355,7 @@ router.post("/production/:id/complete", requireAuth, requirePermission(P.product
     res.status(409).json({ error: "L'ordre doit être en cours d'exécution pour être complété" }); return;
   }
   const { actualQuantity } = req.body;
+  const wastePercentage = parseFloat(order.wastePercentage as string) || 0;
 
   let actualCost = 0;
   let bomSnapshotStr = order.bomSnapshot;
@@ -263,11 +368,11 @@ router.post("/production/:id/complete", requireAuth, requirePermission(P.product
     materialsSnapshotStr = JSON.stringify(explosion.materials);
 
     for (const mat of explosion.materials) {
-      await adjustStock(
-        mat.productId, order.branchId, -mat.quantity,
-        "production_consumption", order.reference, mat.costPrice, order.id
-      );
+      await adjustStock(mat.productId, order.branchId, -mat.quantity, "production_consumption", order.reference, mat.costPrice, order.id);
     }
+
+    // Invalidate WAC cache for consumed products
+    for (const mat of explosion.materials) invalidateWacCache(mat.productId);
   } catch {
     const [recipe] = await db.select().from(recipesTable).where(eq(recipesTable.id, order.recipeId));
     const yield_ = parseFloat(recipe?.yield as string ?? "1");
@@ -285,15 +390,25 @@ router.post("/production/:id/complete", requireAuth, requirePermission(P.product
     }
   }
 
+  // Apply waste cost
+  const wasteCostAdded = actualCost * (wastePercentage / 100);
+  const finalActualCost = Math.round((actualCost + wasteCostAdded) * 100) / 100;
+  const theoreticalCost = parseFloat(order.theoreticalCost as string);
+  const costVariance = Math.round((finalActualCost - theoreticalCost) * 100) / 100;
+
   if (order.productId) {
-    const costPerUnit = parseFloat(String(actualQuantity)) > 0 ? actualCost / parseFloat(String(actualQuantity)) : 0;
+    const costPerUnit = parseFloat(String(actualQuantity)) > 0 ? finalActualCost / parseFloat(String(actualQuantity)) : 0;
     await adjustStock(order.productId, order.branchId, parseFloat(String(actualQuantity)), "production_output", order.reference, costPerUnit, order.id);
+    invalidateWacCache(order.productId);
   }
+
+  invalidateRecipeCostCache(order.recipeId);
 
   const [updated] = await db.update(productionOrdersTable).set({
     status: "completed",
     actualQuantity: actualQuantity.toString(),
-    actualCost: actualCost.toString(),
+    actualCost: finalActualCost.toString(),
+    costVariance: costVariance.toString(),
     completedAt: new Date(),
     bomSnapshot: bomSnapshotStr,
     explodedMaterialsSnapshot: materialsSnapshotStr,
