@@ -153,6 +153,85 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE branch_sellers ADD COLUMN IF NOT EXISTS seller_name TEXT;`);
     await db.execute(sql`DELETE FROM branch_sellers WHERE seller_name IS NULL;`);
     await db.execute(sql`ALTER TABLE branch_sellers DROP COLUMN IF EXISTS user_id;`);
+    // Checklist feature
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS checklist_tasks (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        assigned_to_user_id INTEGER NOT NULL,
+        created_by_user_id INTEGER,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        recurrence TEXT NOT NULL DEFAULT 'daily',
+        recurring_days INTEGER[],
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS checklist_completions (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        completion_date TEXT NOT NULL,
+        is_done BOOLEAN NOT NULL DEFAULT true,
+        completed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS checklist_completion_unique_idx ON checklist_completions (task_id, user_id, completion_date);`);
+    // Production feature
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS production_orders (
+        id SERIAL PRIMARY KEY,
+        reference TEXT NOT NULL UNIQUE,
+        recipe_id INTEGER NOT NULL,
+        product_id INTEGER,
+        planned_quantity NUMERIC(15,3) NOT NULL DEFAULT 0,
+        actual_quantity NUMERIC(15,3),
+        status TEXT NOT NULL DEFAULT 'draft',
+        branch_id INTEGER NOT NULL,
+        theoretical_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+        estimated_cost NUMERIC(15,2),
+        actual_cost NUMERIC(15,2),
+        cost_variance NUMERIC(15,2),
+        waste_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        notes TEXT,
+        bom_snapshot TEXT,
+        exploded_materials_snapshot TEXT,
+        started_at TIMESTAMP WITH TIME ZONE,
+        completed_at TIMESTAMP WITH TIME ZONE,
+        created_by_user_id INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS production_override_logs (
+        id SERIAL PRIMARY KEY,
+        production_order_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        availability_snapshot TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS production_order_items (
+        id SERIAL PRIMARY KEY,
+        production_order_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL DEFAULT 'product',
+        item_id INTEGER NOT NULL,
+        item_name TEXT NOT NULL,
+        quantity NUMERIC(15,3) NOT NULL DEFAULT 0,
+        unit_abbreviation TEXT NOT NULL DEFAULT 'u',
+        unit_cost_price NUMERIC(15,4) NOT NULL DEFAULT 0,
+        total_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+        wastage_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+        nesting_level INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
     // Recipes feature
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS recipes (
