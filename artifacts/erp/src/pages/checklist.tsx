@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon, Search, ChevronsUpDown, Check } from "lucide-react";
+import { ClipboardCheck, Plus, Edit2, Trash2, CheckCircle2, Circle, AlertCircle, Users, TrendingUp, RepeatIcon, Search, ChevronsUpDown, Check, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({
@@ -315,7 +315,7 @@ function AdminView() {
   const [searchText, setSearchText] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
-  const [formTitle, setFormTitle] = useState("");
+  const [formTitles, setFormTitles] = useState<string[]>([""]);
   const [formDesc, setFormDesc] = useState("");
   const [formUserId, setFormUserId] = useState("");
   const [formOrder, setFormOrder] = useState("0");
@@ -346,7 +346,7 @@ function AdminView() {
 
   function openNew() {
     setEditing(null);
-    setFormTitle("");
+    setFormTitles([""]);
     setFormDesc("");
     setFormUserId(selectedUserId !== "all" ? selectedUserId : (users[0]?.id.toString() ?? ""));
     setFormOrder("0");
@@ -357,7 +357,7 @@ function AdminView() {
 
   function openEdit(task: Task) {
     setEditing(task);
-    setFormTitle(task.title);
+    setFormTitles([task.title]);
     setFormDesc(task.description ?? "");
     setFormUserId(task.assignedToUserId?.toString() ?? "");
     setFormOrder(task.sortOrder.toString());
@@ -367,7 +367,8 @@ function AdminView() {
   }
 
   async function save() {
-    if (!formTitle.trim()) { toast({ title: "Le titre est requis", variant: "destructive" }); return; }
+    const validTitles = formTitles.map(t => t.trim()).filter(Boolean);
+    if (validTitles.length === 0) { toast({ title: "Le titre est requis", variant: "destructive" }); return; }
     if (!formUserId) { toast({ title: "Veuillez choisir un utilisateur", variant: "destructive" }); return; }
     if (formRecurrence !== "daily" && formDays.length === 0) {
       toast({ title: "Sélectionnez au moins un jour", variant: "destructive" });
@@ -375,8 +376,7 @@ function AdminView() {
     }
     setSaving(true);
     try {
-      const body = {
-        title: formTitle.trim(),
+      const baseBody = {
         description: formDesc.trim() || null,
         assignedToUserId: parseInt(formUserId, 10),
         sortOrder: parseInt(formOrder, 10) || 0,
@@ -384,13 +384,15 @@ function AdminView() {
         recurringDays: formRecurrence !== "daily" ? formDays : [],
       };
       if (editing) {
-        const r = await fetch(`/api/checklist/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify(body) });
+        const r = await fetch(`/api/checklist/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify({ ...baseBody, title: validTitles[0] }) });
         if (!r.ok) throw new Error((await r.json()).error);
         toast({ title: "Tâche modifiée" });
       } else {
-        const r = await fetch("/api/checklist", { method: "POST", headers: AUTH(), body: JSON.stringify(body) });
-        if (!r.ok) throw new Error((await r.json()).error);
-        toast({ title: "Tâche ajoutée" });
+        await Promise.all(validTitles.map(title =>
+          fetch("/api/checklist", { method: "POST", headers: AUTH(), body: JSON.stringify({ ...baseBody, title }) })
+            .then(async r => { if (!r.ok) throw new Error((await r.json()).error); })
+        ));
+        toast({ title: validTitles.length > 1 ? `${validTitles.length} tâches ajoutées` : "Tâche ajoutée" });
       }
       qc.invalidateQueries({ queryKey: ["checklist-all"] });
       setDialogOpen(false);
@@ -544,14 +546,43 @@ function AdminView() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Titre <span className="text-destructive">*</span></Label>
-              <Input
-                className="mt-1"
-                value={formTitle}
-                onChange={e => setFormTitle(e.target.value)}
-                placeholder="Ex : nettoyage du poste de travail"
-                autoFocus
-              />
+              <div className="flex items-center justify-between mb-1">
+                <Label>Titre <span className="text-destructive">*</span></Label>
+                {!editing && (
+                  <button
+                    type="button"
+                    onClick={() => setFormTitles(t => [...t, ""])}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Ajouter un titre
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {formTitles.map((title, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    {!editing && formTitles.length > 1 && (
+                      <span className="text-xs text-muted-foreground font-mono w-5 text-right shrink-0">{i + 1}.</span>
+                    )}
+                    <Input
+                      className="flex-1"
+                      value={title}
+                      onChange={e => setFormTitles(ts => ts.map((t, idx) => idx === i ? e.target.value : t))}
+                      placeholder="Ex : nettoyage du poste de travail"
+                      autoFocus={i === 0}
+                    />
+                    {!editing && formTitles.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setFormTitles(ts => ts.filter((_, idx) => idx !== i))}
+                        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
             <div>
               <Label>Description (facultatif)</Label>
