@@ -284,6 +284,8 @@ async function runMigrations() {
     `);
     // transfers: add delete endpoints support columns (idempotent)
     await db.execute(sql`ALTER TABLE transfers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;`);
+    // workers: add phone column if missing
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS phone TEXT;`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
