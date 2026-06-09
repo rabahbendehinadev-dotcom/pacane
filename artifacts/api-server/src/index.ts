@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { importCsvProducts } from "./migrations/import-csv-products";
+import { generateDailySalesAnalyticsNotifications } from "./routes/notifications";
 
 async function runMigrations() {
   try {
@@ -317,5 +318,14 @@ runMigrations().then(() => {
     }
 
     logger.info({ port }, "Server listening");
+
+    // ── Daily analytics alerts → user notifications ──────────────────────────
+    // Run 2 minutes after startup (let the DB settle), then every 24 hours.
+    const runDailyAnalytics = () =>
+      generateDailySalesAnalyticsNotifications().catch(err =>
+        logger.warn({ err }, "Daily analytics cron failed (non-fatal)")
+      );
+    setTimeout(runDailyAnalytics, 2 * 60 * 1000);
+    setInterval(runDailyAnalytics, 24 * 60 * 60 * 1000);
   });
 });

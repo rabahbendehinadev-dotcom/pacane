@@ -49,6 +49,7 @@ const MODULE_LABELS: Record<string, string> = {
   sales: "Ventes",
   contacts: "Clients",
   production: "Production",
+  analytics: "Analytique Ventes",
 };
 
 const TYPE_ICON: Record<string, React.ElementType> = {
@@ -66,6 +67,7 @@ const MODULE_ROUTES: Record<string, string> = {
   sales: "/sales",
   contacts: "/contacts",
   production: "/production",
+  analytics: "/analytics/sales",
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -145,15 +147,16 @@ function AlertCard({ alert, onRead, onNavigate }: {
   );
 }
 
-function UserNotifCard({ notif, onRead }: {
+function UserNotifCard({ notif, onRead, onNavigate }: {
   notif: UserNotif;
   onRead: (id: number) => void;
+  onNavigate?: () => void;
 }) {
   const age = formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: fr });
 
   return (
     <div
-      className={`relative flex gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+      className={`group relative flex gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
         notif.isRead
           ? "border-border/50 bg-background opacity-60"
           : "border-primary/30 bg-primary/5"
@@ -176,6 +179,16 @@ function UserNotifCard({ notif, onRead }: {
         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{notif.message}</p>
         <span className="text-[10px] text-muted-foreground">{age}</span>
       </div>
+
+      {onNavigate && (
+        <button
+          className="shrink-0 mt-0.5 h-6 w-6 flex items-center justify-center rounded-md hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+          onClick={e => { e.stopPropagation(); if (!notif.isRead) onRead(notif.id); onNavigate(); }}
+          title="Ouvrir Analytique Ventes → Alertes"
+        >
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }
@@ -342,6 +355,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
                       key={n.id}
                       notif={n}
                       onRead={id => readUserNotifMutation.mutate(id)}
+                      onNavigate={n.meta?.link ? () => { navigate(n.meta!.link as string); onClose(); } : undefined}
                     />
                   ))
                 )}

@@ -16,9 +16,11 @@ import {
   contactsTable,
   salesReturnsTable,
   salesTable,
+  saleItemsTable,
   productionOrdersTable,
+  usersTable,
 } from "@workspace/db/schema";
-import { eq, and, sql, inArray, isNull, not, isNotNull, or } from "drizzle-orm";
+import { eq, and, sql, inArray, isNull, not, isNotNull, or, gt, gte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { visibleBranchIds } from "../middlewares/permissions";
 
@@ -469,5 +471,144 @@ router.post("/notifications/read-all", requireAuth, async (req, res) => {
 
   res.json({ updated: updated.length });
 });
+
+// ─── Daily Sales Analytics Notifications (cron job) ──────────────────────────
+// Computes stagnant products / absent customers / negative-margin products
+// globally (all branches) and inserts one summary notification per active user,
+// deduplicated by day so the same user never receives it twice on the same day.
+
+export async function generateDailySalesAnalyticsNotifications(): Promise<void> {
+  try {
+    const now = new Date();
+    const todayDate = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    // ── 1. Stagnant products ──────────────────────────────────────────────────
+    const recentlySoldRows = await db.selectDistinct({
+      productId: saleItemsTable.productId,
+    }).from(saleItemsTable)
+      .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+      .where(and(
+        eq(salesTable.type, "sale"),
+        eq(salesTable.status, "confirmed"),
+        gte(salesTable.createdAt, thirtyDaysAgo),
+      ));
+
+    const recentlySoldIds = recentlySoldRows
+      .map(r => r.productId)
+      .filter((id): id is number => id !== null);
+
+    const stagnantConds: any[] = [
+      gt(stockLevelsTable.quantity, "0"),
+      eq(productsTable.isSellable, true),
+    ];
+    if (recentlySoldIds.length > 0) {
+      stagnantConds.push(not(inArray(productsTable.id, recentlySoldIds)));
+    }
+
+    const stagnantRows = await db
+      .select({ productId: productsTable.id })
+      .from(stockLevelsTable)
+      .innerJoin(productsTable, eq(stockLevelsTable.productId, productsTable.id))
+      .where(and(...stagnantConds))
+      .groupBy(productsTable.id, productsTable.name);
+
+    // ── 2. Absent customers ───────────────────────────────────────────────────
+    const recentCustRows = await db.selectDistinct({
+      customerId: salesTable.customerId,
+    }).from(salesTable).where(and(
+      isNotNull(salesTable.customerId),
+      eq(salesTable.type, "sale"),
+      eq(salesTable.status, "confirmed"),
+      gte(salesTable.createdAt, sixtyDaysAgo),
+    ));
+
+    const recentCustIds = recentCustRows
+      .map(r => r.customerId)
+      .filter((id): id is number => id !== null);
+
+    const inactiveConds: any[] = [
+      isNotNull(salesTable.customerId),
+      eq(salesTable.type, "sale"),
+      eq(salesTable.status, "confirmed"),
+    ];
+    if (recentCustIds.length > 0) {
+      inactiveConds.push(not(inArray(salesTable.customerId, recentCustIds)));
+    }
+
+    const inactiveRows = await db.selectDistinct({
+      customerId: salesTable.customerId,
+    }).from(salesTable).where(and(...inactiveConds));
+
+    // ── 3. Negative-margin products (last 30 days) ────────────────────────────
+    const negMarginRows = await db
+      .select({ productId: saleItemsTable.productId })
+      .from(saleItemsTable)
+      .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+      .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+      .where(and(
+        eq(salesTable.type, "sale"),
+        eq(salesTable.status, "confirmed"),
+        gte(salesTable.createdAt, thirtyDaysAgo),
+      ))
+      .groupBy(saleItemsTable.productId, productsTable.costPrice)
+      .having(sql`AVG(${saleItemsTable.unitPrice}::numeric) < ${productsTable.costPrice}::numeric AND ${productsTable.costPrice}::numeric > 0`);
+
+    const stagnantCount = stagnantRows.length;
+    const inactiveCount = inactiveRows.length;
+    const negMarginCount = negMarginRows.length;
+
+    if (stagnantCount === 0 && inactiveCount === 0 && negMarginCount === 0) return;
+
+    // ── Build summary message ─────────────────────────────────────────────────
+    const parts: string[] = [];
+    if (stagnantCount > 0) parts.push(`${stagnantCount} produit${stagnantCount > 1 ? "s" : ""} stagnant${stagnantCount > 1 ? "s" : ""}`);
+    if (inactiveCount > 0) parts.push(`${inactiveCount} client${inactiveCount > 1 ? "s" : ""} inactif${inactiveCount > 1 ? "s" : ""}`);
+    if (negMarginCount > 0) parts.push(`${negMarginCount} produit${negMarginCount > 1 ? "s" : ""} à marge négative`);
+
+    const title = "Alertes commerciales du jour";
+    const message = `${parts.join(", ")}. Consultez Analytique Ventes → Alertes pour les détails.`;
+
+    // ── Notify all active users (once per day per user) ───────────────────────
+    const users = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.status, "active"));
+
+    for (const user of users) {
+      const notifKey = `daily_analytics:${todayDate}:${user.id}`;
+
+      const existing = await db
+        .select({ id: userNotificationsTable.id })
+        .from(userNotificationsTable)
+        .where(and(
+          eq(userNotificationsTable.userId, user.id),
+          eq(userNotificationsTable.type, "sales_analytics_alert"),
+          sql`${userNotificationsTable.meta}->>'notif_key' = ${notifKey}`,
+        ))
+        .limit(1);
+
+      if (existing.length > 0) continue;
+
+      await db.insert(userNotificationsTable).values({
+        userId: user.id,
+        type: "sales_analytics_alert",
+        title,
+        message,
+        isRead: false,
+        meta: {
+          notif_key: notifKey,
+          stagnantCount,
+          inactiveCount,
+          negMarginCount,
+          link: "/analytics/sales",
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[daily-analytics-cron] error (non-fatal):", err);
+  }
+}
 
 export default router;
