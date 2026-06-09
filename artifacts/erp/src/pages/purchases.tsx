@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetContacts, useGetBranches, useGetProducts, useGetUnits, getGetPurchasesQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
@@ -120,6 +120,7 @@ function ReceptionDialog({ purchase, onClose, onSuccess }: { purchase: PurchaseD
   );
   const [globalNotes, setGlobalNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   function setQty(itemId: number, field: "received" | "rejected" | "notes", val: string) {
     setQuantities(q => ({ ...q, [itemId]: { ...q[itemId], [field]: val } }));
@@ -153,6 +154,8 @@ function ReceptionDialog({ purchase, onClose, onSuccess }: { purchase: PurchaseD
 
     if (!items.length) { toast({ title: "Saisissez au moins une quantité", variant: "destructive" }); return; }
 
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await apiFetch(`/api/purchases/${purchase.id}/receive`, {
@@ -164,6 +167,7 @@ function ReceptionDialog({ purchase, onClose, onSuccess }: { purchase: PurchaseD
     } catch (e: any) {
       toast({ title: e.message, variant: "destructive" });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -275,10 +279,13 @@ function PurchaseDetailPanel({ purchaseId, onClose, onRefresh }: { purchaseId: n
   const [showPayment, setShowPayment] = useState(false);
   const [payForm, setPayForm] = useState({ amount: "", method: "transfer", date: format(new Date(), "yyyy-MM-dd"), notes: "" });
   const [paying, setPaying] = useState(false);
+  const payingRef = useRef(false);
   const [cancelling, setCancelling] = useState(false);
 
   async function addPayment() {
     if (!payForm.amount || !purchase) return;
+    if (payingRef.current) return;
+    payingRef.current = true;
     setPaying(true);
     try {
       await apiFetch(`/api/purchases/${purchaseId}/payment`, {
@@ -290,7 +297,7 @@ function PurchaseDetailPanel({ purchaseId, onClose, onRefresh }: { purchaseId: n
       setPayForm(f => ({ ...f, amount: "" }));
       refetch(); onRefresh();
     } catch (e: any) { toast({ title: e.message, variant: "destructive" }); }
-    finally { setPaying(false); }
+    finally { payingRef.current = false; setPaying(false); }
   }
 
   async function cancelPurchase() {
@@ -631,6 +638,7 @@ export default function Purchases() {
   const [lineItems, setLineItems] = useState<LineItemWithId[]>([]);
   const [newItem, setNewItem] = useState({ productId: "", quantity: "", unitCost: "", unitName: "" });
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [nextKey, setNextKey] = useState(0);
   const [supplierComboOpen, setSupplierComboOpen] = useState(false);
   const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
@@ -687,6 +695,8 @@ export default function Purchases() {
     if (finalItems.length === 0) {
       toast({ title: "Ajoutez au moins un article", variant: "destructive" }); return;
     }
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     try {
       await apiFetch("/api/purchases", {
@@ -708,7 +718,7 @@ export default function Purchases() {
       setForm({ supplierId: "", branchId: "", status: "received", discount: "0", tax: "0", notes: "", isPaid: false });
       refetch();
     } catch (e: any) { toast({ title: e.message, variant: "destructive" }); }
-    finally { setCreating(false); }
+    finally { creatingRef.current = false; setCreating(false); }
   }
 
   async function createQuickSupplier() {
