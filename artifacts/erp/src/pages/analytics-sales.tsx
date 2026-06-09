@@ -228,7 +228,7 @@ export default function AnalyticsSales() {
   });
   const { data: products } = useQuery({
     queryKey: ["as-products", kpisQs],
-    queryFn: () => customFetch(`/api/analytics/sales/products?${kpisQs}`),
+    queryFn: () => customFetch(`/api/analytics/sales/products?${kpisQs}&limit=2000`),
   });
   const { data: customers } = useQuery({
     queryKey: ["as-customers", kpisQs],

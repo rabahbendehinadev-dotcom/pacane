@@ -268,17 +268,22 @@ router.get("/products", requireAuth, requirePermission(P.reports.view), async (r
   });
 
   const totalRevenue = allMapped.reduce((a, r) => a + r.revenue, 0);
-  // ABC classification: A=top 70% revenue, B=next 20%, C=remaining 10%
+  // ABC classification (Pareto 80/15/5): classify using cumulative BEFORE this product
+  // so first product always starts in A (prevPct=0 < 80)
   let cumulative = 0;
   const result = allMapped.map(r => {
+    const prevPct = totalRevenue > 0 ? (cumulative / totalRevenue) * 100 : 0;
     cumulative += r.revenue;
-    const cumulativePct = totalRevenue > 0 ? (cumulative / totalRevenue) * 100 : 0;
-    const abc = cumulativePct <= 70 ? "A" : cumulativePct <= 90 ? "B" : "C";
+    const abc = prevPct < 80 ? "A" : prevPct < 95 ? "B" : "C";
     return { ...r, revenuePct: totalRevenue > 0 ? Math.round((r.revenue / totalRevenue) * 100 * 10) / 10 : 0, abc };
   });
 
   const filtered = search ? result.filter(r => r.productName.toLowerCase().includes(search)) : result;
-  res.json(filtered);
+
+  // Server-side pagination via offset (optional — frontend can also paginate client-side)
+  const offsetParam = Math.max(0, parseInt(req.query.offset as string ?? "0", 10));
+  const paginated = offsetParam > 0 ? filtered.slice(offsetParam) : filtered;
+  res.json(paginated);
 });
 
 // ─── Top customers ────────────────────────────────────────────────────────────
@@ -589,6 +594,7 @@ router.get("/time-distribution", requireAuth, requirePermission(P.reports.view),
     .groupBy(sql`EXTRACT(DOW FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`)
     .orderBy(sql`EXTRACT(DOW FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`);
 
+  // DOW indexed by Postgres DOW (0=Sun, 1=Mon, ..., 6=Sat)
   const DOW_LABELS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
   const DOW_SHORT  = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 
@@ -598,8 +604,10 @@ router.get("/time-distribution", requireAuth, requirePermission(P.reports.view),
     return { hour: h, label: `${String(h).padStart(2, "0")}h`, revenue: r ? parseFloat(r.revenue) : 0, saleCount: r ? parseInt(r.saleCount, 10) : 0 };
   });
 
+  // Arabic week starts Saturday (6) → Friday (5): order is Sat, Sun, Mon, Tue, Wed, Thu, Fri
+  const ARAB_WEEK = [6, 0, 1, 2, 3, 4, 5];
   const dowMap = new Map(dowRows.map(r => [Number(r.dow), r]));
-  const byDow = Array.from({ length: 7 }, (_, d) => {
+  const byDow = ARAB_WEEK.map(d => {
     const r = dowMap.get(d);
     return { dow: d, label: DOW_LABELS[d], short: DOW_SHORT[d], revenue: r ? parseFloat(r.revenue) : 0, saleCount: r ? parseInt(r.saleCount, 10) : 0 };
   });
