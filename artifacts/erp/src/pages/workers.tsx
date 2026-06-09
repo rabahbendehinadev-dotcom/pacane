@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Edit2, UserX, UserCheck, HardHat, Search } from "lucide-react";
+import { Plus, Edit2, UserX, UserCheck, HardHat, Search, Phone } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
@@ -16,6 +16,7 @@ const AUTH = () => ({ "Content-Type": "application/json", Authorization: `Bearer
 interface Worker {
   id: number;
   name: string;
+  phone: string | null;
   isActive: boolean;
   productCount: number;
   createdAt: string;
@@ -33,6 +34,7 @@ export default function WorkersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
   const [formName, setFormName] = useState("");
+  const [formPhone, setFormPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<Worker | null>(null);
   const [deactivating, setDeactivating] = useState(false);
@@ -47,12 +49,14 @@ export default function WorkersPage() {
   function openNew() {
     setEditing(null);
     setFormName("");
+    setFormPhone("");
     setDialogOpen(true);
   }
 
   function openEdit(w: Worker) {
     setEditing(w);
     setFormName(w.name);
+    setFormPhone(w.phone ?? "");
     setDialogOpen(true);
   }
 
@@ -60,12 +64,13 @@ export default function WorkersPage() {
     if (!formName.trim()) { toast({ title: "Nom requis", variant: "destructive" }); return; }
     setSaving(true);
     try {
+      const body = { name: formName.trim(), phone: formPhone.trim() || null };
       if (editing) {
-        const r = await fetch(`/api/workers/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify({ name: formName.trim() }) });
+        const r = await fetch(`/api/workers/${editing.id}`, { method: "PATCH", headers: AUTH(), body: JSON.stringify(body) });
         if (!r.ok) throw new Error((await r.json()).error);
         toast({ title: "Ouvrier mis à jour" });
       } else {
-        const r = await fetch("/api/workers", { method: "POST", headers: AUTH(), body: JSON.stringify({ name: formName.trim() }) });
+        const r = await fetch("/api/workers", { method: "POST", headers: AUTH(), body: JSON.stringify(body) });
         if (!r.ok) throw new Error((await r.json()).error);
         toast({ title: "Ouvrier créé" });
       }
@@ -141,6 +146,7 @@ export default function WorkersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nom</TableHead>
+                <TableHead>WhatsApp / Téléphone</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="text-right">Produits associés</TableHead>
                 <TableHead className="w-20"></TableHead>
@@ -149,11 +155,11 @@ export default function WorkersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">Chargement...</TableCell>
+                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">Chargement...</TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <HardHat className="h-8 w-8 text-muted-foreground/40" />
                       <p>{search ? "Aucun résultat" : "Aucun ouvrier enregistré"}</p>
@@ -169,6 +175,21 @@ export default function WorkersPage() {
                       </div>
                       <span className="font-medium text-sm">{w.name}</span>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {w.phone ? (
+                      <a
+                        href={`https://wa.me/${w.phone.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 hover:underline"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        {w.phone}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {w.isActive ? (
@@ -224,6 +245,20 @@ export default function WorkersPage() {
                 onKeyDown={e => e.key === "Enter" && save()}
                 autoFocus
               />
+            </div>
+            <div>
+              <Label className="flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                Numéro WhatsApp
+              </Label>
+              <Input
+                className="mt-1"
+                value={formPhone}
+                onChange={e => setFormPhone(e.target.value)}
+                placeholder="Ex : 213555001234"
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Sans espaces ni tirets, avec l'indicatif pays (ex: 213…)</p>
             </div>
           </div>
           <DialogFooter>

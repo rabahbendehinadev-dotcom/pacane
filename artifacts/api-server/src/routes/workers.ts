@@ -12,6 +12,7 @@ router.get("/workers", requireAuth, requirePermission(P.workers.view), async (_r
   const workers = await db.select({
     id: workersTable.id,
     name: workersTable.name,
+    phone: workersTable.phone,
     isActive: workersTable.isActive,
     productCount: sql<number>`(SELECT COUNT(*) FROM products WHERE products.worker_id = ${workersTable.id})`,
     createdAt: workersTable.createdAt,
@@ -21,9 +22,9 @@ router.get("/workers", requireAuth, requirePermission(P.workers.view), async (_r
 
 // POST /workers
 router.post("/workers", requireAuth, requirePermission(P.workers.create), async (req, res): Promise<void> => {
-  const { name } = req.body;
+  const { name, phone } = req.body;
   if (!name || !name.trim()) { res.status(400).json({ error: "Nom requis" }); return; }
-  const [worker] = await db.insert(workersTable).values({ name: name.trim() }).returning();
+  const [worker] = await db.insert(workersTable).values({ name: name.trim(), phone: phone?.trim() || null }).returning();
   res.status(201).json({ ...worker, productCount: 0 });
 });
 
@@ -31,9 +32,9 @@ router.post("/workers", requireAuth, requirePermission(P.workers.create), async 
 router.patch("/workers/:id", requireAuth, requirePermission(P.workers.edit), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
-  const { name } = req.body;
+  const { name, phone } = req.body;
   if (!name || !name.trim()) { res.status(400).json({ error: "Nom requis" }); return; }
-  const [worker] = await db.update(workersTable).set({ name: name.trim() }).where(eq(workersTable.id, id)).returning();
+  const [worker] = await db.update(workersTable).set({ name: name.trim(), phone: phone?.trim() || null }).where(eq(workersTable.id, id)).returning();
   if (!worker) { res.status(404).json({ error: "Ouvrier introuvable" }); return; }
   res.json(worker);
 });
