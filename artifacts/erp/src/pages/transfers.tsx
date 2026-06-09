@@ -334,18 +334,6 @@ export default function Transfers() {
             <p className="text-sm text-muted-foreground mt-0.5">Mouvements de stock entre boutiques et entrepôts</p>
           </div>
           <div className="flex gap-2 shrink-0">
-            {isAdmin && counts["cancelled"] > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
-                onClick={purgeCancelledTransfers}
-                disabled={purgingCancelled}
-              >
-                {purgingCancelled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Purger les annulés ({counts["cancelled"]})
-              </Button>
-            )}
             <ExportButton
               endpoint="export/transfers"
               params={{
