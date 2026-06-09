@@ -182,9 +182,10 @@ export default function Products() {
       const map: Record<number, typeof EMPTY_DAYS> = {};
       const enabledIds = new Set<number>();
       for (const r of rules) {
+        const toInt = (v: string | null | undefined) => String(Math.round(parseFloat(v ?? "0") || 0));
         map[r.branchId] = {
-          targetDim: r.targetDim ?? "0", targetLun: r.targetLun ?? "0", targetMar: r.targetMar ?? "0",
-          targetMer: r.targetMer ?? "0", targetJeu: r.targetJeu ?? "0", targetVen: r.targetVen ?? "0", targetSat: r.targetSat ?? "0",
+          targetDim: toInt(r.targetDim), targetLun: toInt(r.targetLun), targetMar: toInt(r.targetMar),
+          targetMer: toInt(r.targetMer), targetJeu: toInt(r.targetJeu), targetVen: toInt(r.targetVen), targetSat: toInt(r.targetSat),
         };
         if (r.isActive) enabledIds.add(r.branchId);
       }
