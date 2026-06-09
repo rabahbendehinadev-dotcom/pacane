@@ -212,8 +212,8 @@ router.post("/checklist", requireAuth, requirePermission(P.checklist.manage), as
     await db.insert(userNotificationsTable).values({
       userId,
       type: "task_assigned",
-      title: "لديك مهمة جديدة",
-      message: `لديك مهمة جديدة: ${title.trim()}`,
+      title: "Nouvelle tâche assignée",
+      message: `Vous avez une nouvelle tâche : ${title.trim()}`,
       meta: { taskId: task.id },
     });
   } catch (notifErr) {

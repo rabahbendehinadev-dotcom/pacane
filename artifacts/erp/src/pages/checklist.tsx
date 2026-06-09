@@ -88,6 +88,8 @@ export default function ChecklistPage() {
 
 // ─── Worker View ─────────────────────────────────────────────────────────────
 function WorkerView() {
+  const { user } = useAuth();
+  const workerName: string = (user as any)?.name ?? (user as any)?.username ?? "Ouvrier";
   const qc = useQueryClient();
   const [toggling, setToggling] = useState<number | null>(null);
 
@@ -101,6 +103,9 @@ function WorkerView() {
   });
 
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const doneCount = tasks.filter(t => t.isDone).length;
+  const allDone = tasks.length > 0 && doneCount === tasks.length;
+  const pct = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
 
   async function toggle(task: Task) {
     setToggling(task.id);
@@ -116,73 +121,113 @@ function WorkerView() {
     }
   }
 
-  const doneCount = tasks.filter(t => t.isDone).length;
+  const initials = workerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
-          <ClipboardCheck className="h-6 w-6 text-primary" />
-          Mes tâches
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">{today}</p>
-      </div>
+    <div className="max-w-lg mx-auto space-y-4">
+      {/* Header card */}
+      <Card className={`border-0 shadow-sm transition-colors ${allDone ? "bg-emerald-50" : "bg-gradient-to-br from-primary/8 to-primary/3"}`}>
+        <CardContent className="p-5">
+          <div className="flex items-center gap-4">
+            <div className={`h-12 w-12 rounded-full flex items-center justify-center text-sm font-bold shrink-0 shadow-sm ${allDone ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground"}`}>
+              {allDone ? <CheckCircle2 className="h-6 w-6" /> : initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg font-bold leading-tight">{workerName}</h1>
+                {allDone && (
+                  <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs gap-1 shrink-0">
+                    <CheckCircle2 className="h-3 w-3" /> Tout accompli 🎉
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground capitalize mt-0.5">{today}</p>
+            </div>
+          </div>
 
+          {!isLoading && tasks.length > 0 && (
+            <div className="mt-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {doneCount} / {tasks.length} tâche{tasks.length !== 1 ? "s" : ""}
+                </span>
+                <span className={`font-semibold ${allDone ? "text-emerald-600" : "text-primary"}`}>{pct}%</span>
+              </div>
+              <Progress
+                value={pct}
+                className={`h-2 ${allDone ? "[&>div]:bg-emerald-500" : ""}`}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Task list */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : tasks.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-            <ClipboardCheck className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">Aucune tâche assignée pour aujourd'hui</p>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+            <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
+              <ClipboardCheck className="h-7 w-7 text-muted-foreground/40" />
+            </div>
+            <div>
+              <p className="font-medium text-sm">Aucune tâche pour aujourd'hui</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Revenez demain !</p>
+            </div>
           </CardContent>
         </Card>
       ) : (
-        <>
-          <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
-            <span>{doneCount} / {tasks.length} tâche{tasks.length !== 1 ? "s" : ""} accomplie{doneCount !== 1 ? "s" : ""}</span>
-            {doneCount === tasks.length && tasks.length > 0 && (
-              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Tout accompli !
-              </Badge>
-            )}
-          </div>
+        <div className="space-y-2">
+          {tasks.map((task, idx) => (
+            <button
+              key={task.id}
+              onClick={() => toggle(task)}
+              disabled={toggling === task.id}
+              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl border transition-all duration-200 text-left group ${
+                task.isDone
+                  ? "bg-emerald-50 border-emerald-200 shadow-sm"
+                  : "bg-card border-border hover:border-primary/40 hover:shadow-sm hover:bg-accent/20"
+              }`}
+            >
+              {/* Index / checkbox */}
+              <div className="shrink-0 flex items-center justify-center">
+                {toggling === task.id ? (
+                  <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin inline-block" />
+                ) : task.isDone ? (
+                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
+                    <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                  </div>
+                ) : (
+                  <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center group-hover:border-primary/50 transition-colors">
+                    <span className="text-[10px] text-muted-foreground/50 font-medium">{idx + 1}</span>
+                  </div>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            {tasks.map(task => (
-              <button
-                key={task.id}
-                onClick={() => toggle(task)}
-                disabled={toggling === task.id}
-                className={`w-full flex items-start gap-3 p-4 rounded-lg border transition-all text-right ${
-                  task.isDone
-                    ? "bg-emerald-50 border-emerald-200"
-                    : "bg-card border-border hover:border-primary/40 hover:bg-accent/30"
-                }`}
-              >
-                <span className="mt-0.5 shrink-0">
-                  {toggling === task.id ? (
-                    <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin inline-block" />
-                  ) : task.isDone ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-muted-foreground/50" />
-                  )}
+              {/* Task content */}
+              <div className="flex-1 min-w-0 text-left">
+                <p className={`text-sm font-medium leading-snug transition-colors ${
+                  task.isDone ? "line-through text-muted-foreground" : "text-foreground"
+                }`}>
+                  {task.title}
+                </p>
+                {task.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{task.description}</p>
+                )}
+              </div>
+
+              {/* Done indicator */}
+              {task.isDone && (
+                <span className="shrink-0 text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  ✓ Fait
                 </span>
-                <div className="flex-1 min-w-0 text-right">
-                  <p className={`font-medium text-sm leading-snug ${task.isDone ? "line-through text-muted-foreground" : ""}`}>
-                    {task.title}
-                  </p>
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
+              )}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
