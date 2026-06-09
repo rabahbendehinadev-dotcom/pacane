@@ -180,6 +180,12 @@ async function runSaleKpis(
     inArray(salesReturnsTable.status, ["confirmed", "refunded"]),
     ...dateConds(salesReturnsTable.createdAt, from, to),
   ];
+  if (scope !== null) {
+    if (scope.length === 0) returnConds.push(sql`FALSE`);
+    else returnConds.push(inArray(salesReturnsTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) returnConds.push(inArray(salesReturnsTable.branchId, branchIds));
+  else if (branchId) returnConds.push(eq(salesReturnsTable.branchId, parseInt(branchId, 10)));
   const [retAgg] = await db.select({
     totalRefunded: sql<string>`COALESCE(SUM(${salesReturnsTable.refundedAmount}::numeric), 0)`,
     returnCount:   sql<string>`COUNT(*)`,
@@ -770,6 +776,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
     if (q.scope.length === 0) stagnantConds.push(sql`FALSE`);
     else stagnantConds.push(inArray(stockLevelsTable.branchId, q.scope));
   }
+  if (q.branchIds && q.branchIds.length > 0) stagnantConds.push(inArray(stockLevelsTable.branchId, q.branchIds));
+  else if (q.branchId) stagnantConds.push(eq(stockLevelsTable.branchId, parseInt(q.branchId, 10)));
 
   const stagnantRows = await db.select({
     productId: productsTable.id,
