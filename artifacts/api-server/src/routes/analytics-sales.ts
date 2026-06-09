@@ -44,11 +44,16 @@ function dateConds(col: any, from?: string, to?: string) {
 
 function parseQ(req: any) {
   const scope = visibleBranchIds(req.user!);
+  const branchIdsRaw = req.query.branchIds as string | undefined;
+  const branchIds = branchIdsRaw
+    ? branchIdsRaw.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0)
+    : undefined;
   return {
     scope,
     from: req.query.from as string | undefined,
     to: req.query.to as string | undefined,
     branchId: req.query.branchId as string | undefined,
+    branchIds,
     customerId: req.query.customerId as string | undefined,
     sellerId: req.query.sellerId as string | undefined,
     channel: req.query.channel as string | undefined,      // "pos" | "delivery"
@@ -62,7 +67,7 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
   includeStatus,
   excludeStatus,
 }: { includeType?: string[]; includeStatus?: string[]; excludeStatus?: string[] } = {}) {
-  const { scope, from, to, branchId, customerId, sellerId, channel, paymentStatus } = q;
+  const { scope, from, to, branchId, branchIds, customerId, sellerId, channel, paymentStatus } = q;
   const c: any[] = [...dateConds(salesTable.createdAt, from, to)];
 
   // Branch scope
@@ -70,7 +75,11 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
     if (scope.length === 0) { c.push(sql`FALSE`); }
     else { c.push(inArray(salesTable.branchId, scope)); }
   }
-  if (branchId) c.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (branchIds && branchIds.length > 0) {
+    c.push(inArray(salesTable.branchId, branchIds));
+  } else if (branchId) {
+    c.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  }
 
   // Type filter
   if (q.docType) {
@@ -101,6 +110,7 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
 async function runSaleKpis(
   scope: number[] | null,
   branchId: string | undefined,
+  branchIds: number[] | undefined,
   from: string | undefined,
   to: string | undefined,
   paymentStatus: string | undefined,
@@ -114,7 +124,8 @@ async function runSaleKpis(
       if (scope.length === 0) conds.push(sql`FALSE`);
       else conds.push(inArray(salesTable.branchId, scope));
     }
-    if (branchId)   conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+    if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+    else if (branchId) conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
     if (customerId) conds.push(eq(salesTable.customerId, parseInt(customerId, 10)));
     if (sellerId)   conds.push(eq(salesTable.createdByUserId, parseInt(sellerId, 10)));
     if (channel)    conds.push(eq(salesTable.fulfillmentType, channel));
@@ -223,7 +234,7 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
   const q = parseQ(req);
   const compare = req.query.compare === "true";
 
-  const args = [q.scope, q.branchId, q.from, q.to, q.paymentStatus, q.customerId, q.sellerId, q.channel] as const;
+  const args = [q.scope, q.branchId, q.branchIds, q.from, q.to, q.paymentStatus, q.customerId, q.sellerId, q.channel] as const;
   const current = await runSaleKpis(...args);
 
   // Previous period (same duration, shifted back by one period)
@@ -236,7 +247,7 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
     const prevFromDate = new Date(prevToDate.getTime() - durationMs + 86_400_000);
     const prevFrom = prevFromDate.toISOString().slice(0, 10);
     const prevTo   = prevToDate.toISOString().slice(0, 10);
-    prev = await runSaleKpis(q.scope, q.branchId, prevFrom, prevTo, q.paymentStatus, q.customerId, q.sellerId, q.channel);
+    prev = await runSaleKpis(q.scope, q.branchId, q.branchIds, prevFrom, prevTo, q.paymentStatus, q.customerId, q.sellerId, q.channel);
   }
 
   res.json({ ...current, prev });
@@ -535,7 +546,8 @@ router.get("/conversion", requireAuth, requirePermission(P.reports.view), async 
     if (scope.length === 0) conds.push(sql`FALSE`);
     else conds.push(inArray(salesTable.branchId, scope));
   }
-  if (q.branchId) conds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (q.branchIds && q.branchIds.length > 0) conds.push(inArray(salesTable.branchId, q.branchIds));
+  else if (q.branchId) conds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
 
   const [agg] = await db.select({
     quotes: sql<string>`COUNT(CASE WHEN ${salesTable.type}='quotation' THEN 1 END)`,

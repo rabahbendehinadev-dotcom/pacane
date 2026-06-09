@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +23,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Percent, PackageX, BadgeDollarSign, ClipboardList, FileSearch, Layers,
   Clock, Search, ChevronLeft, ChevronRight, Bell, Package, UserX, TrendingDown as LossIcon,
 } from "lucide-react";
-import { format, subDays, startOfMonth, startOfYear } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useAuth } from "@/lib/auth";
 
@@ -77,11 +78,13 @@ const CHANNEL_ICONS: Record<string, React.FC<{ className?: string }>> = {
 
 const BRANCH_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#0ea5e9"];
 const DATE_PRESETS = [
-  { label: "7j",   from: () => format(subDays(new Date(), 6),  "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
-  { label: "30j",  from: () => format(subDays(new Date(), 29), "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
+  { label: "Auj.",        from: () => format(new Date(), "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
+  { label: "7j",          from: () => format(subDays(new Date(), 6),  "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
+  { label: "30j",         from: () => format(subDays(new Date(), 29), "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
   { label: "Ce mois",     from: () => format(startOfMonth(new Date()), "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
+  { label: "Mois préc.",  from: () => format(startOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd"), to: () => format(endOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd") },
   { label: "Cette année", from: () => format(startOfYear(new Date()),  "yyyy-MM-dd"), to: () => format(new Date(), "yyyy-MM-dd") },
-  { label: "Tout", from: () => "2023-01-01", to: () => format(new Date(), "yyyy-MM-dd") },
+  { label: "Tout",        from: () => "2023-01-01", to: () => format(new Date(), "yyyy-MM-dd") },
 ];
 
 // ─── Delta Badge ──────────────────────────────────────────────────────────────
@@ -182,10 +185,10 @@ export default function AnalyticsSales() {
 
   const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [branchId, setBranchId] = useState("all");
+  const [branchIds, setBranchIds] = useState<number[]>([]);
   const [docType, setDocType] = useState("all");
   const [paymentStatus, setPaymentStatus] = useState("all");
-  const [activePreset, setActivePreset] = useState(1);
+  const [activePreset, setActivePreset] = useState(2);
 
   // ─── Sort states ────────────────────────────────────────────────────────────
   const [branchSortKey,   setBranchSortKey]   = useState<"branchName"|"revenue"|"saleCount"|"avgBasket"|"unpaidBalance"|"revenuePct">("revenue");
@@ -256,21 +259,21 @@ export default function AnalyticsSales() {
     const p: Record<string, string> = {};
     if (from) p.from = from;
     if (to) p.to = to;
-    if (branchId !== "all") p.branchId = branchId;
+    if (branchIds.length > 0) p.branchIds = branchIds.join(",");
     if (docType !== "all") p.docType = docType;
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
     return p;
-  }, [from, to, branchId, docType, paymentStatus]);
+  }, [from, to, branchIds, docType, paymentStatus]);
   const qs = new URLSearchParams(params).toString();
   // kpis always on sales (not filtered by docType)
   const kpisQs = useMemo(() => {
     const p: Record<string, string> = {};
     if (from) p.from = from;
     if (to) p.to = to;
-    if (branchId !== "all") p.branchId = branchId;
+    if (branchIds.length > 0) p.branchIds = branchIds.join(",");
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
     return new URLSearchParams(p).toString();
-  }, [from, to, branchId, paymentStatus]);
+  }, [from, to, branchIds, paymentStatus]);
 
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
@@ -449,18 +452,14 @@ export default function AnalyticsSales() {
             </div>
             {showBranchFilter && (
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Agence</Label>
-                <Select value={branchId} onValueChange={setBranchId}>
-                  <SelectTrigger className="h-8 text-xs w-40">
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toutes les agences</SelectItem>
-                    {(branches ?? []).map((b: any) => (
-                      <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs text-muted-foreground">Boutiques</Label>
+                <BranchMultiSelect
+                  branches={(branches ?? []) as { id: number; name: string }[]}
+                  selectedIds={branchIds}
+                  onChange={setBranchIds}
+                  size="sm"
+                  placeholder="Toutes les boutiques"
+                />
               </div>
             )}
             <div className="space-y-1">
