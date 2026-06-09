@@ -76,9 +76,14 @@ export class PageErrorBoundary extends Component<Props, PageState> {
             <RefreshCw className="h-6 w-6 text-amber-500" />
           </div>
           <h2 className="text-lg font-semibold text-foreground mb-2">La page n'a pas pu se charger</h2>
-          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+          <p className="text-sm text-muted-foreground mb-2 max-w-sm">
             Un problème temporaire est survenu. Cliquez sur <strong>Réessayer</strong> pour recharger la page.
           </p>
+          {this.state.error?.message && (
+            <p className="text-xs font-mono bg-muted rounded px-2 py-1 mb-4 max-w-sm break-all text-destructive">
+              {this.state.error.message}
+            </p>
+          )}
           <div className="flex items-center gap-3">
             <button
               onClick={() => { this.setState({ hasError: false, error: undefined }); }}

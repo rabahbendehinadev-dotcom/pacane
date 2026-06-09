@@ -70,11 +70,15 @@ export default function Branches() {
   const [newSeller, setNewSeller] = useState("");
   const newSellerRef = useRef<HTMLInputElement>(null);
 
-  const { data: fetchedSellers = [] } = useQuery<string[]>({
+  const { data: fetchedSellersRaw } = useQuery<string[]>({
     queryKey: ["branch-sellers", editing?.id],
-    queryFn: () => customFetch<string[]>(`/api/branches/${editing!.id}/sellers`),
+    queryFn: () => editing
+      ? customFetch<string[]>(`/api/branches/${editing.id}/sellers`)
+      : Promise.resolve([]),
     enabled: !!editing,
+    throwOnError: false,
   });
+  const fetchedSellers: string[] = Array.isArray(fetchedSellersRaw) ? fetchedSellersRaw : [];
 
   useEffect(() => {
     if (editing) {
@@ -265,7 +269,9 @@ export default function Branches() {
         </Table>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={open => {
+        if (!open) { setDialogOpen(false); setEditing(null); setSellers([]); setNewSeller(""); }
+      }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Modifier la boutique" : "Nouvelle boutique"}</DialogTitle>
@@ -388,10 +394,10 @@ export default function Branches() {
               <div className="flex items-center gap-2 mb-3">
                 <UserPlus className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-semibold">Vendeurs</span>
-                <span className="text-xs text-muted-foreground ml-1">({sellers.length})</span>
+                <span className="text-xs text-muted-foreground ml-1">({Array.isArray(sellers) ? sellers.length : 0})</span>
               </div>
               <div className="space-y-2">
-                {sellers.length > 0 && (
+                {Array.isArray(sellers) && sellers.length > 0 && (
                   <ScrollArea className="max-h-36 rounded-md border bg-muted/20">
                     <div className="p-1">
                       {sellers.map(name => (
