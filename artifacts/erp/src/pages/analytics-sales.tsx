@@ -536,10 +536,11 @@ export default function AnalyticsSales() {
         />
         <KpiCard
           title="Marge brute globale"
-          value={overallMargin !== null ? `${overallMargin}%` : "—"}
+          value={overallMargin !== null ? `${overallMargin}%` : (k?.grossMarginPct != null ? `${k.grossMarginPct}%` : "—")}
           sub="sur l'ensemble des produits vendus"
           icon={TrendingUp} color="emerald" loading={kpisLoading}
           highlight={overallMargin !== null ? (overallMargin >= 30 ? "good" : overallMargin >= 10 ? "neutral" : "bad") : "neutral"}
+          change={k?.grossMarginPct != null && p?.grossMarginPct != null ? pctChange(k.grossMarginPct, p.grossMarginPct) : null}
         />
         <KpiCard
           title="Nb devis"

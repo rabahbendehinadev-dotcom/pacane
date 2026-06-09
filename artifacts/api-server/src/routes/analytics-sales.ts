@@ -96,23 +96,36 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
 }
 
 // ─── KPI helper — reusable for current & previous period ──────────────────────
+// Accepts all filters used by buildBaseConds so no filter is silently dropped.
 async function runSaleKpis(
   scope: number[] | null,
   branchId: string | undefined,
   from: string | undefined,
   to: string | undefined,
   paymentStatus: string | undefined,
+  customerId: string | undefined,
+  sellerId: string | undefined,
+  channel: string | undefined,
 ) {
+  // Helper: apply common branch / customer / seller / channel conditions
+  function addCommon(conds: any[]) {
+    if (scope !== null) {
+      if (scope.length === 0) conds.push(sql`FALSE`);
+      else conds.push(inArray(salesTable.branchId, scope));
+    }
+    if (branchId)   conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+    if (customerId) conds.push(eq(salesTable.customerId, parseInt(customerId, 10)));
+    if (sellerId)   conds.push(eq(salesTable.createdByUserId, parseInt(sellerId, 10)));
+    if (channel)    conds.push(eq(salesTable.fulfillmentType, channel));
+  }
+
+  // ── 1. Confirmed sales ──────────────────────────────────────────────────────
   const saleConds: any[] = [
     eq(salesTable.type, "sale"),
     eq(salesTable.status, "confirmed"),
     ...dateConds(salesTable.createdAt, from, to),
   ];
-  if (scope !== null) {
-    if (scope.length === 0) saleConds.push(sql`FALSE`);
-    else saleConds.push(inArray(salesTable.branchId, scope));
-  }
-  if (branchId) saleConds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  addCommon(saleConds);
   if (paymentStatus) saleConds.push(eq(salesTable.paymentStatus, paymentStatus));
 
   const [saleAgg] = await db.select({
@@ -134,14 +147,23 @@ async function runSaleKpis(
   const avgBasket           = saleCount > 0 ? grossRevenue / saleCount : 0;
   const unpaidBalance       = grossRevenue - totalPaid - totalCreditApplied;
 
-  // Items sold
-  const [itemAgg] = await db.select({
-    totalItems: sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+  // ── 2. Items sold + gross margin (single JOIN query) ──────────────────────
+  const [itemAndMarginAgg] = await db.select({
+    totalItems:       sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+    totalItemRevenue: sql<string>`COALESCE(SUM(${saleItemsTable.total}::numeric), 0)`,
+    totalItemCost:    sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric * ${productsTable.costPrice}::numeric), 0)`,
   }).from(saleItemsTable)
     .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
     .where(saleConds.length ? and(...saleConds) : undefined);
 
-  // Returns
+  const totalItemRevenue = parseFloat(itemAndMarginAgg?.totalItemRevenue ?? "0");
+  const totalItemCost    = parseFloat(itemAndMarginAgg?.totalItemCost ?? "0");
+  const grossMarginPct   = totalItemRevenue > 0
+    ? Math.round(((totalItemRevenue - totalItemCost) / totalItemRevenue) * 100)
+    : null;
+
+  // ── 3. Returns ─────────────────────────────────────────────────────────────
   const returnConds: any[] = [
     inArray(salesReturnsTable.status, ["confirmed", "refunded"]),
     ...dateConds(salesReturnsTable.createdAt, from, to),
@@ -155,6 +177,20 @@ async function runSaleKpis(
   const totalRefunded = parseFloat(retAgg?.totalRefunded ?? "0");
   const netRevenue    = grossRevenue - totalRefunded;
 
+  // ── 4. All document counts (needed for comparison too) ────────────────────
+  const docConds: any[] = [
+    not(eq(salesTable.status, "cancelled")),
+    inArray(salesTable.type, ["sale", "order", "quotation", "draft"]),
+    ...dateConds(salesTable.createdAt, from, to),
+  ];
+  addCommon(docConds);
+  const [docAgg] = await db.select({
+    allDocs: sql<string>`COUNT(*)`,
+    quotes:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='quotation' THEN 1 END)`,
+    orders:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='order' THEN 1 END)`,
+    drafts:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='draft' THEN 1 END)`,
+  }).from(salesTable).where(docConds.length ? and(...docConds) : undefined);
+
   return {
     grossRevenue,
     netRevenue,
@@ -166,13 +202,18 @@ async function runSaleKpis(
     unpaidBalance: Math.max(0, unpaidBalance),
     saleCount,
     avgBasket,
-    totalItemsSold: parseFloat(itemAgg?.totalItems ?? "0"),
+    totalItemsSold: parseFloat(itemAndMarginAgg?.totalItems ?? "0"),
     customerCount: parseInt(saleAgg?.customerCount ?? "0", 10),
     paidCount: parseInt(saleAgg?.paidCount ?? "0", 10),
     unpaidCount: parseInt(saleAgg?.unpaidCount ?? "0", 10),
     partialCount: parseInt(saleAgg?.partialCount ?? "0", 10),
     paymentRate: grossRevenue > 0 ? Math.round(((totalPaid + totalCreditApplied) / grossRevenue) * 100) : 0,
     returnCount: parseInt(retAgg?.returnCount ?? "0", 10),
+    grossMarginPct,
+    allDocCount: parseInt(docAgg?.allDocs ?? "0", 10),
+    quoteCount:  parseInt(docAgg?.quotes  ?? "0", 10),
+    orderCount:  parseInt(docAgg?.orders  ?? "0", 10),
+    draftCount:  parseInt(docAgg?.drafts  ?? "0", 10),
   };
 }
 
@@ -181,20 +222,8 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
   const q = parseQ(req);
   const compare = req.query.compare === "true";
 
-  // Current period
-  const current = await runSaleKpis(q.scope, q.branchId, q.from, q.to, q.paymentStatus);
-
-  // All document count (stays in the handler — not needed in comparison)
-  const allDocConds = buildBaseConds(q, {
-    includeType: ["sale", "order", "quotation", "draft"],
-    excludeStatus: ["cancelled"],
-  });
-  const [docAgg] = await db.select({
-    allDocs: sql<string>`COUNT(*)`,
-    quotes:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='quotation' THEN 1 END)`,
-    orders:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='order' THEN 1 END)`,
-    drafts:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='draft' THEN 1 END)`,
-  }).from(salesTable).where(allDocConds.length ? and(...allDocConds) : undefined);
+  const args = [q.scope, q.branchId, q.from, q.to, q.paymentStatus, q.customerId, q.sellerId, q.channel] as const;
+  const current = await runSaleKpis(...args);
 
   // Previous period (same duration, shifted back by one period)
   let prev: Awaited<ReturnType<typeof runSaleKpis>> | null = null;
@@ -206,17 +235,10 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
     const prevFromDate = new Date(prevToDate.getTime() - durationMs + 86_400_000);
     const prevFrom = prevFromDate.toISOString().slice(0, 10);
     const prevTo   = prevToDate.toISOString().slice(0, 10);
-    prev = await runSaleKpis(q.scope, q.branchId, prevFrom, prevTo, q.paymentStatus);
+    prev = await runSaleKpis(q.scope, q.branchId, prevFrom, prevTo, q.paymentStatus, q.customerId, q.sellerId, q.channel);
   }
 
-  res.json({
-    ...current,
-    allDocCount: parseInt(docAgg?.allDocs ?? "0", 10),
-    quoteCount:  parseInt(docAgg?.quotes  ?? "0", 10),
-    orderCount:  parseInt(docAgg?.orders  ?? "0", 10),
-    draftCount:  parseInt(docAgg?.drafts  ?? "0", 10),
-    prev,
-  });
+  res.json({ ...current, prev });
 });
 
 // ─── Trend ────────────────────────────────────────────────────────────────────
