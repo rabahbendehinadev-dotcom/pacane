@@ -225,6 +225,9 @@ router.get("/products", requireAuth, requirePermission(P.reports.view), async (r
   const q = parseQ(req);
   const conds = buildBaseConds(q, { includeType: ["sale"], includeStatus: ["confirmed"] });
 
+  const search = (req.query.search as string | undefined)?.toLowerCase().trim();
+  const limitParam = Math.min(2000, parseInt(req.query.limit as string ?? "500", 10));
+
   const rows = await db.select({
     productId: saleItemsTable.productId,
     productName: productsTable.name,
@@ -240,10 +243,9 @@ router.get("/products", requireAuth, requirePermission(P.reports.view), async (r
     .where(conds.length ? and(...conds) : undefined)
     .groupBy(saleItemsTable.productId, productsTable.name, productsTable.costPrice)
     .orderBy(sql`SUM(${saleItemsTable.total}::numeric) DESC`)
-    .limit(20);
+    .limit(limitParam);
 
-  const totalRevenue = rows.reduce((a, r) => a + parseFloat(r.revenue), 0);
-  res.json(rows.map(r => {
+  const allMapped = rows.map(r => {
     const revenue = parseFloat(r.revenue);
     const qty = parseFloat(r.qty);
     const costPrice = parseFloat(r.costPrice as string ?? "0");
@@ -258,13 +260,25 @@ router.get("/products", requireAuth, requirePermission(P.reports.view), async (r
       orderCount: parseInt(r.orderCount, 10),
       avgUnitPrice: parseFloat(r.avgUnitPrice),
       totalDiscount: parseFloat(r.totalDiscount),
-      revenuePct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
       costPrice,
       totalCost,
       margin,
       marginPct: Math.round(marginPct * 10) / 10,
     };
-  }));
+  });
+
+  const totalRevenue = allMapped.reduce((a, r) => a + r.revenue, 0);
+  // ABC classification: A=top 70% revenue, B=next 20%, C=remaining 10%
+  let cumulative = 0;
+  const result = allMapped.map(r => {
+    cumulative += r.revenue;
+    const cumulativePct = totalRevenue > 0 ? (cumulative / totalRevenue) * 100 : 0;
+    const abc = cumulativePct <= 70 ? "A" : cumulativePct <= 90 ? "B" : "C";
+    return { ...r, revenuePct: totalRevenue > 0 ? Math.round((r.revenue / totalRevenue) * 100 * 10) / 10 : 0, abc };
+  });
+
+  const filtered = search ? result.filter(r => r.productName.toLowerCase().includes(search)) : result;
+  res.json(filtered);
 });
 
 // ─── Top customers ────────────────────────────────────────────────────────────
@@ -550,6 +564,88 @@ router.get("/documents", requireAuth, requirePermission(P.reports.view), async (
     customerName: r.customerName ?? "Anonyme",
     sellerName: r.sellerName ?? "—",
   })));
+});
+
+// ─── Time distribution (hourly + day-of-week) ─────────────────────────────────
+router.get("/time-distribution", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const conds = buildBaseConds(q, { includeType: ["sale"], includeStatus: ["confirmed"] });
+
+  const hourRows = await db.select({
+    hour: sql<number>`EXTRACT(HOUR FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`,
+    revenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+    saleCount: sql<string>`COUNT(*)`,
+  }).from(salesTable)
+    .where(conds.length ? and(...conds) : undefined)
+    .groupBy(sql`EXTRACT(HOUR FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`)
+    .orderBy(sql`EXTRACT(HOUR FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`);
+
+  const dowRows = await db.select({
+    dow: sql<number>`EXTRACT(DOW FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`,
+    revenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+    saleCount: sql<string>`COUNT(*)`,
+  }).from(salesTable)
+    .where(conds.length ? and(...conds) : undefined)
+    .groupBy(sql`EXTRACT(DOW FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`)
+    .orderBy(sql`EXTRACT(DOW FROM ${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')::integer`);
+
+  const DOW_LABELS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+  const DOW_SHORT  = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+
+  const hourMap = new Map(hourRows.map(r => [Number(r.hour), r]));
+  const byHour = Array.from({ length: 24 }, (_, h) => {
+    const r = hourMap.get(h);
+    return { hour: h, label: `${String(h).padStart(2, "0")}h`, revenue: r ? parseFloat(r.revenue) : 0, saleCount: r ? parseInt(r.saleCount, 10) : 0 };
+  });
+
+  const dowMap = new Map(dowRows.map(r => [Number(r.dow), r]));
+  const byDow = Array.from({ length: 7 }, (_, d) => {
+    const r = dowMap.get(d);
+    return { dow: d, label: DOW_LABELS[d], short: DOW_SHORT[d], revenue: r ? parseFloat(r.revenue) : 0, saleCount: r ? parseInt(r.saleCount, 10) : 0 };
+  });
+
+  res.json({ byHour, byDow });
+});
+
+// ─── Categories breakdown ─────────────────────────────────────────────────────
+router.get("/categories", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const conds = buildBaseConds(q, { includeType: ["sale"], includeStatus: ["confirmed"] });
+
+  const rows = await db.select({
+    categoryId: productsTable.categoryId,
+    categoryName: categoriesTable.name,
+    revenue: sql<string>`COALESCE(SUM(${saleItemsTable.total}::numeric), 0)`,
+    qty: sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+    saleCount: sql<string>`COUNT(DISTINCT ${saleItemsTable.saleId})`,
+    totalCost: sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric * ${productsTable.costPrice}::numeric), 0)`,
+    productCount: sql<string>`COUNT(DISTINCT ${saleItemsTable.productId})`,
+  }).from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+    .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .groupBy(productsTable.categoryId, categoriesTable.name)
+    .orderBy(sql`SUM(${saleItemsTable.total}::numeric) DESC`);
+
+  const totalRevenue = rows.reduce((a, r) => a + parseFloat(r.revenue), 0);
+  res.json(rows.map(r => {
+    const revenue = parseFloat(r.revenue);
+    const totalCost = parseFloat(r.totalCost);
+    const margin = revenue - totalCost;
+    return {
+      categoryId: r.categoryId,
+      categoryName: r.categoryName ?? "Sans catégorie",
+      revenue,
+      qty: parseFloat(r.qty),
+      saleCount: parseInt(r.saleCount, 10),
+      productCount: parseInt(r.productCount, 10),
+      totalCost,
+      margin,
+      marginPct: revenue > 0 ? Math.round((margin / revenue) * 100 * 10) / 10 : 0,
+      revenuePct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100 * 10) / 10 : 0,
+    };
+  }));
 });
 
 export default router;

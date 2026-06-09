@@ -19,6 +19,7 @@ import {
   Building2, ArrowRight, Star, Tag, CreditCard, Store,
   FileText, RotateCcw, CheckCircle2, AlertTriangle, Banknote, Receipt,
   ArrowUpDown, ArrowUp, ArrowDown, Percent, PackageX, BadgeDollarSign, ClipboardList, FileSearch, Layers,
+  Clock, Search, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -166,6 +167,10 @@ export default function AnalyticsSales() {
   const [docSortKey,      setDocSortKey]      = useState<"reference"|"type"|"status"|"customerName"|"branchName"|"fulfillmentType"|"paymentStatus"|"total"|"paid"|"unpaid"|"createdAt">("createdAt");
   const [docSortDir,      setDocSortDir]      = useState<"desc"|"asc">("desc");
 
+  const [productSearch, setProductSearch] = useState("");
+  const [productPage,   setProductPage]   = useState(1);
+  const PRODUCT_PAGE_SIZE = 50;
+
   function toggleSort(
     key: string, cur: string, curDir: "desc"|"asc",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,6 +254,14 @@ export default function AnalyticsSales() {
     queryKey: ["as-documents", qs],
     queryFn: () => customFetch(`/api/analytics/sales/documents?${qs}`),
   });
+  const { data: timeDistribution } = useQuery({
+    queryKey: ["as-timedist", kpisQs],
+    queryFn: () => customFetch(`/api/analytics/sales/time-distribution?${kpisQs}`),
+  });
+  const { data: categories } = useQuery({
+    queryKey: ["as-categories", kpisQs],
+    queryFn: () => customFetch(`/api/analytics/sales/categories?${kpisQs}`),
+  });
 
   const k = kpis as any;
   const ch = channels as any;
@@ -260,6 +273,29 @@ export default function AnalyticsSales() {
   const sortedCustomers = useMemo(() => sortArr((customers  as any[] ?? []),   customerSortKey as any, customerSortDir), [customers,    customerSortKey, customerSortDir]);
   const sortedSellers   = useMemo(() => sortArr((sellers    as any[] ?? []),   sellerSortKey   as any, sellerSortDir),   [sellers,      sellerSortKey,   sellerSortDir]);
   const sortedDocs      = useMemo(() => sortArr((documents  as any[] ?? []),   docSortKey      as any, docSortDir),      [documents,    docSortKey,      docSortDir]);
+
+  // ─── Products with ABC + search + pagination ─────────────────────────────
+  const overallMargin = useMemo(() => {
+    const arr = products as any[] ?? [];
+    const totalRev  = arr.reduce((a: number, p: any) => a + p.revenue, 0);
+    const totalCost = arr.reduce((a: number, p: any) => a + (p.totalCost ?? 0), 0);
+    return totalRev > 0 ? Math.round(((totalRev - totalCost) / totalRev) * 100) : null;
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return sortedProducts as any[];
+    const q2 = productSearch.toLowerCase();
+    return (sortedProducts as any[]).filter((p: any) => p.productName?.toLowerCase().includes(q2));
+  }, [sortedProducts, productSearch]);
+
+  const totalProductPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCT_PAGE_SIZE));
+  const paginatedProducts = useMemo(() => {
+    const start = (productPage - 1) * PRODUCT_PAGE_SIZE;
+    return filteredProducts.slice(start, start + PRODUCT_PAGE_SIZE);
+  }, [filteredProducts, productPage, PRODUCT_PAGE_SIZE]);
+
+  // ─── Time distribution typed ─────────────────────────────────────────────
+  const td = timeDistribution as any;
 
   const handleExport = () => {
     window.open(`/api/export/sales?${kpisQs}`, "_blank");
@@ -447,6 +483,13 @@ export default function AnalyticsSales() {
           value={k ? String(k.orderCount) : "—"}
           sub="documents de type commande"
           icon={ClipboardList} color="amber" loading={kpisLoading}
+        />
+        <KpiCard
+          title="Marge brute globale"
+          value={overallMargin !== null ? `${overallMargin}%` : "—"}
+          sub="sur l'ensemble des produits vendus"
+          icon={TrendingUp} color="emerald" loading={kpisLoading}
+          highlight={overallMargin !== null ? (overallMargin >= 30 ? "good" : overallMargin >= 10 ? "neutral" : "bad") : "neutral"}
         />
         <KpiCard
           title="Nb devis"
@@ -670,7 +713,63 @@ export default function AnalyticsSales() {
         </Card>
       </div>
 
-      {/* ── Tabs: Products / Customers / Sellers / Documents ────────────────── */}
+      {/* ── Patterns temporels ──────────────────────────────────────────────── */}
+      {td && (Array.isArray(td.byHour) || Array.isArray(td.byDow)) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Hourly distribution */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-indigo-600" />
+                Ventes par heure de la journée
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              {td.byHour?.some((h: any) => h.saleCount > 0) ? (
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={td.byHour} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={2} />
+                    <YAxis tick={{ fontSize: 10 }} width={28} />
+                    <Tooltip content={<ChartTip />} />
+                    <Bar dataKey="saleCount" name="Ventes" fill="#6366f1" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Day-of-week distribution */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <BarChart2 className="h-4 w-4 text-amber-600" />
+                Ventes par jour de la semaine
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              {td.byDow?.some((d: any) => d.saleCount > 0) ? (
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={td.byDow} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="short" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} width={28} />
+                    <Tooltip content={<ChartTip />} />
+                    <Bar dataKey="revenue" name="CA (DA)" fill="#f59e0b" radius={[3,3,0,0]} />
+                    <Bar dataKey="saleCount" name="Ventes" fill="#10b981" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Tabs: Products / Customers / Sellers / Documents / Categories ───── */}
       <Tabs defaultValue="products">
         <TabsList className="h-8">
           <TabsTrigger value="products" className="text-xs h-7 px-3">
@@ -689,54 +788,112 @@ export default function AnalyticsSales() {
             <FileText className="h-3.5 w-3.5 mr-1.5" />
             Documents
           </TabsTrigger>
+          <TabsTrigger value="categories" className="text-xs h-7 px-3">
+            <Layers className="h-3.5 w-3.5 mr-1.5" />
+            Catégories
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Products ─────────────────────────────────────────────────────────── */}
         <TabsContent value="products">
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Tag className="h-4 w-4 text-amber-500" />
-                Top produits — par chiffre d'affaires
-              </CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-amber-500" />
+                  Tous les produits — par chiffre d'affaires
+                  {Array.isArray(products) && (
+                    <Badge variant="outline" className="text-[10px] h-4 ml-1">{(products as any[]).length}</Badge>
+                  )}
+                </CardTitle>
+                <div className="relative w-56">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher un produit…"
+                    value={productSearch}
+                    onChange={e => { setProductSearch(e.target.value); setProductPage(1); }}
+                    className="h-7 text-xs pl-6 pr-2"
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {Array.isArray(products) && (products as any[]).length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead className="w-8 text-xs font-semibold">#</TableHead>
-                      <SortHead label="Produit"       sk="productName"   curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} />
-                      <SortHead label="CA total"      sk="revenue"       curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                      <SortHead label="Qté vendue"    sk="qty"           curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                      <SortHead label="Nb ventes"     sk="orderCount"    curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                      <SortHead label="PU moyen"      sk="avgUnitPrice"  curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                      <SortHead label="Remise totale" sk="totalDiscount" curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                      <SortHead label="Part CA"       sk="revenuePct"    curKey={productSortKey} curDir={productSortDir} onToggle={k => toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir)} right />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedProducts.map((p: any, i: number) => (
-                      <TableRow key={p.productId}>
-                        <TableCell className="text-xs text-muted-foreground font-mono">{i + 1}</TableCell>
-                        <TableCell className="text-xs font-semibold">{p.productName}</TableCell>
-                        <TableCell className="text-xs text-right font-bold text-green-700">{fmtDA(p.revenue)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{p.qty.toFixed(0)}</TableCell>
-                        <TableCell className="text-xs text-right text-muted-foreground">{p.orderCount}</TableCell>
-                        <TableCell className="text-xs text-right text-muted-foreground">{fmtDA(p.avgUnitPrice)}</TableCell>
-                        <TableCell className="text-xs text-right text-red-700">
-                          {p.totalDiscount > 0 ? fmtDA(p.totalDiscount) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 min-w-[60px]">
-                            <Progress value={p.revenuePct} className="h-1.5 flex-1" />
-                            <span className="text-[10px] text-muted-foreground w-7 shrink-0">{p.revenuePct}%</span>
-                          </div>
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="w-8 text-xs font-semibold">#</TableHead>
+                        <TableHead className="w-8 text-xs font-semibold">ABC</TableHead>
+                        <SortHead label="Produit"       sk="productName"   curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} />
+                        <SortHead label="CA total"      sk="revenue"       curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="Marge%"        sk="marginPct"     curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="Qté"           sk="qty"           curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="Ventes"        sk="orderCount"    curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="PU moyen"      sk="avgUnitPrice"  curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="Part CA"       sk="revenuePct"    curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedProducts.length > 0 ? paginatedProducts.map((p: any, i: number) => {
+                        const globalIdx = (productPage - 1) * PRODUCT_PAGE_SIZE + i + 1;
+                        const abcCls = p.abc === "A" ? "bg-green-100 text-green-800 border-green-200" : p.abc === "B" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-slate-100 text-slate-600 border-slate-200";
+                        const marginCls = (p.marginPct ?? 0) >= 30 ? "text-green-700" : (p.marginPct ?? 0) >= 0 ? "text-amber-700" : "text-red-700";
+                        return (
+                          <TableRow key={p.productId}>
+                            <TableCell className="text-xs text-muted-foreground font-mono">{globalIdx}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`text-[10px] px-1 h-4 font-bold ${abcCls}`}>{p.abc}</Badge>
+                            </TableCell>
+                            <TableCell className="text-xs font-semibold">{p.productName}</TableCell>
+                            <TableCell className="text-xs text-right font-bold text-green-700">{fmtDA(p.revenue)}</TableCell>
+                            <TableCell className={`text-xs text-right font-semibold ${marginCls}`}>{p.marginPct ?? 0}%</TableCell>
+                            <TableCell className="text-xs text-right font-mono">{(p.qty ?? 0).toFixed(0)}</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{p.orderCount}</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{fmtDA(p.avgUnitPrice)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 min-w-[60px]">
+                                <Progress value={p.revenuePct} className="h-1.5 flex-1" />
+                                <span className="text-[10px] text-muted-foreground w-8 shrink-0">{p.revenuePct}%</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }) : (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-8">
+                            Aucun produit ne correspond à la recherche
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                  {/* Pagination */}
+                  {totalProductPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2 border-t border-border/50">
+                      <span className="text-[11px] text-muted-foreground">
+                        {filteredProducts.length} produit(s) · page {productPage}/{totalProductPages}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button variant="outline" size="sm" className="h-6 w-6 p-0" disabled={productPage <= 1} onClick={() => setProductPage(p => Math.max(1, p - 1))}>
+                          <ChevronLeft className="h-3 w-3" />
+                        </Button>
+                        {Array.from({ length: Math.min(5, totalProductPages) }, (_, i) => {
+                          const pg = productPage <= 3 ? i + 1 : productPage >= totalProductPages - 2 ? totalProductPages - 4 + i : productPage - 2 + i;
+                          if (pg < 1 || pg > totalProductPages) return null;
+                          return (
+                            <Button key={pg} variant={pg === productPage ? "default" : "outline"} size="sm" className={`h-6 w-6 p-0 text-xs ${pg === productPage ? "bg-green-700 hover:bg-green-800" : ""}`} onClick={() => setProductPage(pg)}>
+                              {pg}
+                            </Button>
+                          );
+                        })}
+                        <Button variant="outline" size="sm" className="h-6 w-6 p-0" disabled={productPage >= totalProductPages} onClick={() => setProductPage(p => Math.min(totalProductPages, p + 1))}>
+                          <ChevronRight className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">Aucun produit sur cette période</div>
               )}
@@ -918,6 +1075,78 @@ export default function AnalyticsSales() {
                 </Table>
               ) : (
                 <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">Aucun document sur cette période</div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Categories ────────────────────────────────────────────────────────── */}
+        <TabsContent value="categories">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Layers className="h-4 w-4 text-indigo-600" />
+                CA par catégorie de produit
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {Array.isArray(categories) && (categories as any[]).length > 0 ? (
+                <div className="space-y-4">
+                  {/* Horizontal bar chart */}
+                  <ResponsiveContainer width="100%" height={Math.max(160, (categories as any[]).length * 36)}>
+                    <BarChart
+                      data={[...(categories as any[])].reverse()}
+                      layout="vertical"
+                      margin={{ top: 4, right: 60, left: 10, bottom: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => fmtK(v)} />
+                      <YAxis type="category" dataKey="categoryName" tick={{ fontSize: 10 }} width={110} />
+                      <Tooltip content={<ChartTip />} />
+                      <Bar dataKey="revenue" name="CA (DA)" fill="#6366f1" radius={[0,3,3,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  {/* Table */}
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="text-xs font-semibold">#</TableHead>
+                        <TableHead className="text-xs font-semibold">Catégorie</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">CA</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">Marge%</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">Qté</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">Produits</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">Ventes</TableHead>
+                        <TableHead className="text-xs font-semibold text-right">Part CA</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(categories as any[]).map((c: any, i: number) => {
+                        const marginCls = c.marginPct >= 30 ? "text-green-700" : c.marginPct >= 0 ? "text-amber-700" : "text-red-700";
+                        return (
+                          <TableRow key={c.categoryId ?? i}>
+                            <TableCell className="text-xs text-muted-foreground font-mono">{i + 1}</TableCell>
+                            <TableCell className="text-xs font-semibold">{c.categoryName}</TableCell>
+                            <TableCell className="text-xs text-right font-bold text-green-700">{fmtDA(c.revenue)}</TableCell>
+                            <TableCell className={`text-xs text-right font-semibold ${marginCls}`}>{c.marginPct}%</TableCell>
+                            <TableCell className="text-xs text-right font-mono">{(c.qty ?? 0).toFixed(0)}</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{c.productCount}</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{c.saleCount}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 min-w-[60px]">
+                                <Progress value={c.revenuePct} className="h-1.5 flex-1" />
+                                <span className="text-[10px] text-muted-foreground w-8 shrink-0">{c.revenuePct}%</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">Aucune catégorie sur cette période</div>
               )}
             </CardContent>
           </Card>
