@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Edit2, Trash2, Package, ImagePlus, X, Loader2, ChevronsUpDown, Check, Upload, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Package, ImagePlus, X, Loader2, ChevronsUpDown, Check, Upload, AlertTriangle, HardHat } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "@/hooks/use-toast";
@@ -399,6 +399,7 @@ export default function Products() {
                 <TableHead>Produit</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Catégorie</TableHead>
+                <TableHead>Responsable</TableHead>
                 <TableHead>Sites commerciaux</TableHead>
                 <TableHead>Coût</TableHead>
                 <TableHead>Prix vente</TableHead>
@@ -409,9 +410,9 @@ export default function Products() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
               ) : products.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">Aucun produit</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-12 text-muted-foreground">Aucun produit</TableCell></TableRow>
               ) : products.map(p => (
                 <TableRow key={p.id} className={`cursor-pointer hover:bg-muted/40 ${selectedIds.includes(p.id) ? "bg-primary/5" : ""}`}>
                   <TableCell onClick={e => e.stopPropagation()}>
@@ -430,6 +431,16 @@ export default function Products() {
                   </TableCell>
                   <TableCell>{typeBadge(p.type)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.categoryName ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {(p as any).workerName ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <HardHat className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                        {(p as any).workerName}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {((p as any).branchIds ?? []).length === 0 ? (
                       <span className="text-xs text-muted-foreground/60">Tous</span>
