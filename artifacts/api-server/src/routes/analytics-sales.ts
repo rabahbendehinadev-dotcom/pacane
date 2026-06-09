@@ -95,82 +95,67 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
   return c;
 }
 
-// ─── KPIs ─────────────────────────────────────────────────────────────────────
-router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
-  const q = parseQ(req);
-  const saleConds = buildBaseConds(q, {
-    includeType: ["sale"],
-    includeStatus: ["confirmed"],
-  });
-  const allDocConds = buildBaseConds(q, {
-    includeType: ["sale", "order", "quotation", "draft"],
-    excludeStatus: ["cancelled"],
-  });
-
-  const [saleAgg] = await db.select({
-    grossRevenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
-    totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
-    totalPaid: sql<string>`COALESCE(SUM(${salesTable.paid}::numeric), 0)`,
-    totalCreditApplied: sql<string>`COALESCE(SUM(${salesTable.creditApplied}::numeric), 0)`,
-    saleCount: sql<string>`COUNT(*)`,
-    paidCount: sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='paid' THEN 1 END)`,
-    unpaidCount: sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='unpaid' THEN 1 END)`,
-    partialCount: sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='partially_paid' THEN 1 END)`,
-    customerCount: sql<string>`COUNT(DISTINCT ${salesTable.customerId})`,
-  }).from(salesTable).where(saleConds.length ? and(...saleConds) : undefined);
-
-  const grossRevenue = parseFloat(saleAgg?.grossRevenue ?? "0");
-  const totalPaid = parseFloat(saleAgg?.totalPaid ?? "0");
-  const totalCreditApplied = parseFloat(saleAgg?.totalCreditApplied ?? "0");
-  const saleCount = parseInt(saleAgg?.saleCount ?? "0", 10);
-  const avgBasket = saleCount > 0 ? grossRevenue / saleCount : 0;
-  const unpaidBalance = grossRevenue - totalPaid - totalCreditApplied;
-
-  // Total items sold (sum of quantities)
-  const itemConds = [
-    ...dateConds(salesTable.createdAt, q.from, q.to),
+// ─── KPI helper — reusable for current & previous period ──────────────────────
+async function runSaleKpis(
+  scope: number[] | null,
+  branchId: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+  paymentStatus: string | undefined,
+) {
+  const saleConds: any[] = [
     eq(salesTable.type, "sale"),
     eq(salesTable.status, "confirmed"),
+    ...dateConds(salesTable.createdAt, from, to),
   ];
-  if (q.scope !== null) {
-    if (q.scope.length === 0) itemConds.push(sql`FALSE`);
-    else itemConds.push(inArray(salesTable.branchId, q.scope));
+  if (scope !== null) {
+    if (scope.length === 0) saleConds.push(sql`FALSE`);
+    else saleConds.push(inArray(salesTable.branchId, scope));
   }
-  if (q.branchId) itemConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (branchId) saleConds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
+  if (paymentStatus) saleConds.push(eq(salesTable.paymentStatus, paymentStatus));
 
+  const [saleAgg] = await db.select({
+    grossRevenue:       sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+    totalDiscount:      sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+    totalPaid:          sql<string>`COALESCE(SUM(${salesTable.paid}::numeric), 0)`,
+    totalCreditApplied: sql<string>`COALESCE(SUM(${salesTable.creditApplied}::numeric), 0)`,
+    saleCount:          sql<string>`COUNT(*)`,
+    paidCount:          sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='paid' THEN 1 END)`,
+    unpaidCount:        sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='unpaid' THEN 1 END)`,
+    partialCount:       sql<string>`COUNT(CASE WHEN ${salesTable.paymentStatus}='partially_paid' THEN 1 END)`,
+    customerCount:      sql<string>`COUNT(DISTINCT ${salesTable.customerId})`,
+  }).from(salesTable).where(saleConds.length ? and(...saleConds) : undefined);
+
+  const grossRevenue        = parseFloat(saleAgg?.grossRevenue ?? "0");
+  const totalPaid           = parseFloat(saleAgg?.totalPaid ?? "0");
+  const totalCreditApplied  = parseFloat(saleAgg?.totalCreditApplied ?? "0");
+  const saleCount           = parseInt(saleAgg?.saleCount ?? "0", 10);
+  const avgBasket           = saleCount > 0 ? grossRevenue / saleCount : 0;
+  const unpaidBalance       = grossRevenue - totalPaid - totalCreditApplied;
+
+  // Items sold
   const [itemAgg] = await db.select({
     totalItems: sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
   }).from(saleItemsTable)
     .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
-    .where(itemConds.length ? and(...itemConds) : undefined);
+    .where(saleConds.length ? and(...saleConds) : undefined);
 
-  // Returns impact
-  const returnConds = [...dateConds(salesReturnsTable.createdAt, q.from, q.to)];
-  if (q.scope !== null && q.scope.length > 0) returnConds.push(sql`TRUE`);
+  // Returns
+  const returnConds: any[] = [
+    inArray(salesReturnsTable.status, ["confirmed", "refunded"]),
+    ...dateConds(salesReturnsTable.createdAt, from, to),
+  ];
   const [retAgg] = await db.select({
     totalRefunded: sql<string>`COALESCE(SUM(${salesReturnsTable.refundedAmount}::numeric), 0)`,
-    returnCount: sql<string>`COUNT(*)`,
+    returnCount:   sql<string>`COUNT(*)`,
   }).from(salesReturnsTable)
-    .where(
-      and(
-        inArray(salesReturnsTable.status, ["confirmed", "refunded"]),
-        ...returnConds.filter(Boolean),
-      ),
-    );
+    .where(returnConds.length ? and(...returnConds) : undefined);
 
   const totalRefunded = parseFloat(retAgg?.totalRefunded ?? "0");
-  const netRevenue = grossRevenue - totalRefunded;
+  const netRevenue    = grossRevenue - totalRefunded;
 
-  // All document count
-  const [docAgg] = await db.select({
-    allDocs: sql<string>`COUNT(*)`,
-    quotes: sql<string>`COUNT(CASE WHEN ${salesTable.type}='quotation' THEN 1 END)`,
-    orders: sql<string>`COUNT(CASE WHEN ${salesTable.type}='order' THEN 1 END)`,
-    drafts: sql<string>`COUNT(CASE WHEN ${salesTable.type}='draft' THEN 1 END)`,
-  }).from(salesTable)
-    .where(allDocConds.length ? and(...allDocConds) : undefined);
-
-  res.json({
+  return {
     grossRevenue,
     netRevenue,
     totalRefunded,
@@ -188,10 +173,49 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
     partialCount: parseInt(saleAgg?.partialCount ?? "0", 10),
     paymentRate: grossRevenue > 0 ? Math.round(((totalPaid + totalCreditApplied) / grossRevenue) * 100) : 0,
     returnCount: parseInt(retAgg?.returnCount ?? "0", 10),
+  };
+}
+
+// ─── KPIs ─────────────────────────────────────────────────────────────────────
+router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const compare = req.query.compare === "true";
+
+  // Current period
+  const current = await runSaleKpis(q.scope, q.branchId, q.from, q.to, q.paymentStatus);
+
+  // All document count (stays in the handler — not needed in comparison)
+  const allDocConds = buildBaseConds(q, {
+    includeType: ["sale", "order", "quotation", "draft"],
+    excludeStatus: ["cancelled"],
+  });
+  const [docAgg] = await db.select({
+    allDocs: sql<string>`COUNT(*)`,
+    quotes:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='quotation' THEN 1 END)`,
+    orders:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='order' THEN 1 END)`,
+    drafts:  sql<string>`COUNT(CASE WHEN ${salesTable.type}='draft' THEN 1 END)`,
+  }).from(salesTable).where(allDocConds.length ? and(...allDocConds) : undefined);
+
+  // Previous period (same duration, shifted back by one period)
+  let prev: Awaited<ReturnType<typeof runSaleKpis>> | null = null;
+  if (compare && q.from && q.to) {
+    const fromDate   = new Date(q.from);
+    const toDate     = new Date(q.to);
+    const durationMs = toDate.getTime() - fromDate.getTime() + 86_400_000; // inclusive days
+    const prevToDate   = new Date(fromDate.getTime() - 86_400_000);
+    const prevFromDate = new Date(prevToDate.getTime() - durationMs + 86_400_000);
+    const prevFrom = prevFromDate.toISOString().slice(0, 10);
+    const prevTo   = prevToDate.toISOString().slice(0, 10);
+    prev = await runSaleKpis(q.scope, q.branchId, prevFrom, prevTo, q.paymentStatus);
+  }
+
+  res.json({
+    ...current,
     allDocCount: parseInt(docAgg?.allDocs ?? "0", 10),
-    quoteCount: parseInt(docAgg?.quotes ?? "0", 10),
-    orderCount: parseInt(docAgg?.orders ?? "0", 10),
-    draftCount: parseInt(docAgg?.drafts ?? "0", 10),
+    quoteCount:  parseInt(docAgg?.quotes  ?? "0", 10),
+    orderCount:  parseInt(docAgg?.orders  ?? "0", 10),
+    draftCount:  parseInt(docAgg?.drafts  ?? "0", 10),
+    prev,
   });
 });
 

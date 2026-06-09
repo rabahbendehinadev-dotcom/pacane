@@ -83,12 +83,31 @@ const DATE_PRESETS = [
   { label: "Tout", from: () => "2023-01-01", to: () => format(new Date(), "yyyy-MM-dd") },
 ];
 
+// ─── Delta Badge ──────────────────────────────────────────────────────────────
+function DeltaBadge({ change, invert = false }: { change: number | null | undefined; invert?: boolean }) {
+  if (change == null || !isFinite(change)) return null;
+  const isPos = change > 0.5;
+  const isNeg = change < -0.5;
+  const isGood = invert ? isNeg : isPos;
+  const isBad  = invert ? isPos : isNeg;
+  const abs    = Math.round(Math.abs(change));
+  const cls = isGood ? "text-green-700 bg-green-50 border-green-200" : isBad ? "text-red-700 bg-red-50 border-red-200" : "text-slate-500 bg-slate-50 border-slate-200";
+  const Icon = isPos ? TrendingUp : isNeg ? TrendingDown : ArrowRight;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded border leading-none ${cls}`}>
+      <Icon className="h-2.5 w-2.5 shrink-0" />
+      {isPos ? "+" : ""}{abs}%
+    </span>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ title, value, sub, icon: Icon, color = "blue", loading = false, highlight }: {
+function KpiCard({ title, value, sub, icon: Icon, color = "blue", loading = false, highlight, change, invertDelta = false }: {
   title: string; value: string; sub?: string;
   icon: React.FC<{ className?: string }>;
   color?: "green" | "red" | "amber" | "blue" | "violet" | "indigo" | "emerald";
   loading?: boolean; highlight?: "good" | "bad" | "neutral";
+  change?: number | null; invertDelta?: boolean;
 }) {
   const bg: Record<string, string> = { green: "bg-green-50", red: "bg-red-50", amber: "bg-amber-50", blue: "bg-blue-50", violet: "bg-violet-50", indigo: "bg-indigo-50", emerald: "bg-emerald-50" };
   const ic: Record<string, string> = { green: "text-green-600", red: "text-red-600", amber: "text-amber-600", blue: "text-blue-600", violet: "text-violet-600", indigo: "text-indigo-600", emerald: "text-emerald-600" };
@@ -103,7 +122,10 @@ function KpiCard({ title, value, sub, icon: Icon, color = "blue", loading = fals
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground font-medium truncate">{title}</p>
             {loading ? <div className="h-6 w-28 bg-muted animate-pulse rounded mt-1" /> : (
-              <p className={`text-xl font-bold leading-tight ${valCls}`}>{value}</p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                <p className={`text-xl font-bold leading-tight ${valCls}`}>{value}</p>
+                {change != null && <DeltaBadge change={change} invert={invertDelta} />}
+              </div>
             )}
             {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
           </div>
@@ -218,9 +240,15 @@ export default function AnalyticsSales() {
     setFrom(p.from()); setTo(p.to()); setActivePreset(i);
   };
 
+  const kpisQsWithCompare = useMemo(() => {
+    const p = new URLSearchParams(kpisQs);
+    p.set("compare", "true");
+    return p.toString();
+  }, [kpisQs]);
+
   const { data: kpis, isLoading: kpisLoading } = useQuery({
-    queryKey: ["as-kpis", kpisQs],
-    queryFn: () => customFetch(`/api/analytics/sales/kpis?${kpisQs}`),
+    queryKey: ["as-kpis", kpisQsWithCompare],
+    queryFn: () => customFetch(`/api/analytics/sales/kpis?${kpisQsWithCompare}`),
   });
   const { data: trend, isLoading: trendLoading } = useQuery({
     queryKey: ["as-trend", kpisQs],
@@ -266,6 +294,13 @@ export default function AnalyticsSales() {
   const k = kpis as any;
   const ch = channels as any;
   const conv = conversion as any;
+
+  // % change vs previous period — returns null when prev=0 or unavailable
+  function pctChange(cur: number, prev: number | undefined): number | null {
+    if (prev == null || !isFinite(prev) || prev === 0) return null;
+    return ((cur - prev) / Math.abs(prev)) * 100;
+  }
+  const p = k?.prev; // previous period KPIs (from compare=true)
 
   // ─── Sorted datasets ────────────────────────────────────────────────────────
   const sortedBranches  = useMemo(() => sortArr((branchData as any[] ?? []),   branchSortKey   as any, branchSortDir),   [branchData,   branchSortKey,   branchSortDir]);
@@ -413,18 +448,21 @@ export default function AnalyticsSales() {
           value={k ? fmtDA(k.grossRevenue) : "—"}
           sub={k ? `${k.saleCount} vente(s) confirmée(s)` : "—"}
           icon={ShoppingBag} color="green" loading={kpisLoading}
+          change={k && p ? pctChange(k.grossRevenue, p.grossRevenue) : null}
         />
         <KpiCard
           title="CA net (après retours)"
           value={k ? fmtDA(k.netRevenue) : "—"}
           sub={k ? `−${fmtDA(k.totalRefunded)} retours (${k.returnImpactPct}%)` : "—"}
           icon={TrendingUp} color="emerald" loading={kpisLoading}
+          change={k && p ? pctChange(k.netRevenue, p.netRevenue) : null}
         />
         <KpiCard
           title="Panier moyen"
           value={k ? fmtDA(k.avgBasket) : "—"}
           sub={k ? `${k.totalItemsSold.toLocaleString()} articles vendus` : "—"}
           icon={Tag} color="blue" loading={kpisLoading}
+          change={k && p ? pctChange(k.avgBasket, p.avgBasket) : null}
         />
         <KpiCard
           title="Encaissé"
@@ -432,6 +470,7 @@ export default function AnalyticsSales() {
           sub={k ? `${k.paymentRate}% du CA encaissé` : "—"}
           icon={CreditCard} color="indigo" loading={kpisLoading}
           highlight={k?.paymentRate >= 80 ? "good" : k?.paymentRate >= 50 ? "neutral" : "bad"}
+          change={k && p ? pctChange(k.totalPaid + k.totalCreditApplied, p.totalPaid + p.totalCreditApplied) : null}
         />
         <KpiCard
           title="Créances impayées"
@@ -439,12 +478,15 @@ export default function AnalyticsSales() {
           sub={k ? `${k.unpaidCount} vente(s) impayée(s)` : "—"}
           icon={AlertTriangle} color="red" loading={kpisLoading}
           highlight={k?.unpaidBalance > 0 ? "bad" : "good"}
+          change={k && p ? pctChange(k.unpaidBalance, p.unpaidBalance) : null}
+          invertDelta
         />
         <KpiCard
           title="Clients actifs"
           value={k ? String(k.customerCount) : "—"}
           sub={k ? `+ ${k.saleCount - k.customerCount > 0 ? k.saleCount - k.customerCount : 0} ventes anonymes` : "—"}
           icon={Users} color="violet" loading={kpisLoading}
+          change={k && p ? pctChange(k.customerCount, p.customerCount) : null}
         />
       </div>
 
@@ -456,6 +498,8 @@ export default function AnalyticsSales() {
           sub={k && k.grossRevenue > 0 ? `${Math.round((k.totalDiscount / k.grossRevenue) * 100)}% du CA brut` : "—"}
           icon={BadgeDollarSign} color="amber" loading={kpisLoading}
           highlight={k?.totalDiscount > 0 ? "bad" : "neutral"}
+          change={k && p ? pctChange(k.totalDiscount, p.totalDiscount) : null}
+          invertDelta
         />
         <KpiCard
           title="Nb retours"
@@ -463,6 +507,8 @@ export default function AnalyticsSales() {
           sub={k ? `Impact: −${fmtDA(k.totalRefunded)}` : "—"}
           icon={PackageX} color="red" loading={kpisLoading}
           highlight={k?.returnCount > 0 ? "bad" : "good"}
+          change={k && p ? pctChange(k.returnCount, p.returnCount) : null}
+          invertDelta
         />
         <KpiCard
           title="Impact retours"
@@ -470,6 +516,8 @@ export default function AnalyticsSales() {
           sub={k ? `${fmtDA(k.totalRefunded)} remboursé` : "—"}
           icon={Percent} color="red" loading={kpisLoading}
           highlight={k?.returnImpactPct > 5 ? "bad" : k?.returnImpactPct > 0 ? "neutral" : "good"}
+          change={k && p ? pctChange(k.returnImpactPct, p.returnImpactPct) : null}
+          invertDelta
         />
         <KpiCard
           title="Taux paiement"
@@ -477,12 +525,14 @@ export default function AnalyticsSales() {
           sub={k ? `${k.paidCount} soldées / ${k.partialCount} part. / ${k.unpaidCount} impayées` : "—"}
           icon={CheckCircle2} color="green" loading={kpisLoading}
           highlight={k?.paymentRate >= 80 ? "good" : k?.paymentRate >= 50 ? "neutral" : "bad"}
+          change={k && p ? pctChange(k.paymentRate, p.paymentRate) : null}
         />
         <KpiCard
           title="Nb commandes"
           value={k ? String(k.orderCount) : "—"}
           sub="documents de type commande"
           icon={ClipboardList} color="amber" loading={kpisLoading}
+          change={k && p ? pctChange(k.orderCount, p.orderCount) : null}
         />
         <KpiCard
           title="Marge brute globale"
@@ -496,6 +546,7 @@ export default function AnalyticsSales() {
           value={k ? String(k.quoteCount) : "—"}
           sub="documents de type devis"
           icon={FileSearch} color="blue" loading={kpisLoading}
+          change={k && p ? pctChange(k.quoteCount, p.quoteCount) : null}
         />
         <KpiCard
           title="Ventes part. payées"
@@ -503,6 +554,8 @@ export default function AnalyticsSales() {
           sub={k ? `sur ${k.saleCount} ventes total` : "—"}
           icon={Layers} color="indigo" loading={kpisLoading}
           highlight={k?.partialCount > 0 ? "neutral" : "good"}
+          change={k && p ? pctChange(k.partialCount, p.partialCount) : null}
+          invertDelta
         />
       </div>
 
