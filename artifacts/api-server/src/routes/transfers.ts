@@ -327,6 +327,34 @@ router.post("/transfers/:id/complete", requireAuth, requirePermission(P.transfer
   res.json(await buildTransferResponse(updated, true));
 });
 
+// ── DELETE (draft or cancelled only) ─────────────────────────────────────────
+router.delete("/transfers/:id", requireAuth, requirePermission(P.transfers.create), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  const [transfer] = await db.select().from(transfersTable).where(eq(transfersTable.id, id));
+  if (!transfer) { res.status(404).json({ error: "Transfert introuvable" }); return; }
+  if (!["draft", "cancelled"].includes(transfer.status)) {
+    res.status(409).json({ error: `Impossible de supprimer un transfert au statut "${transfer.status}"` }); return;
+  }
+  if (!req.user!.adminAccess && !assertBranchAccess(req.user!, transfer.sourceBranchId, res)) return;
+
+  await db.delete(transferItemsTable).where(eq(transferItemsTable.transferId, id));
+  await db.delete(transfersTable).where(eq(transfersTable.id, id));
+  res.json({ ok: true });
+});
+
+// ── BULK DELETE CANCELLED ─────────────────────────────────────────────────────
+router.delete("/transfers", requireAuth, requirePermission(P.transfers.create), async (req, res): Promise<void> => {
+  if (!req.user!.adminAccess) { res.status(403).json({ error: "Réservé aux administrateurs" }); return; }
+  const cancelled = await db.select({ id: transfersTable.id }).from(transfersTable).where(eq(transfersTable.status, "cancelled"));
+  const ids = cancelled.map(t => t.id);
+  if (ids.length === 0) { res.json({ deleted: 0 }); return; }
+  for (const id of ids) {
+    await db.delete(transferItemsTable).where(eq(transferItemsTable.transferId, id));
+  }
+  await db.delete(transfersTable).where(eq(transfersTable.status, "cancelled"));
+  res.json({ deleted: ids.length });
+});
+
 // ── QUICK TRANSFER (create + send + receive in one step) ─────────────────────
 router.post("/transfers/quick", requireAuth, requirePermission(P.transfers.create), async (req, res): Promise<void> => {
   const { sourceBranchId, destinationBranchId, productId, quantity, notes } = req.body;

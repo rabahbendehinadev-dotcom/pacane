@@ -175,14 +175,14 @@ export default function Transfers() {
       });
       createdId = created.id;
 
-      // 2. Envoyer seulement (déduit du stock source, attend validation de la destination)
+      // 2. Envoyer (déduit du stock source, attend validation de la destination)
       await apiCall(`/transfers/${created.id}/send`, "POST");
 
       invalidate(); setCreateOpen(false); resetForm();
       toast({ title: "Transfert envoyé", description: `${created.reference} — en attente de réception par la boutique destination` });
     } catch (e: any) {
-      // Annuler le brouillon si déjà créé
-      if (createdId) await apiCall(`/transfers/${createdId}/cancel`, "POST").catch(() => {});
+      // Supprimer définitivement le brouillon (ne pas laisser de record "Annulé")
+      if (createdId) await apiCall(`/transfers/${createdId}`, "DELETE").catch(() => {});
       invalidate();
       if (e?.data?.error === "stock_insufficient") {
         setShortages(e.data.shortages ?? []); setShortageOpen(true);
@@ -191,6 +191,21 @@ export default function Transfers() {
       }
     } finally {
       setValidating(false);
+    }
+  }
+
+  const [purgingCancelled, setPurgingCancelled] = useState(false);
+  async function purgeCancelledTransfers() {
+    if (!confirm(`Supprimer définitivement tous les transferts annulés ? Cette action est irréversible.`)) return;
+    setPurgingCancelled(true);
+    try {
+      const res = await apiCall("/transfers", "DELETE");
+      invalidate();
+      toast({ title: `${res.deleted} transfert(s) annulé(s) supprimés` });
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Erreur lors de la purge", variant: "destructive" });
+    } finally {
+      setPurgingCancelled(false);
     }
   }
 
@@ -319,6 +334,18 @@ export default function Transfers() {
             <p className="text-sm text-muted-foreground mt-0.5">Mouvements de stock entre boutiques et entrepôts</p>
           </div>
           <div className="flex gap-2 shrink-0">
+            {isAdmin && counts["cancelled"] > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                onClick={purgeCancelledTransfers}
+                disabled={purgingCancelled}
+              >
+                {purgingCancelled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Purger les annulés ({counts["cancelled"]})
+              </Button>
+            )}
             <ExportButton
               endpoint="export/transfers"
               params={{
