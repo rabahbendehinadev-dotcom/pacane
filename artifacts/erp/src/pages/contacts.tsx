@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetContacts, useCreateContact, useUpdateContact, Contact, getGetContactsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -658,7 +659,8 @@ function ContactProfile({ contact, onEdit }: { contact: Contact; onEdit: () => v
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 export default function Contacts() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const searchStr = useSearch();
+  const [search, setSearch] = useState(() => new URLSearchParams(searchStr).get("q") ?? "");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);

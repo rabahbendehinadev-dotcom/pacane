@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearch } from "wouter";
 import { useGetProducts, useCreateProduct, useUpdateProduct, useGetCategories, useGetUnits, useGetBranches, getGetProductsQueryKey, Product } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
@@ -51,7 +52,8 @@ function typeBadge(type: string) {
 
 export default function Products() {
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
+  const searchStr = useSearch();
+  const [search, setSearch] = useState(() => new URLSearchParams(searchStr).get("q") ?? "");
   const [typeFilter, setTypeFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);

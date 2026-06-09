@@ -15,12 +15,13 @@
 
 import { Router, type IRouter } from "express";
 import {
-  and, eq, gte, lte, inArray, not, sql, desc, isNotNull, or, isNull,
+  and, eq, gte, lte, gt, inArray, not, sql, desc, isNotNull, or, isNull,
 } from "drizzle-orm";
 import {
   db,
   salesTable, saleItemsTable, salePaymentsTable, salesReturnsTable,
   contactsTable, branchesTable, productsTable, categoriesTable, usersTable,
+  stockLevelsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, visibleBranchIds } from "../middlewares/permissions";
@@ -700,6 +701,188 @@ router.get("/categories", requireAuth, requirePermission(P.reports.view), async 
       revenuePct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100 * 10) / 10 : 0,
     };
   }));
+});
+
+// ─── Smart Alerts ─────────────────────────────────────────────────────────────
+// GET /analytics/sales/alerts
+// Returns:
+//  - stagnantProducts   : have stock > 0, not sold in last 30 days
+//  - inactiveCustomers  : bought before but not in last 60 days
+//  - negativeMarginProducts : avg selling price < cost price in the selected period
+router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  // ── 1. Stagnant products ──────────────────────────────────────────────────
+  // Products sold in the last 30 days (any branch in scope / selected branch)
+  const recentSaleConds: any[] = [
+    eq(salesTable.type, "sale"),
+    eq(salesTable.status, "confirmed"),
+    gte(salesTable.createdAt, thirtyDaysAgo),
+  ];
+  if (q.scope !== null) {
+    if (q.scope.length === 0) recentSaleConds.push(sql`FALSE`);
+    else recentSaleConds.push(inArray(salesTable.branchId, q.scope));
+  }
+  if (q.branchId) recentSaleConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+
+  const recentlySoldRows = await db.selectDistinct({
+    productId: saleItemsTable.productId,
+  }).from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .where(and(...recentSaleConds));
+
+  const recentlySoldIds = recentlySoldRows
+    .map(r => r.productId)
+    .filter((id): id is number => id !== null);
+
+  const stagnantConds: any[] = [
+    gt(stockLevelsTable.quantity, "0"),
+    eq(productsTable.isSellable, true),
+  ];
+  if (recentlySoldIds.length > 0) {
+    stagnantConds.push(not(inArray(productsTable.id, recentlySoldIds)));
+  }
+  if (q.scope !== null) {
+    if (q.scope.length === 0) stagnantConds.push(sql`FALSE`);
+    else stagnantConds.push(inArray(stockLevelsTable.branchId, q.scope));
+  }
+
+  const stagnantRows = await db.select({
+    productId: productsTable.id,
+    productName: productsTable.name,
+    totalStock: sql<string>`SUM(${stockLevelsTable.quantity}::numeric)`,
+  }).from(stockLevelsTable)
+    .innerJoin(productsTable, eq(stockLevelsTable.productId, productsTable.id))
+    .where(and(...stagnantConds))
+    .groupBy(productsTable.id, productsTable.name)
+    .orderBy(sql`SUM(${stockLevelsTable.quantity}::numeric) DESC`)
+    .limit(30);
+
+  // ── 2. Inactive customers ─────────────────────────────────────────────────
+  // Customers who bought recently (last 60 days) — we want the inverse
+  const recentCustConds: any[] = [
+    isNotNull(salesTable.customerId),
+    eq(salesTable.type, "sale"),
+    eq(salesTable.status, "confirmed"),
+    gte(salesTable.createdAt, sixtyDaysAgo),
+  ];
+  if (q.scope !== null) {
+    if (q.scope.length === 0) recentCustConds.push(sql`FALSE`);
+    else recentCustConds.push(inArray(salesTable.branchId, q.scope));
+  }
+  if (q.branchId) recentCustConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+
+  const recentCustRows = await db.selectDistinct({
+    customerId: salesTable.customerId,
+  }).from(salesTable).where(and(...recentCustConds));
+
+  const recentCustIds = recentCustRows
+    .map(r => r.customerId)
+    .filter((id): id is number => id !== null);
+
+  // Customers with at least one confirmed sale, not in the recent list
+  const inactiveConds: any[] = [
+    isNotNull(salesTable.customerId),
+    eq(salesTable.type, "sale"),
+    eq(salesTable.status, "confirmed"),
+  ];
+  if (recentCustIds.length > 0) {
+    inactiveConds.push(not(inArray(salesTable.customerId, recentCustIds)));
+  }
+  if (q.scope !== null) {
+    if (q.scope.length === 0) inactiveConds.push(sql`FALSE`);
+    else inactiveConds.push(inArray(salesTable.branchId, q.scope));
+  }
+  if (q.branchId) inactiveConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+
+  const inactiveRows = await db.select({
+    customerId: salesTable.customerId,
+    customerName: contactsTable.displayName,
+    lastPurchase: sql<string>`MAX(${salesTable.createdAt})`,
+    totalRevenue: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+    saleCount: sql<string>`COUNT(*)`,
+  }).from(salesTable)
+    .innerJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+    .where(and(...inactiveConds))
+    .groupBy(salesTable.customerId, contactsTable.displayName)
+    .orderBy(sql`MAX(${salesTable.createdAt}) DESC`)
+    .limit(30);
+
+  // ── 3. Negative-margin products (in selected period) ─────────────────────
+  const periodConds: any[] = [
+    eq(salesTable.type, "sale"),
+    eq(salesTable.status, "confirmed"),
+    ...dateConds(salesTable.createdAt, q.from, q.to),
+  ];
+  if (q.scope !== null) {
+    if (q.scope.length === 0) periodConds.push(sql`FALSE`);
+    else periodConds.push(inArray(salesTable.branchId, q.scope));
+  }
+  if (q.branchId) periodConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+
+  const negMarginRows = await db.select({
+    productId: saleItemsTable.productId,
+    productName: productsTable.name,
+    costPrice: productsTable.costPrice,
+    avgUnitPrice: sql<string>`COALESCE(AVG(${saleItemsTable.unitPrice}::numeric), 0)`,
+    qty: sql<string>`COALESCE(SUM(${saleItemsTable.quantity}::numeric), 0)`,
+    revenue: sql<string>`COALESCE(SUM(${saleItemsTable.total}::numeric), 0)`,
+  }).from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+    .where(and(...periodConds))
+    .groupBy(saleItemsTable.productId, productsTable.name, productsTable.costPrice)
+    .having(sql`AVG(${saleItemsTable.unitPrice}::numeric) < ${productsTable.costPrice}::numeric AND ${productsTable.costPrice}::numeric > 0`)
+    .orderBy(sql`AVG(${saleItemsTable.unitPrice}::numeric) - ${productsTable.costPrice}::numeric`)
+    .limit(30);
+
+  res.json({
+    stagnantProducts: stagnantRows.map(r => ({
+      productId: r.productId,
+      productName: r.productName,
+      totalStock: parseFloat(r.totalStock),
+    })),
+    inactiveCustomers: inactiveRows.map(r => {
+      const lastPurchase = r.lastPurchase ? new Date(r.lastPurchase) : null;
+      const daysSince = lastPurchase
+        ? Math.floor((now.getTime() - lastPurchase.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        customerId: r.customerId,
+        customerName: r.customerName,
+        lastPurchase: lastPurchase ? lastPurchase.toISOString() : null,
+        daysSince,
+        totalRevenue: parseFloat(r.totalRevenue),
+        saleCount: parseInt(r.saleCount, 10),
+      };
+    }),
+    negativeMarginProducts: negMarginRows.map(r => {
+      const avgUnitPrice = parseFloat(r.avgUnitPrice);
+      const costPrice = parseFloat(r.costPrice as string ?? "0");
+      const qty = parseFloat(r.qty);
+      const revenue = parseFloat(r.revenue);
+      const totalCost = qty * costPrice;
+      const margin = revenue - totalCost;
+      const marginPct = revenue > 0 ? Math.round((margin / revenue) * 100 * 10) / 10 : 0;
+      return {
+        productId: r.productId,
+        productName: r.productName,
+        costPrice,
+        avgUnitPrice,
+        qty,
+        revenue,
+        margin,
+        marginPct,
+      };
+    }),
+    meta: {
+      stagnantDays: 30,
+      inactiveDays: 60,
+    },
+  });
 });
 
 export default router;

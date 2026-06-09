@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch, useGetBranches } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,7 @@ import {
   Building2, ArrowRight, Star, Tag, CreditCard, Store,
   FileText, RotateCcw, CheckCircle2, AlertTriangle, Banknote, Receipt,
   ArrowUpDown, ArrowUp, ArrowDown, Percent, PackageX, BadgeDollarSign, ClipboardList, FileSearch, Layers,
-  Clock, Search, ChevronLeft, ChevronRight,
+  Clock, Search, ChevronLeft, ChevronRight, Bell, Package, UserX, TrendingDown as LossIcon,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -169,6 +170,7 @@ function ChartTip({ active, payload, label }: any) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AnalyticsSales() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
 
   const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -290,10 +292,21 @@ export default function AnalyticsSales() {
     queryKey: ["as-categories", kpisQs],
     queryFn: () => customFetch(`/api/analytics/sales/categories?${kpisQs}`),
   });
+  const { data: alerts, isLoading: alertsLoading } = useQuery({
+    queryKey: ["as-alerts", kpisQs],
+    queryFn: () => customFetch(`/api/analytics/sales/alerts?${kpisQs}`),
+  });
 
   const k = kpis as any;
   const ch = channels as any;
   const conv = conversion as any;
+  const al = alerts as any;
+
+  // ─── Alert counts ────────────────────────────────────────────────────────────
+  const totalAlerts = useMemo(() => {
+    if (!al) return 0;
+    return (al.stagnantProducts?.length ?? 0) + (al.inactiveCustomers?.length ?? 0) + (al.negativeMarginProducts?.length ?? 0);
+  }, [al]);
 
   // % change vs previous period — returns null when prev=0 or unavailable
   function pctChange(cur: number, prev: number | undefined): number | null {
@@ -846,6 +859,15 @@ export default function AnalyticsSales() {
             <Layers className="h-3.5 w-3.5 mr-1.5" />
             Catégories
           </TabsTrigger>
+          <TabsTrigger value="alerts" className="text-xs h-7 px-3 relative">
+            <Bell className="h-3.5 w-3.5 mr-1.5" />
+            Alertes
+            {totalAlerts > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                {totalAlerts}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Products ─────────────────────────────────────────────────────────── */}
@@ -1204,6 +1226,143 @@ export default function AnalyticsSales() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Alertes ───────────────────────────────────────────────────────────── */}
+        <TabsContent value="alerts">
+          {alertsLoading ? (
+            <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">
+              Analyse en cours…
+            </div>
+          ) : totalAlerts === 0 ? (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+                <CheckCircle2 className="h-10 w-10 text-green-500" />
+                <p className="font-semibold text-green-700">Aucune alerte détectée</p>
+                <p className="text-xs text-muted-foreground">Tous les produits se vendent bien et les clients sont actifs.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+
+              {/* — Produits stagnants (stock > 0, pas vendu depuis 30j) — */}
+              {al?.stagnantProducts?.length > 0 && (
+                <Card className="border-0 shadow-sm border-l-4 border-l-amber-400">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-amber-50">
+                        <Package className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <span>Produits stagnants — stock non vendu depuis 30+ jours</span>
+                      <Badge className="ml-auto bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
+                        {al.stagnantProducts.length} produit(s)
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-border/60">
+                      {al.stagnantProducts.map((p: any) => (
+                        <div
+                          key={p.productId}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/60 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/products?q=${encodeURIComponent(p.productName)}`)}
+                        >
+                          <Package className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          <span className="flex-1 text-sm font-medium truncate">{p.productName}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            Stock: <span className="font-semibold text-amber-700">{p.totalStock.toFixed(2)}</span>
+                          </span>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* — Clients inactifs (pas d'achat depuis 60j) — */}
+              {al?.inactiveCustomers?.length > 0 && (
+                <Card className="border-0 shadow-sm border-l-4 border-l-blue-400">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-blue-50">
+                        <UserX className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <span>Clients inactifs — aucun achat depuis 60+ jours</span>
+                      <Badge className="ml-auto bg-blue-100 text-blue-700 border-blue-200 text-[10px]">
+                        {al.inactiveCustomers.length} client(s)
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-border/60">
+                      {al.inactiveCustomers.map((c: any) => (
+                        <div
+                          key={c.customerId}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50/60 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/contacts?q=${encodeURIComponent(c.customerName)}`)}
+                        >
+                          <Users className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <span className="flex-1 text-sm font-medium truncate">{c.customerName}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            Dernier achat: <span className="font-semibold text-blue-700">
+                              {c.daysSince !== null ? `il y a ${c.daysSince} j` : "—"}
+                            </span>
+                          </span>
+                          <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
+                            CA total: <span className="font-semibold">{fmtDA(c.totalRevenue)}</span>
+                          </span>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* — Produits à marge négative — */}
+              {al?.negativeMarginProducts?.length > 0 && (
+                <Card className="border-0 shadow-sm border-l-4 border-l-red-400">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-red-50">
+                        <LossIcon className="h-4 w-4 text-red-600" />
+                      </div>
+                      <span>Produits à marge négative — vendus à perte</span>
+                      <Badge className="ml-auto bg-red-100 text-red-700 border-red-200 text-[10px]">
+                        {al.negativeMarginProducts.length} produit(s)
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-border/60">
+                      {al.negativeMarginProducts.map((p: any) => (
+                        <div
+                          key={p.productId}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-red-50/60 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/products?q=${encodeURIComponent(p.productName)}`)}
+                        >
+                          <LossIcon className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          <span className="flex-1 text-sm font-medium truncate">{p.productName}</span>
+                          <span className="text-xs shrink-0">
+                            Prix moyen: <span className="font-semibold text-slate-700">{fmtDA(p.avgUnitPrice)}</span>
+                          </span>
+                          <span className="text-xs shrink-0">
+                            Coût: <span className="font-semibold text-slate-700">{fmtDA(p.costPrice)}</span>
+                          </span>
+                          <span className="text-xs font-bold text-red-600 shrink-0">
+                            {p.marginPct}%
+                          </span>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
