@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,7 +8,9 @@ export const stockLevelsTable = pgTable("stock_levels", {
   branchId: integer("branch_id").notNull(),
   quantity: numeric("quantity", { precision: 15, scale: 3 }).notNull().default("0"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("stock_levels_product_branch_unique").on(table.productId, table.branchId),
+]);
 
 export const stockMovementsTable = pgTable("stock_movements", {
   id: serial("id").primaryKey(),

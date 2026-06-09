@@ -276,6 +276,13 @@ async function runMigrations() {
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
     `);
+    // stock_levels unique constraint required by ON CONFLICT (product_id, branch_id) in adjustStock
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS stock_levels_product_branch_unique
+      ON stock_levels (product_id, branch_id);
+    `);
+    // transfers: add delete endpoints support columns (idempotent)
+    await db.execute(sql`ALTER TABLE transfers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
