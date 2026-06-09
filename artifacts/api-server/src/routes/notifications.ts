@@ -602,7 +602,7 @@ export async function generateDailySalesAnalyticsNotifications(): Promise<void> 
           stagnantCount,
           inactiveCount,
           negMarginCount,
-          link: "/analytics/sales",
+          link: "/analytics/sales?tab=alerts",
         },
       });
     }

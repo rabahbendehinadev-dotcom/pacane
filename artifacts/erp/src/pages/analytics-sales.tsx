@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch, useGetBranches } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -171,6 +171,14 @@ function ChartTip({ active, payload, label }: any) {
 export default function AnalyticsSales() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const searchStr = useSearch();
+
+  // ── Active main tab — deep-linkable via ?tab=alerts|products|customers etc. ──
+  const [activeMainTab, setActiveMainTab] = useState(() => {
+    const p = new URLSearchParams(searchStr);
+    const t = p.get("tab");
+    return (t && ["products","customers","sellers","documents","categories","alerts"].includes(t)) ? t : "products";
+  });
 
   const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -837,7 +845,7 @@ export default function AnalyticsSales() {
       )}
 
       {/* ── Tabs: Products / Customers / Sellers / Documents / Categories ───── */}
-      <Tabs defaultValue="products">
+      <Tabs value={activeMainTab} onValueChange={setActiveMainTab}>
         <TabsList className="h-8">
           <TabsTrigger value="products" className="text-xs h-7 px-3">
             <Tag className="h-3.5 w-3.5 mr-1.5" />
