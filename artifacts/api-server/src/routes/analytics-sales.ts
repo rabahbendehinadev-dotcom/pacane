@@ -746,7 +746,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
     if (q.scope.length === 0) recentSaleConds.push(sql`FALSE`);
     else recentSaleConds.push(inArray(salesTable.branchId, q.scope));
   }
-  if (q.branchId) recentSaleConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (q.branchIds && q.branchIds.length > 0) recentSaleConds.push(inArray(salesTable.branchId, q.branchIds));
+  else if (q.branchId) recentSaleConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
 
   const recentlySoldRows = await db.selectDistinct({
     productId: saleItemsTable.productId,
@@ -793,7 +794,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
     if (q.scope.length === 0) recentCustConds.push(sql`FALSE`);
     else recentCustConds.push(inArray(salesTable.branchId, q.scope));
   }
-  if (q.branchId) recentCustConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (q.branchIds && q.branchIds.length > 0) recentCustConds.push(inArray(salesTable.branchId, q.branchIds));
+  else if (q.branchId) recentCustConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
 
   const recentCustRows = await db.selectDistinct({
     customerId: salesTable.customerId,
@@ -816,7 +818,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
     if (q.scope.length === 0) inactiveConds.push(sql`FALSE`);
     else inactiveConds.push(inArray(salesTable.branchId, q.scope));
   }
-  if (q.branchId) inactiveConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (q.branchIds && q.branchIds.length > 0) inactiveConds.push(inArray(salesTable.branchId, q.branchIds));
+  else if (q.branchId) inactiveConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
 
   const inactiveRows = await db.select({
     customerId: salesTable.customerId,
@@ -841,7 +844,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
     if (q.scope.length === 0) periodConds.push(sql`FALSE`);
     else periodConds.push(inArray(salesTable.branchId, q.scope));
   }
-  if (q.branchId) periodConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
+  if (q.branchIds && q.branchIds.length > 0) periodConds.push(inArray(salesTable.branchId, q.branchIds));
+  else if (q.branchId) periodConds.push(eq(salesTable.branchId, parseInt(q.branchId, 10)));
 
   const negMarginRows = await db.select({
     productId: saleItemsTable.productId,
