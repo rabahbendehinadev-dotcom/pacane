@@ -712,8 +712,12 @@ router.get("/categories", requireAuth, requirePermission(P.reports.view), async 
 router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
   const q = parseQ(req);
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const sixtyDaysAgo  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  const stagnantDays = Math.max(1, Math.min(365, parseInt(String(req.query.stagnantDays ?? "30"), 10) || 30));
+  const inactiveDays = Math.max(1, Math.min(365, parseInt(String(req.query.inactiveDays  ?? "60"), 10) || 60));
+
+  const thirtyDaysAgo = new Date(now.getTime() - stagnantDays * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo  = new Date(now.getTime() - inactiveDays  * 24 * 60 * 60 * 1000);
 
   // ── 1. Stagnant products ──────────────────────────────────────────────────
   // Products sold in the last 30 days (any branch in scope / selected branch)
@@ -879,8 +883,8 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
       };
     }),
     meta: {
-      stagnantDays: 30,
-      inactiveDays: 60,
+      stagnantDays,
+      inactiveDays,
     },
   });
 });

@@ -203,6 +203,33 @@ export default function AnalyticsSales() {
   const [productPage,   setProductPage]   = useState(1);
   const PRODUCT_PAGE_SIZE = 50;
 
+  // ─── Alert thresholds (persisted in localStorage) ───────────────────────────
+  const [stagnantDays, setStagnantDays] = useState<number>(() => {
+    const v = parseInt(localStorage.getItem("alert_stagnantDays") ?? "30", 10);
+    return isNaN(v) || v < 1 ? 30 : Math.min(v, 365);
+  });
+  const [inactiveDays, setInactiveDays] = useState<number>(() => {
+    const v = parseInt(localStorage.getItem("alert_inactiveDays") ?? "60", 10);
+    return isNaN(v) || v < 1 ? 60 : Math.min(v, 365);
+  });
+  const [stagnantInput, setStagnantInput] = useState<string>(() =>
+    (parseInt(localStorage.getItem("alert_stagnantDays") ?? "30", 10) || 30).toString()
+  );
+  const [inactiveInput, setInactiveInput] = useState<string>(() =>
+    (parseInt(localStorage.getItem("alert_inactiveDays") ?? "60", 10) || 60).toString()
+  );
+
+  function applyThresholds() {
+    const sd = Math.max(1, Math.min(365, parseInt(stagnantInput, 10) || 30));
+    const id = Math.max(1, Math.min(365, parseInt(inactiveInput, 10) || 60));
+    setStagnantDays(sd);
+    setInactiveDays(id);
+    setStagnantInput(sd.toString());
+    setInactiveInput(id.toString());
+    localStorage.setItem("alert_stagnantDays", sd.toString());
+    localStorage.setItem("alert_inactiveDays", id.toString());
+  }
+
   function toggleSort(
     key: string, cur: string, curDir: "desc"|"asc",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -300,9 +327,16 @@ export default function AnalyticsSales() {
     queryKey: ["as-categories", kpisQs],
     queryFn: () => customFetch(`/api/analytics/sales/categories?${kpisQs}`),
   });
+  const alertsQs = useMemo(() => {
+    const p = new URLSearchParams(kpisQs);
+    p.set("stagnantDays", stagnantDays.toString());
+    p.set("inactiveDays", inactiveDays.toString());
+    return p.toString();
+  }, [kpisQs, stagnantDays, inactiveDays]);
+
   const { data: alerts, isLoading: alertsLoading } = useQuery({
-    queryKey: ["as-alerts", kpisQs],
-    queryFn: () => customFetch(`/api/analytics/sales/alerts?${kpisQs}`),
+    queryKey: ["as-alerts", alertsQs],
+    queryFn: () => customFetch(`/api/analytics/sales/alerts?${alertsQs}`),
   });
 
   const k = kpis as any;
@@ -1238,6 +1272,61 @@ export default function AnalyticsSales() {
 
         {/* ── Alertes ───────────────────────────────────────────────────────────── */}
         <TabsContent value="alerts">
+          {/* — Paramètres des seuils — */}
+          <Card className="border-0 shadow-sm mb-4">
+            <CardContent className="p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="p-1.5 rounded-md bg-amber-50">
+                    <Package className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Produits stagnants</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Pas vendu depuis</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={stagnantInput}
+                    onChange={e => setStagnantInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && applyThresholds()}
+                    className="h-7 w-16 text-xs text-center"
+                  />
+                  <span className="text-xs text-muted-foreground">jours</span>
+                </div>
+                <div className="w-px h-6 bg-border hidden sm:block" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="p-1.5 rounded-md bg-blue-50">
+                    <UserX className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Clients inactifs</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Aucun achat depuis</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={inactiveInput}
+                    onChange={e => setInactiveInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && applyThresholds()}
+                    className="h-7 w-16 text-xs text-center"
+                  />
+                  <span className="text-xs text-muted-foreground">jours</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs ml-auto"
+                  onClick={applyThresholds}
+                >
+                  Appliquer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {alertsLoading ? (
             <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">
               Analyse en cours…
@@ -1261,7 +1350,7 @@ export default function AnalyticsSales() {
                       <div className="p-1.5 rounded-md bg-amber-50">
                         <Package className="h-4 w-4 text-amber-600" />
                       </div>
-                      <span>Produits stagnants — stock non vendu depuis 30+ jours</span>
+                      <span>Produits stagnants — stock non vendu depuis {stagnantDays}+ jours</span>
                       <Badge className="ml-auto bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
                         {al.stagnantProducts.length} produit(s)
                       </Badge>
@@ -1296,7 +1385,7 @@ export default function AnalyticsSales() {
                       <div className="p-1.5 rounded-md bg-blue-50">
                         <UserX className="h-4 w-4 text-blue-600" />
                       </div>
-                      <span>Clients inactifs — aucun achat depuis 60+ jours</span>
+                      <span>Clients inactifs — aucun achat depuis {inactiveDays}+ jours</span>
                       <Badge className="ml-auto bg-blue-100 text-blue-700 border-blue-200 text-[10px]">
                         {al.inactiveCustomers.length} client(s)
                       </Badge>
