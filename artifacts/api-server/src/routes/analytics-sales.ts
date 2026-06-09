@@ -439,8 +439,7 @@ router.get("/sellers", requireAuth, requirePermission(P.reports.view), async (re
 // ─── Branch comparison ────────────────────────────────────────────────────────
 router.get("/branches", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
   const q = parseQ(req);
-  // No branchId filter here — compare all in scope
-  const { scope, from, to } = q;
+  const { scope, from, to, branchIds, branchId } = q;
   const conds: any[] = [
     eq(salesTable.type, "sale"),
     eq(salesTable.status, "confirmed"),
@@ -449,6 +448,11 @@ router.get("/branches", requireAuth, requirePermission(P.reports.view), async (r
   if (scope !== null) {
     if (scope.length === 0) conds.push(sql`FALSE`);
     else conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) {
+    conds.push(inArray(salesTable.branchId, branchIds));
+  } else if (branchId) {
+    conds.push(eq(salesTable.branchId, parseInt(branchId, 10)));
   }
 
   const rows = await db.select({
