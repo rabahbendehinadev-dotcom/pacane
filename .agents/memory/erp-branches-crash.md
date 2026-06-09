@@ -1,25 +1,40 @@
 ---
-name: ERP branches edit crash fix
-description: Root cause analysis and fix for branches page crashing when clicking edit (pencil) icon — PageErrorBoundary pattern
+name: ERP branches edit crash — infinite render loop fix
+description: React Error #185 caused by useEffect depending on a computed [] array that creates a new reference every render
 ---
 
-## Pattern observed
-- Fresh page load → click edit pencil → PageErrorBoundary "La page n'a pas pu se charger"
-- Click Réessayer → click edit pencil → WORKS
-- Full page refresh → click edit pencil → crash again
+## The bug
+Clicking the edit pencil on Branches page crashes with React Error #185 (Maximum update depth exceeded).
 
-## Root cause theory
-The crash happens because the sellers `useQuery` uses `editing!.id` (TypeScript non-null assertion). If TanStack Query calls the `queryFn` with a stale closure (before `editing` is set), `null.id` throws synchronously. In async context this becomes a rejected Promise, but TQ v5 may propagate it to the error boundary.
+## Root cause
+```js
+// BAD: creates a new [] reference on every render when data is undefined
+const fetchedSellers = Array.isArray(fetchedSellersRaw) ? fetchedSellersRaw : [];
+useEffect(() => { ... }, [fetchedSellers, editing?.id]);
+//                          ^^^^^ new [] !== prev [] on every render
+```
+The `[]` fallback is a new object on each render. React sees the dependency changed, runs the effect, calls `setSellers([new []])`, triggers a re-render, creates another new `[]`, runs effect again — infinite loop until React throws #185.
 
-Additionally, if the sellers API returns unexpected data (non-array), `sellers.map()` throws during React render → caught by PageErrorBoundary.
+## Fix
+```js
+// GOOD: use the raw query result (undefined = stable primitive, array = same TQ ref)
+useEffect(() => {
+  if (editing) {
+    setSellers(Array.isArray(fetchedSellersRaw) ? fetchedSellersRaw : []);
+  } else {
+    setSellers([]);
+  }
+}, [fetchedSellersRaw, editing?.id]);
+//   ^^^^^^^^^^^^^^^^ undefined is stable, actual array from TQ is stable reference
+```
 
-## Fixes applied
-1. `queryFn: () => editing ? customFetch(...) : Promise.resolve([])` — null-safe
-2. `throwOnError: false` — explicit, prevents TQ from throwing to error boundary
-3. `Array.isArray(fetchedSellersRaw)` guard on received data
-4. `Array.isArray(sellers)` guard before `.length` and `.map()` in JSX
-5. Fixed `Dialog.onOpenChange` to reset `editing`, `sellers`, `newSeller` on close (was only calling `setDialogOpen`)
-6. Added error message display in PageErrorBoundary for future debugging
+**Why:** `fetchedSellersRaw` from `useQuery` is either `undefined` (stable primitive, doesn't change between renders during loading) or the actual TQ-cached array (same reference between renders). Neither creates new references spuriously.
 
-## Why it worked after Réessayer
-TQ cache had sellers data from first attempt. Component remounts with fresh state but TQ cache preserved → sellers query returns cached result immediately → no race condition.
+**How to apply:** Any `useEffect` that computes a fallback array (`data ?? []`) inside the component body and puts it in the dependency array will have this problem. Always depend on the RAW query data, not a computed fallback.
+
+## Additional defensive fixes applied
+- `throwOnError: false` on sellers query
+- null-safe queryFn: `editing ? customFetch(...) : Promise.resolve([])`
+- `Array.isArray` guards before `.length` and `.map()` in render
+- `Dialog.onOpenChange` resets `editing`, `sellers`, `newSeller` on close
+- `PageErrorBoundary` now shows the actual error message (was blank before)

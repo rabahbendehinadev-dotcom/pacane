@@ -78,15 +78,13 @@ export default function Branches() {
     enabled: !!editing,
     throwOnError: false,
   });
-  const fetchedSellers: string[] = Array.isArray(fetchedSellersRaw) ? fetchedSellersRaw : [];
-
   useEffect(() => {
     if (editing) {
-      setSellers(fetchedSellers);
+      setSellers(Array.isArray(fetchedSellersRaw) ? fetchedSellersRaw : []);
     } else {
       setSellers([]);
     }
-  }, [fetchedSellers, editing?.id]);
+  }, [fetchedSellersRaw, editing?.id]);
 
   const sellersMutation = useMutation({
     mutationFn: ({ branchId, names }: { branchId: number; names: string[] }) =>
