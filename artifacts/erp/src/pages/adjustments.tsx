@@ -63,6 +63,10 @@ export default function Adjustments() {
   const [form, setForm] = useState({ branchId: "", productId: "", quantityChange: "", reason: "", notes: "" });
   const [quantitySign, setQuantitySign] = useState<1 | -1>(-1);
   const [photoData, setPhotoData] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [viewAdjustment, setViewAdjustment] = useState<(typeof displayedAdjustments)[0] | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -291,6 +295,44 @@ export default function Adjustments() {
       };
       reader.readAsDataURL(file);
     });
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      setCameraOpen(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      }, 50);
+    } catch {
+      toast({ title: "Impossible d'accéder à la caméra", description: "Vérifiez les autorisations caméra", variant: "destructive" });
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const maxPx = 900;
+    const ratio = Math.min(maxPx / video.videoWidth, maxPx / video.videoHeight, 1);
+    canvas.width = Math.round(video.videoWidth * ratio);
+    canvas.height = Math.round(video.videoHeight * ratio);
+    canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+    setPhotoData(dataUrl);
+    stopCamera();
   }
 
   const createMutation = useCreateAdjustment({
@@ -850,7 +892,7 @@ export default function Adjustments() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={v => { if (!v) { stopCamera(); setPhotoData(null); } setDialogOpen(v); }}>
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0"><DialogTitle>Nouvel ajustement de stock</DialogTitle></DialogHeader>
           <div className="flex-1 overflow-y-auto overscroll-contain space-y-4 pr-1">
@@ -976,8 +1018,35 @@ export default function Adjustments() {
                 Photo <span className="text-destructive">*</span>
                 <span className="text-xs text-muted-foreground font-normal ml-1">(caméra uniquement)</span>
               </Label>
+              <canvas ref={canvasRef} className="hidden" />
               <div className="mt-1.5">
-                {photoData ? (
+                {cameraOpen ? (
+                  <div className="relative w-full rounded-md overflow-hidden border bg-black">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full max-h-56 object-cover"
+                    />
+                    <div className="flex gap-2 justify-center p-2 bg-black/70">
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="bg-white text-black font-semibold text-sm px-5 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                      >
+                        📸 Capturer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="bg-white/20 text-white text-sm px-4 py-1.5 rounded-full hover:bg-white/30 transition-colors"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                ) : photoData ? (
                   <div className="relative w-full">
                     <img
                       src={photoData}
@@ -995,27 +1064,14 @@ export default function Adjustments() {
                     <p className="text-xs text-green-600 mt-1 font-medium">✓ Photo capturée</p>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center gap-2 w-full h-24 border-2 border-dashed rounded-md cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors">
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className="flex flex-col items-center justify-center gap-2 w-full h-24 border-2 border-dashed rounded-md hover:border-primary/60 hover:bg-primary/5 transition-colors"
+                  >
                     <span className="text-2xl">📷</span>
                     <span className="text-sm text-muted-foreground">Appuyer pour ouvrir la caméra</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="sr-only"
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          const compressed = await compressImage(file);
-                          setPhotoData(compressed);
-                        } catch {
-                          toast({ title: "Erreur lors de la capture", variant: "destructive" });
-                        }
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  </button>
                 )}
               </div>
             </div>
