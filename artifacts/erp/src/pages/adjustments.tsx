@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, Eye } from "lucide-react";
+import { Plus, FileDown, Check, Search, X, TrendingDown, PackageMinus, AlertTriangle, BarChart3, CalendarRange, Filter, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -18,6 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const REASONS = ["Inventaire physique", "DLC", "Labo perte", "Péremption", "Don", "Erreur de saisie", "Autre"];
+const PAGE_SIZE = 50;
 
 function fmt(n: number) {
   return new Intl.NumberFormat("fr-DZ", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
@@ -41,6 +42,7 @@ export default function Adjustments() {
   const [quantityTypeFilter, setQuantityTypeFilter] = useState("all"); // "all" | "positive" | "negative"
   const [sortBy, setSortBy]   = useState<string>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -178,6 +180,12 @@ export default function Adjustments() {
     });
     return list;
   }, [adjustments, reasonFilters, productFilters, quantityTypeFilter, sortBy, sortDir]);
+
+  // Reset to page 1 whenever the filtered list changes
+  useEffect(() => { setCurrentPage(1); }, [displayedAdjustments]);
+
+  const totalPages = Math.max(1, Math.ceil(displayedAdjustments.length / PAGE_SIZE));
+  const paginatedAdjustments = displayedAdjustments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   // ── Batch sold quantities per product for table rows (must come after displayedAdjustments)
   const uniqueProductIds = useMemo(
@@ -820,7 +828,7 @@ export default function Adjustments() {
                     {hasActiveFilters ? "Aucun ajustement pour ces filtres" : "Aucun ajustement"}
                   </TableCell>
                 </TableRow>
-              ) : displayedAdjustments.map(a => (
+              ) : paginatedAdjustments.map(a => (
                 <TableRow key={a.id}>
                   <TableCell className="font-mono text-xs">{a.reference}</TableCell>
                   <TableCell className="text-sm">
@@ -891,6 +899,62 @@ export default function Adjustments() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {displayedAdjustments.length > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-muted-foreground">
+            {displayedAdjustments.length} opération{displayedAdjustments.length !== 1 ? "s" : ""} —
+            page {currentPage} / {totalPages}
+            {" "}({((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, displayedAdjustments.length)})
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline" size="icon" className="h-8 w-8"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(1)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /><ChevronLeft className="h-3.5 w-3.5 -ml-2.5" />
+            </Button>
+            <Button
+              variant="outline" size="icon" className="h-8 w-8"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+              const page = start + i;
+              return (
+                <Button
+                  key={page}
+                  variant={page === currentPage ? "default" : "outline"}
+                  size="icon"
+                  className="h-8 w-8 text-xs"
+                  onClick={() => setCurrentPage(page)}
+                >
+                  {page}
+                </Button>
+              );
+            })}
+            <Button
+              variant="outline" size="icon" className="h-8 w-8"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline" size="icon" className="h-8 w-8"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" /><ChevronRight className="h-3.5 w-3.5 -ml-2.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={v => { if (!v) { stopCamera(); setPhotoData(null); } setDialogOpen(v); }}>
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden">
