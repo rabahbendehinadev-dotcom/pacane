@@ -552,10 +552,11 @@ export default function Recipes() {
     retry: 1,
   });
   const recipes: Recipe[] = recipesRaw ?? [];
-  const { data: productsRaw = [] } = useGetProducts({});
+  const { data: productsRaw = [], isLoading: productsLoading } = useGetProducts({});
   const products = productsRaw as any[];
-  const { data: unitsRaw = [] } = useGetUnits();
+  const { data: unitsRaw = [], isLoading: unitsLoading } = useGetUnits();
   const units = unitsRaw as any[];
+  const dataLoading = productsLoading || unitsLoading;
 
   const { data: usersRaw = [] } = useQuery<{ id: number; username: string; name: string }[]>({
     queryKey: ["recipes-assignable-users"],
@@ -956,12 +957,15 @@ export default function Recipes() {
                         <Button
                           variant="outline"
                           role="combobox"
+                          disabled={dataLoading}
                           className="flex-1 min-w-0 justify-between font-normal text-sm h-9 px-3"
                         >
                           <span className="truncate text-left">
-                            {newComp.itemId
-                              ? (products.find((p: any) => String(p.id) === newComp.itemId)?.name ?? "Ingrédient...")
-                              : <span className="text-muted-foreground">Ingrédient...</span>}
+                            {dataLoading
+                              ? <span className="text-muted-foreground flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin" />Chargement...</span>
+                              : newComp.itemId
+                                ? (products.find((p: any) => String(p.id) === newComp.itemId)?.name ?? "Ingrédient...")
+                                : <span className="text-muted-foreground">Ingrédient...</span>}
                           </span>
                           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                         </Button>
@@ -997,7 +1001,7 @@ export default function Recipes() {
                       <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={String(u.id)}>{u.abbreviation}</SelectItem>)}</SelectContent>
                     </Select>
                     <Input type="number" step="0.1" className="w-20 shrink-0" placeholder="Perte%" value={newComp.wastageRate} onChange={e => setNewComp(n => ({ ...n, wastageRate: e.target.value }))} />
-                    <Button variant="outline" size="sm" className="shrink-0" onClick={addComponent}>+</Button>
+                    <Button variant="outline" size="sm" className="shrink-0" onClick={addComponent} disabled={dataLoading}>+</Button>
                   </div>
                 </TabsContent>
                 <TabsContent value="recipe" className="mt-2">
