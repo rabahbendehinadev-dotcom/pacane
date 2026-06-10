@@ -1,6 +1,7 @@
 import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const recipesTable = pgTable("recipes", {
   id: serial("id").primaryKey(),
@@ -14,6 +15,7 @@ export const recipesTable = pgTable("recipes", {
   totalCost: numeric("total_cost", { precision: 15, scale: 2 }),
   costPerUnit: numeric("cost_per_unit", { precision: 15, scale: 4 }),
   lastCostUpdate: timestamp("last_cost_update", { withTimezone: true }),
+  assignedUserId: integer("assigned_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -3012,6 +3012,8 @@ components:
           type: string
         theoreticalCost:
           type: number
+        assignedUserId:
+          type: ["integer", "null"]
         ingredients:
           type: array
           items:
@@ -3083,6 +3085,8 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        assignedUserId:
+          type: ["integer", "null"]
         ingredients:
           type: array
           items:
@@ -3105,6 +3109,8 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        assignedUserId:
+          type: ["integer", "null"]
         ingredients:
           type: ["array", "null"]
           items:

@@ -685,6 +685,8 @@ export interface Recipe {
   yieldUnitId: number;
   yieldUnitName: string;
   theoreticalCost: number;
+  /** @nullable */
+  assignedUserId?: number | null;
   ingredients: RecipeIngredient[];
   /** @nullable */
   steps?: string | null;
@@ -719,6 +721,8 @@ export interface CreateRecipeBody {
   steps?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  assignedUserId?: number | null;
   ingredients: RecipeIngredientInput[];
 }
 
@@ -731,6 +735,8 @@ export interface UpdateRecipeBody {
   steps?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  assignedUserId?: number | null;
   /** @nullable */
   ingredients?: RecipeIngredientInput[] | null;
 }

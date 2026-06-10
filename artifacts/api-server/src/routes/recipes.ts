@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recipesTable, recipeIngredientsTable, recipeItemsTable, productsTable, unitsTable } from "@workspace/db";
+import { db, recipesTable, recipeIngredientsTable, recipeItemsTable, productsTable, unitsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
@@ -129,6 +129,15 @@ async function wouldCreateCycle(
   return false;
 }
 
+router.get("/recipes/assignable-users", requireAuth, requirePermission(P.recipes.view), async (_req, res): Promise<void> => {
+  const users = await db
+    .select({ id: usersTable.id, name: usersTable.name, username: usersTable.username })
+    .from(usersTable)
+    .where(eq(usersTable.status, "active"))
+    .orderBy(usersTable.name);
+  res.json(users);
+});
+
 router.get("/recipes", requireAuth, requirePermission(P.recipes.view), async (req, res): Promise<void> => {
   const { type, search } = req.query as Record<string, string>;
   let recipes = await db.select().from(recipesTable).orderBy(recipesTable.name);
@@ -157,7 +166,7 @@ router.get("/recipes/:id/cost", requireAuth, requirePermission(P.recipes.view), 
 });
 
 router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async (req, res): Promise<void> => {
-  const { name, productId, type, yield: yieldQty, yieldUnitId, steps, notes, ingredients, components } = req.body;
+  const { name, productId, type, yield: yieldQty, yieldUnitId, steps, notes, assignedUserId, ingredients, components } = req.body;
   if (!name || !type || !yieldQty || !yieldUnitId) {
     res.status(400).json({ error: "Champs requis manquants" }); return;
   }
@@ -169,7 +178,8 @@ router.post("/recipes", requireAuth, requirePermission(P.recipes.create), async 
   }
 
   const [recipe] = await db.insert(recipesTable).values({
-    name, productId, type, yield: yieldNum.toString(), yieldUnitId, steps, notes
+    name, productId, type, yield: yieldNum.toString(), yieldUnitId, steps, notes,
+    assignedUserId: assignedUserId ?? null,
   }).returning();
 
   if (components?.length) {
@@ -214,7 +224,7 @@ router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), asy
   const [existing] = await db.select().from(recipesTable).where(eq(recipesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Recette introuvable" }); return; }
 
-  const { name, yield: yieldQty, steps, notes, ingredients, components } = req.body;
+  const { name, yield: yieldQty, steps, notes, assignedUserId, ingredients, components } = req.body;
 
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = name;
@@ -227,6 +237,7 @@ router.patch("/recipes/:id", requireAuth, requirePermission(P.recipes.edit), asy
   }
   if (steps != null) updates.steps = steps;
   if (notes != null) updates.notes = notes;
+  if ("assignedUserId" in req.body) updates.assignedUserId = assignedUserId ?? null;
 
   // ── FIX: always set updatedAt so db.update() has at least one field ───────
   updates.updatedAt = new Date();

@@ -20,6 +20,8 @@ export interface Recipe {
   yieldUnitId: number;
   yieldUnitName: string;
   theoreticalCost: number;
+  /** @nullable */
+  assignedUserId?: number | null;
   ingredients: RecipeIngredient[];
   /** @nullable */
   steps?: string | null;

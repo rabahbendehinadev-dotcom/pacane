@@ -19,5 +19,7 @@ export interface CreateRecipeBody {
   steps?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  assignedUserId?: number | null;
   ingredients: RecipeIngredientInput[];
 }

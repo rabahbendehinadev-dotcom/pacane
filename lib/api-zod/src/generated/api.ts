@@ -1107,6 +1107,7 @@ export const GetRecipesResponseItem = zod.object({
   "yieldUnitId": zod.number(),
   "yieldUnitName": zod.string(),
   "theoreticalCost": zod.number(),
+  "assignedUserId": zod.number().nullish(),
   "ingredients": zod.array(zod.object({
   "id": zod.number(),
   "productId": zod.number(),
@@ -1136,6 +1137,7 @@ export const CreateRecipeBody = zod.object({
   "yieldUnitId": zod.number(),
   "steps": zod.string().nullish(),
   "notes": zod.string().nullish(),
+  "assignedUserId": zod.number().nullish(),
   "ingredients": zod.array(zod.object({
   "productId": zod.number(),
   "quantity": zod.number(),
@@ -1162,6 +1164,7 @@ export const GetRecipeResponse = zod.object({
   "yieldUnitId": zod.number(),
   "yieldUnitName": zod.string(),
   "theoreticalCost": zod.number(),
+  "assignedUserId": zod.number().nullish(),
   "ingredients": zod.array(zod.object({
   "id": zod.number(),
   "productId": zod.number(),
@@ -1191,6 +1194,7 @@ export const UpdateRecipeBody = zod.object({
   "yield": zod.number().nullish(),
   "steps": zod.string().nullish(),
   "notes": zod.string().nullish(),
+  "assignedUserId": zod.number().nullish(),
   "ingredients": zod.array(zod.object({
   "productId": zod.number(),
   "quantity": zod.number(),
@@ -1209,6 +1213,7 @@ export const UpdateRecipeResponse = zod.object({
   "yieldUnitId": zod.number(),
   "yieldUnitName": zod.string(),
   "theoreticalCost": zod.number(),
+  "assignedUserId": zod.number().nullish(),
   "ingredients": zod.array(zod.object({
   "id": zod.number(),
   "productId": zod.number(),

@@ -17,5 +17,7 @@ export interface UpdateRecipeBody {
   /** @nullable */
   notes?: string | null;
   /** @nullable */
+  assignedUserId?: number | null;
+  /** @nullable */
   ingredients?: RecipeIngredientInput[] | null;
 }

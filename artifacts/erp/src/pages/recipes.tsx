@@ -44,6 +44,7 @@ type Recipe = {
   cachedTotalCost?: number | null;
   cachedCostPerUnit?: number | null;
   lastCostUpdate?: string | null;
+  assignedUserId?: number | null;
   components: Array<{
     id?: number; itemType: string; itemId: number; itemName: string;
     productId?: number; productName?: string;
@@ -531,7 +532,7 @@ export default function Recipes() {
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
   const [detailTab, setDetailTab] = useState("components");
   const [editing, setEditing] = useState<Recipe | null>(null);
-  const [form, setForm] = useState({ name: "", type: "finished", yield: "", yieldUnitId: "", productId: "none", steps: "", notes: "" });
+  const [form, setForm] = useState({ name: "", type: "finished", yield: "", yieldUnitId: "", productId: "none", steps: "", notes: "", assignedUserId: "none" });
   const [components, setComponents] = useState<RecipeItem[]>([]);
   const [newComp, setNewComp] = useState({ itemType: "product", itemId: "", quantity: "", unitId: "", wastageRate: "0" });
   const [compTab, setCompTab] = useState("product");
@@ -554,12 +555,24 @@ export default function Recipes() {
   const { data: unitsRaw = [] } = useGetUnits();
   const units = unitsRaw as any[];
 
+  const { data: usersRaw = [] } = useQuery<{ id: number; username: string; name: string }[]>({
+    queryKey: ["recipes-assignable-users"],
+    queryFn: async () => {
+      const r = await fetch("/api/recipes/assignable-users", { headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` } });
+      if (!r.ok) return [];
+      const json = await r.json();
+      return Array.isArray(json) ? json : [];
+    },
+    staleTime: 5 * 60_000,
+  });
+  const users = usersRaw;
+
   const createMutation = useCreateRecipe({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetRecipesQueryKey() }); setDialogOpen(false); toast({ title: "Recette créée" }); } } });
   const updateMutation = useUpdateRecipe({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetRecipesQueryKey() }); setDialogOpen(false); toast({ title: "Recette mise à jour" }); } } });
 
   function openNew() {
     setEditing(null);
-    setForm({ name: "", type: "finished", yield: "", yieldUnitId: "", productId: "none", steps: "", notes: "" });
+    setForm({ name: "", type: "finished", yield: "", yieldUnitId: "", productId: "none", steps: "", notes: "", assignedUserId: "none" });
     setComponents([]);
     setNewComp({ itemType: "product", itemId: "", quantity: "", unitId: "", wastageRate: "0" });
     setCompTab("product");
@@ -568,7 +581,7 @@ export default function Recipes() {
 
   function openEdit(r: Recipe) {
     setEditing(r);
-    setForm({ name: r.name, type: r.type, yield: r.yield.toString(), yieldUnitId: r.yieldUnitId.toString(), productId: r.productId?.toString() ?? "none", steps: r.steps ?? "", notes: r.notes ?? "" });
+    setForm({ name: r.name, type: r.type, yield: r.yield.toString(), yieldUnitId: r.yieldUnitId.toString(), productId: r.productId?.toString() ?? "none", steps: r.steps ?? "", notes: r.notes ?? "", assignedUserId: r.assignedUserId?.toString() ?? "none" });
     const comps: RecipeItem[] = (r.components ?? r.ingredients.map(i => ({ ...i, itemType: "product" as const, itemId: i.productId, itemName: i.productName }))).map((c: any) => ({
       itemType: c.itemType ?? "product",
       itemId: c.itemId ?? c.productId,
@@ -617,6 +630,7 @@ export default function Recipes() {
       name: form.name, type: form.type, yield: parseFloat(form.yield), yieldUnitId: parseInt(form.yieldUnitId),
       productId: form.productId && form.productId !== "none" ? parseInt(form.productId) : null,
       steps: form.steps || null, notes: form.notes || null,
+      assignedUserId: form.assignedUserId && form.assignedUserId !== "none" ? parseInt(form.assignedUserId) : null,
       components: components.map(c => ({
         itemType: c.itemType, itemId: c.itemId,
         quantity: parseFloat(c.quantity), unitId: c.unitId,
@@ -818,6 +832,18 @@ export default function Recipes() {
                   <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</SelectItem>)}</SelectContent>
                 </Select>
               </div>
+            </div>
+            <div>
+              <Label>Utilisateur assigné</Label>
+              <Select value={form.assignedUserId} onValueChange={v => setForm(f => ({ ...f, assignedUserId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucun</SelectItem>
+                  {users.filter(u => u).map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name || u.username}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="border rounded-lg p-3 space-y-3">
