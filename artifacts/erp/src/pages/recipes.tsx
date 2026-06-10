@@ -13,7 +13,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3, Download, Upload } from "lucide-react";
+import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3, Download, Upload, Check, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "@/hooks/use-toast";
 
 type RecipeItem = {
@@ -533,6 +535,7 @@ export default function Recipes() {
   const [components, setComponents] = useState<RecipeItem[]>([]);
   const [newComp, setNewComp] = useState({ itemType: "product", itemId: "", quantity: "", unitId: "", wastageRate: "0" });
   const [compTab, setCompTab] = useState("product");
+  const [ingredientOpen, setIngredientOpen] = useState(false);
 
   const { data: recipesRaw, isLoading, error: recipesError } = useQuery<Recipe[]>({
     queryKey: getGetRecipesQueryKey(),
@@ -851,18 +854,55 @@ export default function Recipes() {
                   <TabsTrigger value="recipe" className="text-xs h-6 px-2 gap-1"><Layers className="h-3 w-3" />Sous-recette</TabsTrigger>
                 </TabsList>
                 <TabsContent value="product" className="mt-2">
-                  <div className="flex gap-2">
-                    <Select value={newComp.itemId} onValueChange={v => setNewComp(n => ({ ...n, itemId: v, itemType: "product" }))}>
-                      <SelectTrigger className="flex-1"><SelectValue placeholder="Ingrédient..." /></SelectTrigger>
-                      <SelectContent>{products.filter((p: any) => p.isPurchasable || p.type === "ingredient").map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" step="0.001" className="w-20" placeholder="Qté" value={newComp.quantity} onChange={e => setNewComp(n => ({ ...n, quantity: e.target.value }))} />
+                  <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                    <Popover open={ingredientOpen} onOpenChange={setIngredientOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="flex-1 min-w-0 justify-between font-normal text-sm h-9 px-3"
+                        >
+                          <span className="truncate text-left">
+                            {newComp.itemId
+                              ? (products.find((p: any) => String(p.id) === newComp.itemId)?.name ?? "Ingrédient...")
+                              : <span className="text-muted-foreground">Ingrédient...</span>}
+                          </span>
+                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-72" align="start" side="bottom">
+                        <Command>
+                          <CommandInput placeholder="Rechercher un ingrédient..." className="h-9" />
+                          <CommandList className="max-h-56 overflow-y-auto">
+                            <CommandEmpty>Aucun ingrédient trouvé.</CommandEmpty>
+                            <CommandGroup>
+                              {products
+                                .filter((p: any) => p.isPurchasable || p.type === "ingredient")
+                                .map((p: any) => (
+                                  <CommandItem
+                                    key={p.id}
+                                    value={p.name}
+                                    onSelect={() => {
+                                      setNewComp(n => ({ ...n, itemId: String(p.id), itemType: "product" }));
+                                      setIngredientOpen(false);
+                                    }}
+                                  >
+                                    <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${String(p.id) === newComp.itemId ? "opacity-100 text-primary" : "opacity-0"}`} />
+                                    <span className="truncate">{p.name}</span>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <Input type="number" step="0.001" className="w-20 shrink-0" placeholder="Qté" value={newComp.quantity} onChange={e => setNewComp(n => ({ ...n, quantity: e.target.value }))} />
                     <Select value={newComp.unitId} onValueChange={v => setNewComp(n => ({ ...n, unitId: v }))}>
-                      <SelectTrigger className="w-20"><SelectValue placeholder="U" /></SelectTrigger>
+                      <SelectTrigger className="w-20 shrink-0"><SelectValue placeholder="U" /></SelectTrigger>
                       <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={String(u.id)}>{u.abbreviation}</SelectItem>)}</SelectContent>
                     </Select>
-                    <Input type="number" step="0.1" className="w-20" placeholder="Perte%" value={newComp.wastageRate} onChange={e => setNewComp(n => ({ ...n, wastageRate: e.target.value }))} />
-                    <Button variant="outline" size="sm" onClick={addComponent}>+</Button>
+                    <Input type="number" step="0.1" className="w-20 shrink-0" placeholder="Perte%" value={newComp.wastageRate} onChange={e => setNewComp(n => ({ ...n, wastageRate: e.target.value }))} />
+                    <Button variant="outline" size="sm" className="shrink-0" onClick={addComponent}>+</Button>
                   </div>
                 </TabsContent>
                 <TabsContent value="recipe" className="mt-2">
