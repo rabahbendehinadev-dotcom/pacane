@@ -70,6 +70,7 @@ export default function Adjustments() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [viewAdjustment, setViewAdjustment] = useState<(typeof displayedAdjustments)[0] | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -1242,11 +1243,18 @@ export default function Adjustments() {
                   {(a as any).photoData && (
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Photo</p>
-                      <img
-                        src={(a as any).photoData}
-                        alt="Photo de l'ajustement"
-                        className="w-full rounded-md border object-cover"
-                      />
+                      <div className="relative group cursor-zoom-in" onClick={() => setLightboxSrc((a as any).photoData)}>
+                        <img
+                          src={(a as any).photoData}
+                          alt="Photo de l'ajustement"
+                          className="w-full rounded-md border object-cover transition-opacity group-hover:opacity-90"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="bg-black/50 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
+                            🔍 Agrandir
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1276,6 +1284,27 @@ export default function Adjustments() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 cursor-zoom-out"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors"
+            onClick={() => setLightboxSrc(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Photo agrandie"
+            className="max-w-[92vw] max-h-[92vh] rounded-lg object-contain shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
