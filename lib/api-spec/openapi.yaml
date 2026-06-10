@@ -809,6 +809,42 @@ paths:
                 items:
                   $ref: "#/components/schemas/StockAlert"
 
+  /stock/ruptures:
+    get:
+      operationId: getStockRuptures
+      tags: [stock]
+      summary: Get stock rupture events
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: productId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Stock rupture events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockRupture"
+
   # PURCHASES
   /purchases:
     get:
@@ -2818,6 +2854,27 @@ components:
         - alertQuantity
         - alertLevel
         - unitName
+
+    StockRupture:
+      type: object
+      required: [productId, productName, branchId, branchName, ruptureAt, durationHours, status]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        ruptureAt:
+          type: string
+        restockedAt:
+          type: ["string", "null"]
+        durationHours:
+          type: number
+        status:
+          type: string
 
     Purchase:
       type: object

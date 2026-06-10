@@ -863,6 +863,30 @@ export const GetStockAlertsResponse = zod.array(GetStockAlertsResponseItem)
 
 
 /**
+ * @summary Get stock rupture events
+ */
+export const GetStockRupturesQueryParams = zod.object({
+  "branchId": zod.coerce.number().nullish(),
+  "productId": zod.coerce.number().nullish(),
+  "dateFrom": zod.coerce.string().nullish(),
+  "dateTo": zod.coerce.string().nullish(),
+  "status": zod.coerce.string().nullish()
+})
+
+export const GetStockRupturesResponseItem = zod.object({
+  "productId": zod.number(),
+  "productName": zod.string(),
+  "branchId": zod.number(),
+  "branchName": zod.string(),
+  "ruptureAt": zod.string(),
+  "restockedAt": zod.string().nullish(),
+  "durationHours": zod.number(),
+  "status": zod.string()
+})
+export const GetStockRupturesResponse = zod.array(GetStockRupturesResponseItem)
+
+
+/**
  * @summary List purchases
  */
 export const GetPurchasesQueryParams = zod.object({

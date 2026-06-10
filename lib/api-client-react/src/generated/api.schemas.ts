@@ -547,6 +547,18 @@ export interface StockAlert {
   unitName: string;
 }
 
+export interface StockRupture {
+  productId: number;
+  productName: string;
+  branchId: number;
+  branchName: string;
+  ruptureAt: string;
+  /** @nullable */
+  restockedAt?: string | null;
+  durationHours: number;
+  status: string;
+}
+
 export type PurchaseStatus = typeof PurchaseStatus[keyof typeof PurchaseStatus];
 
 
@@ -1636,6 +1648,29 @@ productId?: number | null;
  * @nullable
  */
 type?: string | null;
+};
+
+export type GetStockRupturesParams = {
+/**
+ * @nullable
+ */
+branchId?: number | null;
+/**
+ * @nullable
+ */
+productId?: number | null;
+/**
+ * @nullable
+ */
+dateFrom?: string | null;
+/**
+ * @nullable
+ */
+dateTo?: string | null;
+/**
+ * @nullable
+ */
+status?: string | null;
 };
 
 export type GetPurchasesParams = {

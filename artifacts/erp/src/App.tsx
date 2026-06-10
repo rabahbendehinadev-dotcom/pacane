@@ -49,6 +49,7 @@ import WhatsappTemplatesPage from "@/pages/whatsapp-templates";
 import IntelligencePage from "@/pages/intelligence";
 import AiControlPage from "@/pages/ai-control";
 import ChecklistPage from "@/pages/checklist";
+import StockRupturesPage from "@/pages/stock-ruptures";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -220,6 +221,9 @@ function AppRoutes() {
       </Route>
       <Route path="/checklist">
         <DashboardLayout><ChecklistPage /></DashboardLayout>
+      </Route>
+      <Route path="/stock/ruptures">
+        <DashboardLayout><StockRupturesPage /></DashboardLayout>
       </Route>
 
       <Route component={NotFound} />

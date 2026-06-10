@@ -80,6 +80,118 @@ router.get("/stock/alerts", requireAuth, requirePermission(P.stock.view), async 
   res.json(alerts);
 });
 
+router.get("/stock/ruptures", requireAuth, requirePermission(P.stock.view), async (req, res): Promise<void> => {
+  const { branchId, productId, dateFrom, dateTo, status } = req.query as Record<string, string>;
+  const scope = visibleBranchIds(req.user!);
+  if (scope !== null && scope.length === 0) { res.json([]); return; }
+
+  // Fetch ALL movements ordered by (product, branch, time) for accurate floor-safe balance simulation
+  const rows = await db.select({
+    sm: stockMovementsTable,
+    productName: productsTable.name,
+    branchName: branchesTable.name,
+  }).from(stockMovementsTable)
+    .leftJoin(productsTable, eq(stockMovementsTable.productId, productsTable.id))
+    .leftJoin(branchesTable, eq(stockMovementsTable.branchId, branchesTable.id))
+    .orderBy(
+      stockMovementsTable.productId,
+      stockMovementsTable.branchId,
+      stockMovementsTable.createdAt,
+      stockMovementsTable.id
+    );
+
+  // Group movements by (productId, branchId)
+  const groups = new Map<string, {
+    productId: number; productName: string;
+    branchId: number; branchName: string;
+    movements: { delta: number; createdAt: Date }[];
+  }>();
+  for (const r of rows) {
+    if (scope !== null && !scope.includes(r.sm.branchId)) continue;
+    const key = `${r.sm.productId}_${r.sm.branchId}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        productId: r.sm.productId, productName: r.productName ?? "",
+        branchId: r.sm.branchId, branchName: r.branchName ?? "",
+        movements: [],
+      });
+    }
+    groups.get(key)!.movements.push({
+      delta: parseFloat(r.sm.quantity as string),
+      createdAt: r.sm.createdAt,
+    });
+  }
+
+  // Simulate running balance per group applying floor(0), detect rupture/restock events
+  const ruptures: Array<{
+    productId: number; productName: string;
+    branchId: number; branchName: string;
+    ruptureAt: string; restockedAt: string | null;
+    durationHours: number; status: string;
+  }> = [];
+  const now = new Date();
+
+  for (const group of groups.values()) {
+    let balance = 0;
+    let inRupture = false;
+    let ruptureAt: Date | null = null;
+
+    for (const m of group.movements) {
+      const prevBalance = balance;
+      balance = Math.max(0, balance + m.delta);
+
+      if (!inRupture && prevBalance > 0 && balance === 0) {
+        inRupture = true;
+        ruptureAt = m.createdAt;
+      } else if (inRupture && ruptureAt && prevBalance === 0 && balance > 0) {
+        const durationHours = (m.createdAt.getTime() - ruptureAt.getTime()) / 3_600_000;
+        ruptures.push({
+          productId: group.productId, productName: group.productName,
+          branchId: group.branchId, branchName: group.branchName,
+          ruptureAt: ruptureAt.toISOString(),
+          restockedAt: m.createdAt.toISOString(),
+          durationHours: Math.round(durationHours * 100) / 100,
+          status: "resolved",
+        });
+        inRupture = false;
+        ruptureAt = null;
+      }
+    }
+
+    // Still in rupture after all movements
+    if (inRupture && ruptureAt) {
+      const durationHours = (now.getTime() - ruptureAt.getTime()) / 3_600_000;
+      ruptures.push({
+        productId: group.productId, productName: group.productName,
+        branchId: group.branchId, branchName: group.branchName,
+        ruptureAt: ruptureAt.toISOString(),
+        restockedAt: null,
+        durationHours: Math.round(durationHours * 100) / 100,
+        status: "ongoing",
+      });
+    }
+  }
+
+  // Apply filters
+  let result = ruptures;
+  if (branchId) result = result.filter(r => r.branchId === parseInt(branchId, 10));
+  if (productId) result = result.filter(r => r.productId === parseInt(productId, 10));
+  if (status) result = result.filter(r => r.status === status);
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setHours(0, 0, 0, 0);
+    result = result.filter(r => new Date(r.ruptureAt) >= from || (r.restockedAt !== null && new Date(r.restockedAt) >= from));
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setHours(23, 59, 59, 999);
+    result = result.filter(r => new Date(r.ruptureAt) <= to);
+  }
+
+  result.sort((a, b) => new Date(b.ruptureAt).getTime() - new Date(a.ruptureAt).getTime());
+  res.json(result);
+});
+
 router.get("/stock/movements", requireAuth, requirePermission(P.stock.view), async (req, res): Promise<void> => {
   const { branchId, productId, type } = req.query as Record<string, string>;
   const scope = visibleBranchIds(req.user!);

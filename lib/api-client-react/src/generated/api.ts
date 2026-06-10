@@ -76,6 +76,7 @@ import type {
   GetSalesTrendParams,
   GetStockLevelsParams,
   GetStockMovementsParams,
+  GetStockRupturesParams,
   GetStockValuationReportParams,
   GetTransfersParams,
   GetUsersParams,
@@ -103,6 +104,7 @@ import type {
   StockAlert,
   StockLevel,
   StockMovement,
+  StockRupture,
   StockValuationReport,
   TopProduct,
   Transaction,
@@ -3168,6 +3170,90 @@ export function useGetStockAlerts<TData = Awaited<ReturnType<typeof getStockAler
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStockAlertsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetStockRupturesUrl = (params?: GetStockRupturesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stock/ruptures?${stringifiedParams}` : `/api/stock/ruptures`
+}
+
+/**
+ * @summary Get stock rupture events
+ */
+export const getStockRuptures = async (params?: GetStockRupturesParams, options?: RequestInit): Promise<StockRupture[]> => {
+
+  return customFetch<StockRupture[]>(getGetStockRupturesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockRupturesQueryKey = (params?: GetStockRupturesParams,) => {
+    return [
+    `/api/stock/ruptures`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetStockRupturesQueryOptions = <TData = Awaited<ReturnType<typeof getStockRuptures>>, TError = ErrorType<unknown>>(params?: GetStockRupturesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockRuptures>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockRupturesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockRuptures>>> = ({ signal }) => getStockRuptures(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockRuptures>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockRupturesQueryResult = NonNullable<Awaited<ReturnType<typeof getStockRuptures>>>
+export type GetStockRupturesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get stock rupture events
+ */
+
+export function useGetStockRuptures<TData = Awaited<ReturnType<typeof getStockRuptures>>, TError = ErrorType<unknown>>(
+ params?: GetStockRupturesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockRuptures>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockRupturesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

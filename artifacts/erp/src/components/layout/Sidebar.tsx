@@ -17,6 +17,7 @@ import {
   ArrowLeftRight,
   Wrench,
   SlidersHorizontal,
+  PackageX,
   FileText,
   MonitorSmartphone,
   Wallet,
@@ -102,6 +103,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
         { label: "Transferts", href: "/transfers", icon: ArrowLeftRight, perm: "transfers.view" },
         { label: "Consommation interne", href: "/internal-consumptions", icon: Wrench, perm: "internal_consumptions.view" },
         { label: "Ajustements", href: "/adjustments", icon: SlidersHorizontal, perm: "adjustments.view" },
+        { label: "Ruptures de stock", href: "/stock/ruptures", icon: PackageX, perm: "stock.view" },
       ],
     },
     {
