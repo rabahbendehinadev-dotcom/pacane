@@ -164,8 +164,10 @@ export default function ReplenishmentPage() {
     const dayLabel = results[0].weekdayGroupLabel;
     const now = format(new Date(), "dd/MM/yyyy HH:mm");
 
+    const esc = (s: string) =>
+      String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const line = (a: string, b: string) =>
-      `<tr><td style="padding:1px 2px">${a}</td><td style="padding:1px 2px;text-align:right;font-weight:700">${b}</td></tr>`;
+      `<tr><td style="padding:1px 2px">${esc(a)}</td><td style="padding:1px 2px;text-align:right;font-weight:700">${esc(b)}</td></tr>`;
 
     let body = "";
 
@@ -177,7 +179,7 @@ export default function ReplenishmentPage() {
         map.get(k)!.push(item);
       }
       for (const [worker, items] of Array.from(map.entries())) {
-        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${worker}</td></tr>`;
+        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${esc(worker)}</td></tr>`;
         for (const i of items) {
           body += line(i.productName, `${fmtQty(i.quantityToOrder)} ${i.unitName}`);
         }
@@ -190,7 +192,7 @@ export default function ReplenishmentPage() {
         map.get(k)!.push(item);
       }
       for (const [supplier, items] of Array.from(map.entries())) {
-        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${supplier}</td></tr>`;
+        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${esc(supplier)}</td></tr>`;
         for (const i of items) {
           body += line(i.productName, `${fmtQty(i.quantityToOrder)} ${i.unitName}`);
         }
@@ -218,8 +220,8 @@ export default function ReplenishmentPage() {
 <h1>BON DE COMMANDE</h1>
 <div class="sub">PACANE</div>
 <div class="sep"></div>
-<div class="sub">${branchLabel}</div>
-<div class="sub">Date : ${dateLabel} &mdash; ${dayLabel}</div>
+<div class="sub">${esc(branchLabel)}</div>
+<div class="sub">Date : ${dateLabel} &mdash; ${esc(dayLabel)}</div>
 <div class="sep"></div>
 <table>${body}</table>
 <div class="sep"></div>
