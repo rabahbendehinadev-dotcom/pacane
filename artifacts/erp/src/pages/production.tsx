@@ -387,7 +387,27 @@ export default function Production() {
   const { data: availability, isLoading: availLoading, refetch: refetchAvail } = useProductionAvailability(detailOrderId, detailOpen);
   const { data: overrideLogs = [], refetch: refetchOverrides } = useProductionOverrides(detailOrderId, detailOpen);
 
-  const createMutation = useCreateProductionOrder({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetProductionOrdersQueryKey() }); setCreateDialogOpen(false); toast({ title: "Ordre créé" }); } } });
+  const createMutation = useCreateProductionOrder({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetProductionOrdersQueryKey() });
+        setCreateDialogOpen(false);
+        toast({ title: "Ordre créé" });
+      },
+      onError: (err: any) => {
+        const msg: string =
+          err?.response?.data?.error ??
+          err?.message ??
+          "Impossible de créer l'ordre de production";
+        const code: string | undefined = err?.response?.data?.code;
+        let description = msg;
+        if (code === "RECIPE_EMPTY") description = "Cette recette n'a aucun ingrédient. Ajoutez des composants à la recette avant de créer un ordre.";
+        else if (code === "RECIPE_NOT_FOUND") description = "La recette sélectionnée est introuvable.";
+        else if (code === "BRANCH_ACCESS_DENIED") description = "Vous n'avez pas accès à cette boutique.";
+        toast({ title: "Erreur", description, variant: "destructive" });
+      },
+    },
+  });
   const completeMutation = useCompleteProductionOrder({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetProductionOrdersQueryKey() }); qc.invalidateQueries({ queryKey: getGetStockLevelsQueryKey() }); setCompleteDialogOpen(false); if (detailOrderId) { refetchAvail(); qc.invalidateQueries({ queryKey: ["production-cost", detailOrderId] }); } toast({ title: "Production terminée" }); } } });
 
   const detailOrder = (orders as any[]).find((o: any) => o.id === detailOrderId);
@@ -593,6 +613,20 @@ export default function Production() {
                 <SelectTrigger><SelectValue placeholder="Choisir une recette..." /></SelectTrigger>
                 <SelectContent>{(recipes as any[]).map((r: any) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}</SelectContent>
               </Select>
+              {(() => {
+                if (!form.recipeId) return null;
+                const sel = (recipes as any[]).find((r: any) => String(r.id) === form.recipeId);
+                const compCount = (sel?.components ?? sel?.ingredients ?? []).length;
+                if (compCount === 0) return (
+                  <Alert className="mt-2 border-amber-200 bg-amber-50 py-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-700">
+                      Cette recette n'a aucun composant. <a href="/recipes" className="underline font-medium">Ajoutez des ingrédients</a> avant de créer un ordre.
+                    </AlertDescription>
+                  </Alert>
+                );
+                return null;
+              })()}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Quantité planifiée *</Label><Input type="number" step="0.001" value={form.plannedQuantity} onChange={e => setForm(f => ({ ...f, plannedQuantity: e.target.value }))} /></div>
@@ -620,9 +654,18 @@ export default function Production() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-            <Button onClick={() => createMutation.mutate({ data: { recipeId: parseInt(form.recipeId), plannedQuantity: parseFloat(form.plannedQuantity), branchId: parseInt(form.branchId), status: form.status as any, notes: form.notes || null, wastePercentage: parseFloat(form.wastePercentage) || 0 } as any })} disabled={!form.recipeId || !form.plannedQuantity || !form.branchId}>
-              Créer
-            </Button>
+            {(() => {
+              const sel = (recipes as any[]).find((r: any) => String(r.id) === form.recipeId);
+              const recipeEmpty = !!sel && (sel?.components ?? sel?.ingredients ?? []).length === 0;
+              return (
+                <Button
+                  onClick={() => createMutation.mutate({ data: { recipeId: parseInt(form.recipeId), plannedQuantity: parseFloat(form.plannedQuantity), branchId: parseInt(form.branchId), status: form.status as any, notes: form.notes || null, wastePercentage: parseFloat(form.wastePercentage) || 0 } as any })}
+                  disabled={!form.recipeId || !form.plannedQuantity || !form.branchId || recipeEmpty || createMutation.isPending}
+                >
+                  {createMutation.isPending ? "Création..." : "Créer"}
+                </Button>
+              );
+            })()}
           </DialogFooter>
         </DialogContent>
       </Dialog>
