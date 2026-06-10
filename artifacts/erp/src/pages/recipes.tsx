@@ -538,6 +538,7 @@ export default function Recipes() {
   const [compTab, setCompTab] = useState("product");
   const [ingredientOpen, setIngredientOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
 
   const { data: recipesRaw, isLoading, error: recipesError } = useQuery<Recipe[]>({
     queryKey: getGetRecipesQueryKey(),
@@ -817,13 +818,38 @@ export default function Recipes() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label>Produit associé</Label>
-                <Select value={form.productId} onValueChange={v => setForm(f => ({ ...f, productId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucun</SelectItem>
-                    {products.filter((p: any) => p.isFabricated).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Popover open={productOpen} onOpenChange={setProductOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between font-normal text-sm h-9 px-3">
+                      <span className="truncate text-left">
+                        {form.productId && form.productId !== "none"
+                          ? (() => { const p = products.find((p: any) => String(p.id) === form.productId); return p ? p.name : "Aucun"; })()
+                          : <span className="text-muted-foreground">Aucun</span>}
+                      </span>
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-72" align="start" side="bottom">
+                    <Command>
+                      <CommandInput placeholder="Rechercher un produit..." className="h-9" />
+                      <CommandList className="max-h-56 overflow-y-auto">
+                        <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="Aucun" onSelect={() => { setForm(f => ({ ...f, productId: "none" })); setProductOpen(false); }}>
+                            <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${form.productId === "none" ? "opacity-100 text-primary" : "opacity-0"}`} />
+                            <span className="truncate">Aucun</span>
+                          </CommandItem>
+                          {products.map((p: any) => (
+                            <CommandItem key={p.id} value={p.name} onSelect={() => { setForm(f => ({ ...f, productId: String(p.id) })); setProductOpen(false); }}>
+                              <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${form.productId === String(p.id) ? "opacity-100 text-primary" : "opacity-0"}`} />
+                              <span className="truncate">{p.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div><Label>Rendement *</Label><Input type="number" step="0.001" value={form.yield} onChange={e => setForm(f => ({ ...f, yield: e.target.value }))} /></div>
               <div>
