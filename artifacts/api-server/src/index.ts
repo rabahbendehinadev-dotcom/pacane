@@ -233,6 +233,21 @@ async function runMigrations() {
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
     `);
+    // Migrate production_orders — add columns introduced after initial deployment
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS estimated_cost NUMERIC(15,2);`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(15,2);`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS cost_variance NUMERIC(15,2);`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS waste_percentage NUMERIC(5,2) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS notes TEXT;`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS bom_snapshot TEXT;`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS exploded_materials_snapshot TEXT;`);
+    await db.execute(sql`ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;`);
+    // Migrate production_order_items — add columns introduced after initial deployment
+    await db.execute(sql`ALTER TABLE production_order_items ADD COLUMN IF NOT EXISTS item_type TEXT NOT NULL DEFAULT 'product';`);
+    await db.execute(sql`ALTER TABLE production_order_items ADD COLUMN IF NOT EXISTS unit_abbreviation TEXT NOT NULL DEFAULT 'u';`);
+    await db.execute(sql`ALTER TABLE production_order_items ADD COLUMN IF NOT EXISTS unit_cost_price NUMERIC(15,4) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE production_order_items ADD COLUMN IF NOT EXISTS wastage_rate NUMERIC(5,2) NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE production_order_items ADD COLUMN IF NOT EXISTS nesting_level INTEGER NOT NULL DEFAULT 0;`);
     // Recipes feature
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS recipes (
