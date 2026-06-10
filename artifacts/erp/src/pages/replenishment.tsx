@@ -131,9 +131,7 @@ export default function ReplenishmentPage() {
     totalProducts: results.reduce((s, r) => s + r.stats.totalProducts, 0),
     toOrderCount: results.reduce((s, r) => s + r.stats.toOrderCount, 0),
     totalQuantityToOrder: results.reduce((s, r) => s + r.stats.totalQuantityToOrder, 0),
-    suppliersCount: new Set(
-      results.flatMap(r => r.items.map(i => i.supplierId).filter((id): id is number => id !== null))
-    ).size,
+    suppliersCount: results.reduce((s, r) => s + r.stats.suppliersCount, 0),
   } : null;
 
   const displayItems = allItems.filter(i => !onlyToOrder || i.status === "to_order");
@@ -270,7 +268,7 @@ export default function ReplenishmentPage() {
     return Array.from(map.values());
   })();
 
-  async function doSend(force = false) {
+  async function doSend() {
     if (!results || results.length === 0) return;
     setSending(true);
     try {
@@ -281,36 +279,57 @@ export default function ReplenishmentPage() {
         byBranch.get(item.branchId)!.push(item);
       }
       const sharedDate = results[0].date;
+
+      const buildPayload = (bid: number, items: ReplenishmentItemWithBranch[], force: boolean) => ({
+        branchId: bid,
+        date: sharedDate,
+        force,
+        items: items.map(i => ({
+          productId: i.productId,
+          productName: i.productName,
+          sku: i.sku,
+          unitName: i.unitName,
+          workerId: i.workerId,
+          workerName: i.workerName,
+          quantityToOrder: i.quantityToOrder,
+        })),
+      });
+
+      const conflictedBranches: number[] = [];
+
       for (const [bid, items] of Array.from(byBranch.entries())) {
         const r = await fetch("/api/preparation-orders/send", {
           method: "POST",
           headers: AUTH_HEADER(),
-          body: JSON.stringify({
-            branchId: bid,
-            date: sharedDate,
-            force,
-            items: items.map(i => ({
-              productId: i.productId,
-              productName: i.productName,
-              sku: i.sku,
-              unitName: i.unitName,
-              workerId: i.workerId,
-              workerName: i.workerName,
-              quantityToOrder: i.quantityToOrder,
-            })),
-          }),
+          body: JSON.stringify(buildPayload(bid, items, false)),
         });
         const data = await r.json();
         if (r.status === 409) {
-          const names = data.workerNames?.join(", ") ?? "";
-          toast({ title: `Doublons détectés pour : ${names}. Renvoi forcé...`, variant: "destructive" });
-          setSending(false);
-          await doSend(true);
-          return;
+          conflictedBranches.push(bid);
+          continue;
         }
         if (!r.ok) throw new Error(data.error ?? "Erreur");
         totalCreated += data.created?.length ?? 0;
       }
+
+      if (conflictedBranches.length > 0) {
+        const conflictNames = conflictedBranches
+          .map(bid => results.find(r => r.branchId === bid)?.branchName ?? String(bid))
+          .join(", ");
+        toast({ title: `Doublons détectés (${conflictNames}). Renvoi forcé…`, variant: "destructive" });
+        for (const bid of conflictedBranches) {
+          const items = byBranch.get(bid)!;
+          const r = await fetch("/api/preparation-orders/send", {
+            method: "POST",
+            headers: AUTH_HEADER(),
+            body: JSON.stringify(buildPayload(bid, items, true)),
+          });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error ?? "Erreur");
+          totalCreated += data.created?.length ?? 0;
+        }
+      }
+
       setSendModalOpen(false);
       toast({ title: `✓ ${totalCreated} ordre(s) envoyé(s) aux ouvriers` });
       setSentWorkers(workerSummary.map(w => ({ name: w.name, phone: w.phone, count: w.count })));
@@ -608,7 +627,7 @@ export default function ReplenishmentPage() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setSendModalOpen(false)}>Annuler</Button>
           <Button
-            onClick={() => doSend(false)}
+            onClick={() => doSend()}
             disabled={sending || workerSummary.length === 0}
             className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
           >
