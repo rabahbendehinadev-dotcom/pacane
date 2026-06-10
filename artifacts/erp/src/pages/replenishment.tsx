@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetBranches, useGetCategories } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -90,6 +90,7 @@ export default function ReplenishmentPage() {
   const [sending, setSending] = useState(false);
   const [waDialogOpen, setWaDialogOpen] = useState(false);
   const [sentWorkers, setSentWorkers] = useState<{ name: string; phone: string | null; count: number }[]>([]);
+  const [aggregateByProduct, setAggregateByProduct] = useState<boolean>(true);
 
   const { data: branches = [] } = useGetBranches();
   const { data: categories = [] } = useGetCategories();
@@ -124,17 +125,47 @@ export default function ReplenishmentPage() {
     ? results.flatMap(r => r.items.map(i => ({ ...i, branchId: r.branchId, branchName: r.branchName })))
     : [];
 
+  const aggregatedItems = useMemo((): ReplenishmentItemWithBranch[] => {
+    const map = new Map<number, ReplenishmentItemWithBranch>();
+    for (const item of allItems) {
+      if (map.has(item.productId)) {
+        const e = map.get(item.productId)!;
+        e.quantityToOrder += item.quantityToOrder;
+        e.currentStock += item.currentStock;
+        e.targetStock += item.targetStock;
+        if (item.status === "to_order") e.status = "to_order";
+      } else {
+        map.set(item.productId, { ...item });
+      }
+    }
+    return Array.from(map.values());
+  }, [allItems]);
+
+  const isAggregated = aggregateByProduct && branchIds.length > 1;
+  const activeItems = isAggregated ? aggregatedItems : allItems;
+
   const firstResult = results?.[0];
-  const showBranch = branchIds.length > 1;
+  const showBranch = !isAggregated && branchIds.length > 1;
 
-  const mergedStats = results ? {
-    totalProducts: results.reduce((s, r) => s + r.stats.totalProducts, 0),
-    toOrderCount: results.reduce((s, r) => s + r.stats.toOrderCount, 0),
-    totalQuantityToOrder: results.reduce((s, r) => s + r.stats.totalQuantityToOrder, 0),
-    suppliersCount: results.reduce((s, r) => s + r.stats.suppliersCount, 0),
-  } : null;
+  const mergedStats = results ? (() => {
+    if (isAggregated) {
+      const toOrder = aggregatedItems.filter(i => i.status === "to_order");
+      return {
+        totalProducts: aggregatedItems.length,
+        toOrderCount: toOrder.length,
+        totalQuantityToOrder: toOrder.reduce((s, i) => s + i.quantityToOrder, 0),
+        suppliersCount: new Set(toOrder.map(i => i.supplierName ?? "").filter(s => s !== "")).size,
+      };
+    }
+    return {
+      totalProducts: results.reduce((s, r) => s + r.stats.totalProducts, 0),
+      toOrderCount: results.reduce((s, r) => s + r.stats.toOrderCount, 0),
+      totalQuantityToOrder: results.reduce((s, r) => s + r.stats.totalQuantityToOrder, 0),
+      suppliersCount: results.reduce((s, r) => s + r.stats.suppliersCount, 0),
+    };
+  })() : null;
 
-  const displayItems = allItems.filter(i => !onlyToOrder || i.status === "to_order");
+  const displayItems = activeItems.filter(i => !onlyToOrder || i.status === "to_order");
 
   const itemsBySupplier = useCallback(() => {
     const map = new Map<string, ReplenishmentItemWithBranch[]>();
@@ -158,7 +189,7 @@ export default function ReplenishmentPage() {
 
   function printTicket() {
     if (!results || results.length === 0) return;
-    const toOrder = allItems.filter(i => i.status === "to_order");
+    const toOrder = activeItems.filter(i => i.status === "to_order");
     const branchLabel = results.map(r => r.branchName).join(" / ");
     const dateLabel = format(new Date(results[0].date), "dd/MM/yyyy");
     const dayLabel = results[0].weekdayGroupLabel;
@@ -492,6 +523,12 @@ export default function ReplenishmentPage() {
                 <Checkbox checked={groupByWorker} onCheckedChange={v => { setGroupByWorker(!!v); if (v) setGroupBySupplier(false); }} />
                 Grouper par responsable
               </label>
+              {branchIds.length > 1 && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none font-medium text-primary">
+                  <Checkbox checked={aggregateByProduct} onCheckedChange={v => setAggregateByProduct(!!v)} />
+                  Regrouper par produit
+                </label>
+              )}
             </div>
 
             <Button onClick={calculate} disabled={loading} className="gap-2 self-end">
