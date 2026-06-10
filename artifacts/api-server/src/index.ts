@@ -254,6 +254,7 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2);`);
     await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cost_per_unit NUMERIC(15,4);`);
     await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS last_cost_update TIMESTAMP WITH TIME ZONE;`);
+    await db.execute(sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS assigned_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS recipe_ingredients (
         id SERIAL PRIMARY KEY,
