@@ -17,7 +17,7 @@ import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
   ShoppingCart, Package, AlertTriangle, CheckCircle2, Calculator,
-  Download, Printer, FileText, Loader2, Building2, CalendarDays,
+  Ticket, Printer, FileText, Loader2, Building2, CalendarDays,
   Users, RefreshCw, HardHat, Send,
 } from "lucide-react";
 import jsPDF from "jspdf";
@@ -156,25 +156,80 @@ export default function ReplenishmentPage() {
     return map;
   }, [displayItems]);
 
-  function exportCsv() {
+  function printTicket() {
     if (!results || results.length === 0) return;
-    const branchCol = showBranch ? ["Boutique"] : [];
-    const rows = [
-      [...branchCol, "Produit", "SKU", "Catégorie", "Responsable", "Unité", "Stock actuel", "Stock cible", "Qté à commander", "Fournisseur", "Statut"],
-      ...displayItems.map(i => [
-        ...(showBranch ? [i.branchName] : []),
-        i.productName, i.sku ?? "", i.categoryName ?? "", i.workerName ?? "Non affecté", i.unitName,
-        fmtQty(i.currentStock), fmtQty(i.targetStock), fmtQty(i.quantityToOrder),
-        i.supplierName ?? "", i.status === "to_order" ? "À commander" : "OK",
-      ]),
-    ];
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url;
-    const branchLabel = results.map(r => r.branchName).join("-").replace(/\s+/g, "_");
-    a.download = `BON_COMMANDE_AUTO_${branchLabel}_${results[0].date}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    const toOrder = allItems.filter(i => i.status === "to_order");
+    const branchLabel = results.map(r => r.branchName).join(" / ");
+    const dateLabel = format(new Date(results[0].date), "dd/MM/yyyy");
+    const dayLabel = results[0].weekdayGroupLabel;
+    const now = format(new Date(), "dd/MM/yyyy HH:mm");
+
+    const line = (a: string, b: string) =>
+      `<tr><td style="padding:1px 2px">${a}</td><td style="padding:1px 2px;text-align:right;font-weight:700">${b}</td></tr>`;
+
+    let body = "";
+
+    if (groupByWorker) {
+      const map = new Map<string, ReplenishmentItemWithBranch[]>();
+      for (const item of toOrder) {
+        const k = item.workerName ?? "Non affecté";
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(item);
+      }
+      for (const [worker, items] of Array.from(map.entries())) {
+        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${worker}</td></tr>`;
+        for (const i of items) {
+          body += line(i.productName, `${fmtQty(i.quantityToOrder)} ${i.unitName}`);
+        }
+      }
+    } else if (groupBySupplier) {
+      const map = new Map<string, ReplenishmentItemWithBranch[]>();
+      for (const item of toOrder) {
+        const k = item.supplierName ?? "Sans fournisseur";
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(item);
+      }
+      for (const [supplier, items] of Array.from(map.entries())) {
+        body += `<tr><td colspan="2" style="padding:6px 2px 2px;font-weight:700;border-top:1px dashed #000">${supplier}</td></tr>`;
+        for (const i of items) {
+          body += line(i.productName, `${fmtQty(i.quantityToOrder)} ${i.unitName}`);
+        }
+      }
+    } else {
+      for (const i of toOrder) {
+        body += line(i.productName, `${fmtQty(i.quantityToOrder)} ${i.unitName}`);
+      }
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Ticket Commande</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0 auto; padding: 6px 4px; }
+  h1 { font-size: 14px; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+  .sub { text-align: center; font-size: 11px; margin-bottom: 2px; }
+  .sep { border-top: 1px dashed #000; margin: 5px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .total { font-weight: 700; border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; text-align: center; font-size: 12px; }
+  .footer { text-align: center; font-size: 10px; margin-top: 6px; color: #555; }
+  @media print { body { width: 80mm; } }
+</style>
+</head><body>
+<h1>BON DE COMMANDE</h1>
+<div class="sub">PACANE</div>
+<div class="sep"></div>
+<div class="sub">${branchLabel}</div>
+<div class="sub">Date : ${dateLabel} &mdash; ${dayLabel}</div>
+<div class="sep"></div>
+<table>${body}</table>
+<div class="sep"></div>
+<div class="total">${toOrder.length} article(s) à commander</div>
+<div class="footer">Imprimé le ${now}</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`;
+
+    const w = window.open("", "_blank", "width=400,height=700");
+    if (w) { w.document.write(html); w.document.close(); }
   }
 
   function exportPdf() {
@@ -354,8 +409,8 @@ export default function ReplenishmentPage() {
           <div className="flex gap-2">
             {results && results.length > 0 && (
               <>
-                <Button variant="outline" size="sm" className="gap-2" onClick={exportCsv}>
-                  <Download className="h-3.5 w-3.5" />CSV
+                <Button variant="outline" size="sm" className="gap-2" onClick={printTicket}>
+                  <Ticket className="h-3.5 w-3.5" />Ticket
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2" onClick={exportPdf}>
                   <FileText className="h-3.5 w-3.5" />PDF
