@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetBranches, useGetProducts, customFetch } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,9 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Clock, PackageX, Filter, X, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, PackageX, Filter, X, ChevronLeft, ChevronRight, Search, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
@@ -50,7 +51,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function StockRuptures() {
-  const [branchId, setBranchId] = useState("all");
+  const [branchFilters, setBranchFilters] = useState<string[]>([]);
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
+
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -58,11 +62,28 @@ export default function StockRuptures() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Close branch dropdown on outside click
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  function toggleBranch(id: string) {
+    setBranchFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setCurrentPage(1);
+  }
+
   const { data: branches = [] } = useGetBranches();
   const { data: products = [] } = useGetProducts({});
 
   const params: Record<string, string> = {};
-  if (branchId !== "all") params.branchId = branchId;
+  if (branchFilters.length === 1) params.branchId = branchFilters[0];
+  else if (branchFilters.length > 1) params.branchIds = branchFilters.join(",");
   if (selectedProductId !== "all") params.productId = selectedProductId;
   if (dateFrom) params.dateFrom = dateFrom;
   if (dateTo) params.dateTo = dateTo;
@@ -77,10 +98,10 @@ export default function StockRuptures() {
     staleTime: 30_000,
   });
 
-  const hasFilters = branchId !== "all" || selectedProductId !== "all" || !!dateFrom || !!dateTo || statusFilter !== "all";
+  const hasFilters = branchFilters.length > 0 || selectedProductId !== "all" || !!dateFrom || !!dateTo || statusFilter !== "all";
 
   function resetFilters() {
-    setBranchId("all");
+    setBranchFilters([]);
     setSelectedProductId("all");
     setProductSearch("");
     setDateFrom("");
@@ -178,16 +199,50 @@ export default function StockRuptures() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Boutique */}
-          <Select value={branchId} onValueChange={v => { setBranchId(v); setCurrentPage(1); }}>
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="Toutes les boutiques" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les boutiques</SelectItem>
-              {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {/* Boutique — multi-select */}
+          <div className="space-y-1 relative" ref={branchDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setBranchDropdownOpen(o => !o)}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm shadow-sm hover:bg-accent transition-colors"
+            >
+              <span className={branchFilters.length === 0 ? "text-muted-foreground" : "font-medium"}>
+                {branchFilters.length === 0
+                  ? "Toutes les boutiques"
+                  : branchFilters.length === 1
+                    ? branches.find(b => String(b.id) === branchFilters[0])?.name
+                    : `${branchFilters.length} boutiques`}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", branchDropdownOpen && "rotate-180")} />
+            </button>
+            {branchDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-popover shadow-lg overflow-hidden">
+                <div className="max-h-56 overflow-y-auto p-1">
+                  <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                    <input
+                      type="checkbox"
+                      checked={branchFilters.length === 0}
+                      onChange={() => setBranchFilters([])}
+                      className="h-4 w-4 rounded"
+                    />
+                    <span className="font-medium">Toutes les boutiques</span>
+                  </label>
+                  <div className="my-1 border-t" />
+                  {branches.map(b => (
+                    <label key={b.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-accent select-none">
+                      <input
+                        type="checkbox"
+                        checked={branchFilters.includes(String(b.id))}
+                        onChange={() => toggleBranch(String(b.id))}
+                        className="h-4 w-4 rounded"
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Produit */}
           <Select
@@ -259,21 +314,23 @@ export default function StockRuptures() {
               <TableRow>
                 <TableHead>Produit</TableHead>
                 <TableHead>Boutique</TableHead>
-                <TableHead>Rupture le</TableHead>
+                <TableHead>Date rupture</TableHead>
+                <TableHead>Heure exacte</TableHead>
                 <TableHead>Jour</TableHead>
                 <TableHead>Durée</TableHead>
-                <TableHead>Réappro le</TableHead>
+                <TableHead>Date réappro</TableHead>
+                <TableHead>Heure réappro</TableHead>
                 <TableHead>Statut</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">Chargement...</td>
+                  <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">Chargement...</td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                     {hasFilters ? "Aucune rupture ne correspond aux filtres" : "Aucune rupture de stock détectée"}
                   </td>
                 </tr>
@@ -286,7 +343,10 @@ export default function StockRuptures() {
                     <TableCell className="font-medium text-sm">{r.productName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{r.branchName}</TableCell>
                     <TableCell className="text-sm font-mono">
-                      {format(ruptureDate, "dd/MM/yyyy HH:mm")}
+                      {format(ruptureDate, "dd/MM/yyyy")}
+                    </TableCell>
+                    <TableCell className="text-sm font-mono font-medium text-red-600">
+                      {format(ruptureDate, "HH:mm")}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{weekdayCapitalized}</TableCell>
                     <TableCell>
@@ -295,9 +355,10 @@ export default function StockRuptures() {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm font-mono text-muted-foreground">
-                      {r.restockedAt
-                        ? format(new Date(r.restockedAt), "dd/MM/yyyy HH:mm")
-                        : <span className="text-red-500 font-medium">—</span>}
+                      {r.restockedAt ? format(new Date(r.restockedAt), "dd/MM/yyyy") : <span className="text-red-500">—</span>}
+                    </TableCell>
+                    <TableCell className="text-sm font-mono text-muted-foreground">
+                      {r.restockedAt ? format(new Date(r.restockedAt), "HH:mm") : <span className="text-red-500">—</span>}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={r.status} />

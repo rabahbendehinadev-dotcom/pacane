@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, stockLevelsTable, stockMovementsTable, productsTable, branchesTable, unitsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
@@ -81,11 +81,37 @@ router.get("/stock/alerts", requireAuth, requirePermission(P.stock.view), async 
 });
 
 router.get("/stock/ruptures", requireAuth, requirePermission(P.stock.view), async (req, res): Promise<void> => {
-  const { branchId, productId, dateFrom, dateTo, status } = req.query as Record<string, string>;
+  const { branchId, branchIds, productId, dateFrom, dateTo, status } = req.query as Record<string, string>;
   const scope = visibleBranchIds(req.user!);
   if (scope !== null && scope.length === 0) { res.json([]); return; }
 
-  // Fetch ALL movements ordered by (product, branch, time) for accurate floor-safe balance simulation
+  // Resolve requested branch IDs: branchIds (comma-separated multi) or branchId (single)
+  let requestedBranchIds: number[] | null = null;
+  if (branchIds) {
+    requestedBranchIds = branchIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+  } else if (branchId) {
+    requestedBranchIds = [parseInt(branchId, 10)];
+  }
+
+  // Intersect with permission scope
+  let effectiveBranchIds: number[] | null = requestedBranchIds;
+  if (scope !== null) {
+    effectiveBranchIds = requestedBranchIds
+      ? requestedBranchIds.filter(id => scope.includes(id))
+      : scope;
+    if (effectiveBranchIds.length === 0) { res.json([]); return; }
+  }
+
+  // Build DB-level conditions (push branch/product/dateTo into SQL to avoid loading irrelevant data)
+  const conditions = [];
+  if (effectiveBranchIds !== null) conditions.push(inArray(stockMovementsTable.branchId, effectiveBranchIds));
+  if (productId) conditions.push(eq(stockMovementsTable.productId, parseInt(productId, 10)));
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setHours(23, 59, 59, 999);
+    conditions.push(sql`${stockMovementsTable.createdAt} <= ${to.toISOString()}`);
+  }
+
   const rows = await db.select({
     sm: stockMovementsTable,
     productName: productsTable.name,
@@ -93,6 +119,7 @@ router.get("/stock/ruptures", requireAuth, requirePermission(P.stock.view), asyn
   }).from(stockMovementsTable)
     .leftJoin(productsTable, eq(stockMovementsTable.productId, productsTable.id))
     .leftJoin(branchesTable, eq(stockMovementsTable.branchId, branchesTable.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(
       stockMovementsTable.productId,
       stockMovementsTable.branchId,
@@ -107,7 +134,6 @@ router.get("/stock/ruptures", requireAuth, requirePermission(P.stock.view), asyn
     movements: { delta: number; createdAt: Date }[];
   }>();
   for (const r of rows) {
-    if (scope !== null && !scope.includes(r.sm.branchId)) continue;
     const key = `${r.sm.productId}_${r.sm.branchId}`;
     if (!groups.has(key)) {
       groups.set(key, {
@@ -172,20 +198,13 @@ router.get("/stock/ruptures", requireAuth, requirePermission(P.stock.view), asyn
     }
   }
 
-  // Apply filters
+  // Post-simulation filters
   let result = ruptures;
-  if (branchId) result = result.filter(r => r.branchId === parseInt(branchId, 10));
-  if (productId) result = result.filter(r => r.productId === parseInt(productId, 10));
   if (status) result = result.filter(r => r.status === status);
   if (dateFrom) {
     const from = new Date(dateFrom);
     from.setHours(0, 0, 0, 0);
     result = result.filter(r => new Date(r.ruptureAt) >= from || (r.restockedAt !== null && new Date(r.restockedAt) >= from));
-  }
-  if (dateTo) {
-    const to = new Date(dateTo);
-    to.setHours(23, 59, 59, 999);
-    result = result.filter(r => new Date(r.ruptureAt) <= to);
   }
 
   result.sort((a, b) => new Date(b.ruptureAt).getTime() - new Date(a.ruptureAt).getTime());
