@@ -117,6 +117,7 @@ export default function ReplenishmentPage() {
       toast({ title: "Veuillez sélectionner au moins une boutique", variant: "destructive" });
       return;
     }
+    if (branchIds.length > 1) setAggregateByProduct(true);
     setTriggered(true);
     setTimeout(() => refetch(), 50);
   }
