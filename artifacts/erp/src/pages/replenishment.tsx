@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useGetBranches, useGetCategories } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
@@ -47,6 +48,11 @@ interface ReplenishmentItem {
   status: "ok" | "to_order";
 }
 
+interface ReplenishmentItemWithBranch extends ReplenishmentItem {
+  branchId: number;
+  branchName: string;
+}
+
 interface ReplenishmentResult {
   branchId: number;
   branchName: string;
@@ -72,7 +78,7 @@ function fmtNum(n: number) {
 
 export default function ReplenishmentPage() {
   const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return format(d, "yyyy-MM-dd"); })();
-  const [branchId, setBranchId] = useState<string>("");
+  const [branchIds, setBranchIds] = useState<number[]>([]);
   const [date, setDate] = useState<string>(tomorrow);
   const [categoryId, setCategoryId] = useState<string>("all");
   const [workerId, setWorkerId] = useState<string>("all");
@@ -89,30 +95,51 @@ export default function ReplenishmentPage() {
   const { data: categories = [] } = useGetCategories();
   const { data: workers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchWorkers });
 
-  const fetchKey = ["replenishment-calculate", branchId, date, categoryId, workerId, triggered];
-  const { data: result, isLoading, isFetching, refetch } = useQuery<ReplenishmentResult>({
+  const fetchKey = ["replenishment-calculate", branchIds.join(","), date, categoryId, workerId, triggered];
+  const { data: results, isLoading, isFetching, refetch } = useQuery<ReplenishmentResult[]>({
     queryKey: fetchKey,
     queryFn: async () => {
-      const params = new URLSearchParams({ branchId, date });
-      if (categoryId && categoryId !== "all") params.set("categoryId", categoryId);
-      if (workerId && workerId !== "all") params.set("workerId", workerId);
-      const r = await fetch(`/api/replenishment/calculate?${params}`, { headers: AUTH_HEADER() });
-      if (!r.ok) throw new Error(await r.text());
-      return r.json();
+      return Promise.all(branchIds.map(async (bid) => {
+        const params = new URLSearchParams({ branchId: String(bid), date });
+        if (categoryId && categoryId !== "all") params.set("categoryId", categoryId);
+        if (workerId && workerId !== "all") params.set("workerId", workerId);
+        const r = await fetch(`/api/replenishment/calculate?${params}`, { headers: AUTH_HEADER() });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json() as Promise<ReplenishmentResult>;
+      }));
     },
-    enabled: !!branchId && triggered,
+    enabled: branchIds.length > 0 && triggered,
   });
 
   function calculate() {
-    if (!branchId) { toast({ title: "Veuillez sélectionner une boutique", variant: "destructive" }); return; }
+    if (branchIds.length === 0) {
+      toast({ title: "Veuillez sélectionner au moins une boutique", variant: "destructive" });
+      return;
+    }
     setTriggered(true);
     setTimeout(() => refetch(), 50);
   }
 
-  const displayItems = result?.items.filter(i => !onlyToOrder || i.status === "to_order") ?? [];
+  const allItems: ReplenishmentItemWithBranch[] = results
+    ? results.flatMap(r => r.items.map(i => ({ ...i, branchId: r.branchId, branchName: r.branchName })))
+    : [];
+
+  const firstResult = results?.[0];
+  const showBranch = branchIds.length > 1;
+
+  const mergedStats = results ? {
+    totalProducts: results.reduce((s, r) => s + r.stats.totalProducts, 0),
+    toOrderCount: results.reduce((s, r) => s + r.stats.toOrderCount, 0),
+    totalQuantityToOrder: results.reduce((s, r) => s + r.stats.totalQuantityToOrder, 0),
+    suppliersCount: new Set(
+      results.flatMap(r => r.items.map(i => i.supplierId).filter((id): id is number => id !== null))
+    ).size,
+  } : null;
+
+  const displayItems = allItems.filter(i => !onlyToOrder || i.status === "to_order");
 
   const itemsBySupplier = useCallback(() => {
-    const map = new Map<string, ReplenishmentItem[]>();
+    const map = new Map<string, ReplenishmentItemWithBranch[]>();
     for (const item of displayItems) {
       const key = item.supplierName ?? "Sans fournisseur";
       if (!map.has(key)) map.set(key, []);
@@ -122,7 +149,7 @@ export default function ReplenishmentPage() {
   }, [displayItems]);
 
   const itemsByWorker = useCallback(() => {
-    const map = new Map<string, ReplenishmentItem[]>();
+    const map = new Map<string, ReplenishmentItemWithBranch[]>();
     for (const item of displayItems) {
       const key = item.workerName ?? "Non affecté";
       if (!map.has(key)) map.set(key, []);
@@ -132,40 +159,43 @@ export default function ReplenishmentPage() {
   }, [displayItems]);
 
   function exportCsv() {
-    if (!result) return;
+    if (!results || results.length === 0) return;
+    const branchCol = showBranch ? ["Boutique"] : [];
     const rows = [
-      ["Produit", "SKU", "Catégorie", "Responsable", "Unité", "Stock actuel", "Stock cible", "Qté à commander", "Fournisseur", "Statut"],
+      [...branchCol, "Produit", "SKU", "Catégorie", "Responsable", "Unité", "Stock actuel", "Stock cible", "Qté à commander", "Fournisseur", "Statut"],
       ...displayItems.map(i => [
+        ...(showBranch ? [i.branchName] : []),
         i.productName, i.sku ?? "", i.categoryName ?? "", i.workerName ?? "Non affecté", i.unitName,
         fmtQty(i.currentStock), fmtQty(i.targetStock), fmtQty(i.quantityToOrder),
-        i.supplierName ?? "", i.status === "to_order" ? "À commander" : "OK"
-      ])
+        i.supplierName ?? "", i.status === "to_order" ? "À commander" : "OK",
+      ]),
     ];
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url;
-    a.download = `BON_COMMANDE_AUTO_${result.branchName.replace(/\s+/g, "-")}_${result.date}.csv`;
+    const branchLabel = results.map(r => r.branchName).join("-").replace(/\s+/g, "_");
+    a.download = `BON_COMMANDE_AUTO_${branchLabel}_${results[0].date}.csv`;
     a.click(); URL.revokeObjectURL(url);
   }
 
   function exportPdf() {
-    if (!result) return;
+    if (!results || results.length === 0) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const branch = result.branchName;
-    const dateLabel = format(new Date(result.date), "dd/MM/yyyy");
+    const branchLabel = results.map(r => r.branchName).join(", ");
+    const dateLabel = format(new Date(results[0].date), "dd/MM/yyyy");
 
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.text("BON DE COMMANDE AUTOMATIQUE", 14, 20);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Boutique : ${branch}`, 14, 30);
+    doc.text(`Boutique : ${branchLabel}`, 14, 30);
     doc.text(`Date : ${dateLabel}`, 14, 36);
-    doc.text(`Objectif : ${result.weekdayGroupLabel}`, 14, 42);
+    doc.text(`Objectif : ${results[0].weekdayGroupLabel}`, 14, 42);
     doc.text(`Généré le : ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 48);
 
-    let groups: [string, ReplenishmentItem[]][];
+    let groups: [string, ReplenishmentItemWithBranch[]][];
     let groupLabel = "";
     if (groupByWorker) {
       groups = Array.from(itemsByWorker().entries());
@@ -186,10 +216,13 @@ export default function ReplenishmentPage() {
         startY += 6;
       }
 
+      const branchHead = showBranch ? ["Boutique"] : [];
+      const colOffset = showBranch ? 1 : 0;
       autoTable(doc, {
         startY,
-        head: [["Produit", "SKU", groupByWorker ? "Fournisseur" : "Unité", "Stock actuel", "Stock cible", "Qté à commander"]],
+        head: [[...branchHead, "Produit", "SKU", groupByWorker ? "Fournisseur" : "Unité", "Stock actuel", "Stock cible", "Qté à commander"]],
         body: items.map(i => [
+          ...(showBranch ? [i.branchName] : []),
           i.productName,
           i.sku ?? "—",
           groupByWorker ? (i.supplierName ?? "—") : i.unitName,
@@ -199,18 +232,20 @@ export default function ReplenishmentPage() {
         ]),
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: "bold" },
-        columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" } },
+        columnStyles: {
+          [3 + colOffset]: { halign: "right" },
+          [4 + colOffset]: { halign: "right" },
+          [5 + colOffset]: { halign: "right", fontStyle: "bold" },
+        },
       });
       startY = (doc as any).lastAutoTable.finalY + 10;
     }
 
-    // Footer
-    const totalLines = displayItems.length;
     doc.setFontSize(8);
     doc.setFont("helvetica", "italic");
-    doc.text(`Total lignes : ${totalLines} produits`, 14, startY + 4);
+    doc.text(`Total lignes : ${displayItems.length} produits`, 14, startY + 4);
 
-    const filename = `BON_COMMANDE_AUTO_${branch.replace(/\s+/g, "-")}_${result.date}.pdf`;
+    const filename = `BON_COMMANDE_AUTO_${branchLabel.replace(/[\s,]+/g, "-")}_${results[0].date}.pdf`;
     const pdfBlob = doc.output("blob");
     const url = URL.createObjectURL(pdfBlob);
     const popup = window.open(url, "_blank");
@@ -220,7 +255,7 @@ export default function ReplenishmentPage() {
 
   const loading = isLoading || isFetching;
 
-  const itemsToSend = result?.items.filter(i => i.status === "to_order") ?? [];
+  const itemsToSend = allItems.filter(i => i.status === "to_order");
   const unassignedItems = itemsToSend.filter(i => !i.workerId);
 
   const workerSummary = (() => {
@@ -236,38 +271,48 @@ export default function ReplenishmentPage() {
   })();
 
   async function doSend(force = false) {
-    if (!result) return;
+    if (!results || results.length === 0) return;
     setSending(true);
     try {
-      const r = await fetch("/api/preparation-orders/send", {
-        method: "POST",
-        headers: AUTH_HEADER(),
-        body: JSON.stringify({
-          branchId: result.branchId,
-          date: result.date,
-          force,
-          items: itemsToSend.map(i => ({
-            productId: i.productId,
-            productName: i.productName,
-            sku: i.sku,
-            unitName: i.unitName,
-            workerId: i.workerId,
-            workerName: i.workerName,
-            quantityToOrder: i.quantityToOrder,
-          })),
-        }),
-      });
-      const data = await r.json();
-      if (r.status === 409) {
-        const names = data.workerNames?.join(", ") ?? "";
-        toast({ title: `Doublons détectés pour : ${names}. Renvoi forcé...`, variant: "destructive" });
-        setSending(false);
-        await doSend(true);
-        return;
+      let totalCreated = 0;
+      const byBranch = new Map<number, ReplenishmentItemWithBranch[]>();
+      for (const item of itemsToSend) {
+        if (!byBranch.has(item.branchId)) byBranch.set(item.branchId, []);
+        byBranch.get(item.branchId)!.push(item);
       }
-      if (!r.ok) throw new Error(data.error ?? "Erreur");
+      const sharedDate = results[0].date;
+      for (const [bid, items] of Array.from(byBranch.entries())) {
+        const r = await fetch("/api/preparation-orders/send", {
+          method: "POST",
+          headers: AUTH_HEADER(),
+          body: JSON.stringify({
+            branchId: bid,
+            date: sharedDate,
+            force,
+            items: items.map(i => ({
+              productId: i.productId,
+              productName: i.productName,
+              sku: i.sku,
+              unitName: i.unitName,
+              workerId: i.workerId,
+              workerName: i.workerName,
+              quantityToOrder: i.quantityToOrder,
+            })),
+          }),
+        });
+        const data = await r.json();
+        if (r.status === 409) {
+          const names = data.workerNames?.join(", ") ?? "";
+          toast({ title: `Doublons détectés pour : ${names}. Renvoi forcé...`, variant: "destructive" });
+          setSending(false);
+          await doSend(true);
+          return;
+        }
+        if (!r.ok) throw new Error(data.error ?? "Erreur");
+        totalCreated += data.created?.length ?? 0;
+      }
       setSendModalOpen(false);
-      toast({ title: `✓ ${data.created?.length ?? 0} ordre(s) envoyé(s) aux ouvriers` });
+      toast({ title: `✓ ${totalCreated} ordre(s) envoyé(s) aux ouvriers` });
       setSentWorkers(workerSummary.map(w => ({ name: w.name, phone: w.phone, count: w.count })));
       setWaDialogOpen(true);
     } catch (e: any) {
@@ -288,7 +333,7 @@ export default function ReplenishmentPage() {
             <p className="text-sm text-muted-foreground mt-0.5">Calcul automatique des besoins par boutique selon le jour de la semaine</p>
           </div>
           <div className="flex gap-2">
-            {result && (
+            {results && results.length > 0 && (
               <>
                 <Button variant="outline" size="sm" className="gap-2" onClick={exportCsv}>
                   <Download className="h-3.5 w-3.5" />CSV
@@ -316,16 +361,14 @@ export default function ReplenishmentPage() {
         {/* Filters */}
         <div className="px-6 py-4 bg-muted/20 border-b">
           <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex flex-col gap-1.5 min-w-[180px]">
+            <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-medium">Boutique <span className="text-destructive">*</span></Label>
-              <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Sélectionner…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <BranchMultiSelect
+                branches={branches}
+                selectedIds={branchIds}
+                onChange={setBranchIds}
+                placeholder="Sélectionner…"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -390,19 +433,19 @@ export default function ReplenishmentPage() {
 
         <div className="px-6 py-4 space-y-5">
           {/* Weekday info */}
-          {result && (
+          {firstResult && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <CalendarDays className="h-4 w-4" />
               <span>
-                {format(new Date(result.date), "EEEE dd/MM/yyyy").charAt(0).toUpperCase() + format(new Date(result.date), "EEEE dd/MM/yyyy").slice(1)}
+                {format(new Date(firstResult.date), "EEEE dd/MM/yyyy").charAt(0).toUpperCase() + format(new Date(firstResult.date), "EEEE dd/MM/yyyy").slice(1)}
                 {" · "}
-                <span className="font-medium text-foreground">Objectif : {result.weekdayGroupLabel}</span>
+                <span className="font-medium text-foreground">Objectif : {firstResult.weekdayGroupLabel}</span>
               </span>
             </div>
           )}
 
           {/* KPI Cards */}
-          {result && (
+          {mergedStats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Card className="border-0 shadow-sm">
                 <CardContent className="p-4">
@@ -412,7 +455,7 @@ export default function ReplenishmentPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Produits analysés</p>
-                      <p className="text-xl font-bold">{fmtNum(result.stats.totalProducts)}</p>
+                      <p className="text-xl font-bold">{fmtNum(mergedStats.totalProducts)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -426,7 +469,7 @@ export default function ReplenishmentPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">À commander</p>
-                      <p className="text-xl font-bold text-amber-600">{fmtNum(result.stats.toOrderCount)}</p>
+                      <p className="text-xl font-bold text-amber-600">{fmtNum(mergedStats.toOrderCount)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -440,7 +483,7 @@ export default function ReplenishmentPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Quantité totale</p>
-                      <p className="text-xl font-bold text-emerald-600">{fmtNum(result.stats.totalQuantityToOrder)}</p>
+                      <p className="text-xl font-bold text-emerald-600">{fmtNum(mergedStats.totalQuantityToOrder)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -454,7 +497,7 @@ export default function ReplenishmentPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Fournisseurs</p>
-                      <p className="text-xl font-bold">{fmtNum(result.stats.suppliersCount)}</p>
+                      <p className="text-xl font-bold">{fmtNum(mergedStats.suppliersCount)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -468,8 +511,8 @@ export default function ReplenishmentPage() {
               <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
                 <Calculator className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium">Sélectionnez une boutique et cliquez sur Calculer</p>
-              <p className="text-xs text-muted-foreground mt-1">Le calcul se base sur le stock actuel de la boutique sélectionnée uniquement</p>
+              <p className="text-sm font-medium">Sélectionnez une ou plusieurs boutiques et cliquez sur Calculer</p>
+              <p className="text-xs text-muted-foreground mt-1">Le calcul se base sur le stock actuel des boutiques sélectionnées</p>
             </div>
           )}
 
@@ -480,7 +523,7 @@ export default function ReplenishmentPage() {
             </div>
           )}
 
-          {triggered && !loading && result && displayItems.length === 0 && (
+          {triggered && !loading && results && displayItems.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="h-16 w-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
                 <CheckCircle2 className="h-8 w-8 text-emerald-500" />
@@ -491,7 +534,7 @@ export default function ReplenishmentPage() {
           )}
 
           {/* Table */}
-          {triggered && !loading && result && displayItems.length > 0 && (
+          {triggered && !loading && results && displayItems.length > 0 && (
             <>
               {groupByWorker ? (
                 Array.from(itemsByWorker().entries()).map(([workerName, items]) => (
@@ -501,7 +544,7 @@ export default function ReplenishmentPage() {
                       <span className="font-semibold text-sm">{workerName}</span>
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
                     </div>
-                    <ReplenishmentTable items={items} showWorker={false} />
+                    <ReplenishmentTable items={items} showWorker={false} showBranch={showBranch} />
                     <Separator />
                   </div>
                 ))
@@ -513,12 +556,12 @@ export default function ReplenishmentPage() {
                       <span className="font-semibold text-sm">{supplierName}</span>
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
                     </div>
-                    <ReplenishmentTable items={items} showWorker={true} />
+                    <ReplenishmentTable items={items} showWorker={true} showBranch={showBranch} />
                     <Separator />
                   </div>
                 ))
               ) : (
-                <ReplenishmentTable items={displayItems} showWorker={true} />
+                <ReplenishmentTable items={displayItems} showWorker={true} showBranch={showBranch} />
               )}
             </>
           )}
@@ -581,7 +624,7 @@ export default function ReplenishmentPage() {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.87 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             Notifier les ouvriers via WhatsApp
           </DialogTitle>
         </DialogHeader>
@@ -634,12 +677,21 @@ export default function ReplenishmentPage() {
   );
 }
 
-function ReplenishmentTable({ items, showWorker = true }: { items: ReplenishmentItem[]; showWorker?: boolean }) {
+function ReplenishmentTable({
+  items,
+  showWorker = true,
+  showBranch = false,
+}: {
+  items: ReplenishmentItemWithBranch[];
+  showWorker?: boolean;
+  showBranch?: boolean;
+}) {
   return (
     <div className="rounded-lg border overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40">
+            {showBranch && <TableHead className="font-semibold">Boutique</TableHead>}
             <TableHead className="font-semibold">Produit</TableHead>
             <TableHead className="font-semibold">SKU</TableHead>
             <TableHead className="font-semibold">Catégorie</TableHead>
@@ -654,7 +706,10 @@ function ReplenishmentTable({ items, showWorker = true }: { items: Replenishment
         </TableHeader>
         <TableBody>
           {items.map(item => (
-            <TableRow key={item.productId} className={item.status === "to_order" ? "hover:bg-amber-50/50" : "hover:bg-muted/20"}>
+            <TableRow key={`${item.branchId}-${item.productId}`} className={item.status === "to_order" ? "hover:bg-amber-50/50" : "hover:bg-muted/20"}>
+              {showBranch && (
+                <TableCell className="text-xs font-medium text-muted-foreground whitespace-nowrap">{item.branchName}</TableCell>
+              )}
               <TableCell className="font-medium text-sm">{item.productName}</TableCell>
               <TableCell className="text-xs text-muted-foreground font-mono">{item.sku ?? "—"}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{item.categoryName ?? "—"}</TableCell>
