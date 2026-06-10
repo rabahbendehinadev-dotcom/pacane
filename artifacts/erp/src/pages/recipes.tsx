@@ -973,7 +973,6 @@ export default function Recipes() {
                             <CommandEmpty>Aucun ingrédient trouvé.</CommandEmpty>
                             <CommandGroup>
                               {products
-                                .filter((p: any) => p.isPurchasable || p.type === "ingredient")
                                 .map((p: any) => (
                                   <CommandItem
                                     key={p.id}
