@@ -854,7 +854,7 @@ export default function Recipes() {
               <div><Label>Rendement *</Label><Input type="number" step="0.001" value={form.yield} onChange={e => setForm(f => ({ ...f, yield: e.target.value }))} /></div>
               <div>
                 <Label>Unité rendement *</Label>
-                <Select value={form.yieldUnitId} onValueChange={v => setForm(f => ({ ...f, yieldUnitId: v }))}>
+                <Select value={form.yieldUnitId || undefined} onValueChange={v => setForm(f => ({ ...f, yieldUnitId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
                   <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</SelectItem>)}</SelectContent>
                 </Select>
