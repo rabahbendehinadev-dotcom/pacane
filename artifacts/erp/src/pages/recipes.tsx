@@ -13,9 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3, Download, Upload, Check, ChevronsUpDown } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Plus, Eye, Edit2, Trash2, ChefHat, Layers, Package, TrendingUp, RefreshCw, AlertTriangle, DollarSign, BarChart3, Download, Upload } from "lucide-react";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { toast } from "@/hooks/use-toast";
 
 type RecipeItem = {
@@ -536,9 +535,6 @@ export default function Recipes() {
   const [components, setComponents] = useState<RecipeItem[]>([]);
   const [newComp, setNewComp] = useState({ itemType: "product", itemId: "", quantity: "", unitId: "", wastageRate: "0" });
   const [compTab, setCompTab] = useState("product");
-  const [ingredientOpen, setIngredientOpen] = useState(false);
-  const [userOpen, setUserOpen] = useState(false);
-  const [productOpen, setProductOpen] = useState(false);
 
   const { data: recipesRaw, isLoading, error: recipesError } = useQuery<Recipe[]>({
     queryKey: getGetRecipesQueryKey(),
@@ -819,38 +815,16 @@ export default function Recipes() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label>Produit associé</Label>
-                <Popover open={productOpen} onOpenChange={setProductOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between font-normal text-sm h-9 px-3">
-                      <span className="truncate text-left">
-                        {form.productId && form.productId !== "none"
-                          ? (() => { const p = products.find((p: any) => String(p.id) === form.productId); return p ? p.name : "Aucun"; })()
-                          : <span className="text-muted-foreground">Aucun</span>}
-                      </span>
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0 w-72" align="start" side="bottom">
-                    <Command>
-                      <CommandInput placeholder="Rechercher un produit..." className="h-9" />
-                      <CommandList className="max-h-56 overflow-y-auto">
-                        <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem value="Aucun" onSelect={() => { setForm(f => ({ ...f, productId: "none" })); setProductOpen(false); }}>
-                            <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${form.productId === "none" ? "opacity-100 text-primary" : "opacity-0"}`} />
-                            <span className="truncate">Aucun</span>
-                          </CommandItem>
-                          {products.map((p: any) => (
-                            <CommandItem key={p.id} value={p.name} onSelect={() => { setForm(f => ({ ...f, productId: String(p.id) })); setProductOpen(false); }}>
-                              <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${form.productId === String(p.id) ? "opacity-100 text-primary" : "opacity-0"}`} />
-                              <span className="truncate">{p.name}</span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <SearchableCombobox
+                  items={[{ value: "none", label: "Aucun" }, ...products.map((p: any) => ({ value: String(p.id), label: p.name }))]}
+                  value={form.productId}
+                  onValueChange={v => setForm(f => ({ ...f, productId: v }))}
+                  placeholder="Aucun"
+                  searchPlaceholder="Rechercher un produit..."
+                  emptyMessage="Aucun produit trouvé."
+                  loading={productsLoading}
+                  drawerTitle="Produit associé"
+                />
               </div>
               <div><Label>Rendement *</Label><Input type="number" step="0.001" value={form.yield} onChange={e => setForm(f => ({ ...f, yield: e.target.value }))} /></div>
               <div>
@@ -863,58 +837,15 @@ export default function Recipes() {
             </div>
             <div>
               <Label>Utilisateur assigné</Label>
-              <Popover open={userOpen} onOpenChange={setUserOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    className="w-full justify-between font-normal text-sm h-9 px-3"
-                  >
-                    <span className="truncate text-left">
-                      {form.assignedUserId && form.assignedUserId !== "none"
-                        ? (() => {
-                            const u = users.find(u => String(u.id) === form.assignedUserId);
-                            return u ? (u.name || u.username) : "Aucun";
-                          })()
-                        : <span className="text-muted-foreground">Aucun</span>}
-                    </span>
-                    <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="p-0 w-72" align="start" side="bottom">
-                  <Command>
-                    <CommandInput placeholder="Rechercher un utilisateur..." className="h-9" />
-                    <CommandList className="max-h-56 overflow-y-auto">
-                      <CommandEmpty>Aucun utilisateur trouvé.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandItem
-                          value="Aucun"
-                          onSelect={() => {
-                            setForm(f => ({ ...f, assignedUserId: "none" }));
-                            setUserOpen(false);
-                          }}
-                        >
-                          <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${form.assignedUserId === "none" ? "opacity-100 text-primary" : "opacity-0"}`} />
-                          <span className="truncate">Aucun</span>
-                        </CommandItem>
-                        {users.filter(u => u).map(u => (
-                          <CommandItem
-                            key={u.id}
-                            value={u.name || u.username}
-                            onSelect={() => {
-                              setForm(f => ({ ...f, assignedUserId: String(u.id) }));
-                              setUserOpen(false);
-                            }}
-                          >
-                            <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${String(u.id) === form.assignedUserId ? "opacity-100 text-primary" : "opacity-0"}`} />
-                            <span className="truncate">{u.name || u.username}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <SearchableCombobox
+                items={[{ value: "none", label: "Aucun" }, ...users.filter(u => u).map(u => ({ value: String(u.id), label: u.name || u.username }))]}
+                value={form.assignedUserId}
+                onValueChange={v => setForm(f => ({ ...f, assignedUserId: v }))}
+                placeholder="Aucun"
+                searchPlaceholder="Rechercher un utilisateur..."
+                emptyMessage="Aucun utilisateur trouvé."
+                drawerTitle="Utilisateur assigné"
+              />
             </div>
 
             <div className="border rounded-lg p-3 space-y-3">
@@ -952,49 +883,17 @@ export default function Recipes() {
                 </TabsList>
                 <TabsContent value="product" className="mt-2">
                   <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-                    <Popover open={ingredientOpen} onOpenChange={setIngredientOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={dataLoading}
-                          className="flex-1 min-w-0 justify-between font-normal text-sm h-9 px-3"
-                        >
-                          <span className="truncate text-left">
-                            {dataLoading
-                              ? <span className="text-muted-foreground flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin" />Chargement...</span>
-                              : newComp.itemId
-                                ? (products.find((p: any) => String(p.id) === newComp.itemId)?.name ?? "Ingrédient...")
-                                : <span className="text-muted-foreground">Ingrédient...</span>}
-                          </span>
-                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="p-0 w-72" align="start" side="bottom">
-                        <Command>
-                          <CommandInput placeholder="Rechercher un ingrédient..." className="h-9" />
-                          <CommandList className="max-h-56 overflow-y-auto">
-                            <CommandEmpty>Aucun ingrédient trouvé.</CommandEmpty>
-                            <CommandGroup>
-                              {products
-                                .map((p: any) => (
-                                  <CommandItem
-                                    key={p.id}
-                                    value={p.name}
-                                    onSelect={() => {
-                                      setNewComp(n => ({ ...n, itemId: String(p.id), itemType: "product" }));
-                                      setIngredientOpen(false);
-                                    }}
-                                  >
-                                    <Check className={`mr-2 h-3.5 w-3.5 shrink-0 ${String(p.id) === newComp.itemId ? "opacity-100 text-primary" : "opacity-0"}`} />
-                                    <span className="truncate">{p.name}</span>
-                                  </CommandItem>
-                                ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    <SearchableCombobox
+                      items={products.map((p: any) => ({ value: String(p.id), label: p.name }))}
+                      value={newComp.itemId}
+                      onValueChange={v => setNewComp(n => ({ ...n, itemId: v, itemType: "product" }))}
+                      placeholder="Ingrédient..."
+                      searchPlaceholder="Rechercher un ingrédient..."
+                      emptyMessage="Aucun ingrédient trouvé."
+                      loading={dataLoading}
+                      drawerTitle="Choisir un ingrédient"
+                      triggerClassName="flex-1 min-w-0"
+                    />
                     <Input type="number" step="0.001" className="w-20 shrink-0" placeholder="Qté" value={newComp.quantity} onChange={e => setNewComp(n => ({ ...n, quantity: e.target.value }))} />
                     <Select value={newComp.unitId} onValueChange={v => setNewComp(n => ({ ...n, unitId: v }))}>
                       <SelectTrigger className="w-20 shrink-0"><SelectValue placeholder="U" /></SelectTrigger>

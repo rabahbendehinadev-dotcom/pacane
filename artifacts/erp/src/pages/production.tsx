@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -609,10 +610,15 @@ export default function Production() {
           <div className="space-y-4">
             <div>
               <Label>Recette *</Label>
-              <Select value={form.recipeId} onValueChange={v => setForm(f => ({ ...f, recipeId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Choisir une recette..." /></SelectTrigger>
-                <SelectContent>{(recipes as any[]).map((r: any) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableCombobox
+                items={(recipes as any[]).map((r: any) => ({ value: String(r.id), label: r.name }))}
+                value={form.recipeId}
+                onValueChange={v => setForm(f => ({ ...f, recipeId: v }))}
+                placeholder="Choisir une recette..."
+                searchPlaceholder="Rechercher une recette..."
+                emptyMessage="Aucune recette trouvée."
+                drawerTitle="Choisir une recette"
+              />
               {(() => {
                 if (!form.recipeId) return null;
                 const sel = (recipes as any[]).find((r: any) => String(r.id) === form.recipeId);
