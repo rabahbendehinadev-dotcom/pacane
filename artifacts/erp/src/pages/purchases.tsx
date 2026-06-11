@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -640,7 +639,6 @@ export default function Purchases() {
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
   const [nextKey, setNextKey] = useState(0);
-  const [supplierComboOpen, setSupplierComboOpen] = useState(false);
   const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
   const [quickSupplierFirstName, setQuickSupplierFirstName] = useState("");
   const [quickSupplierLastName, setQuickSupplierLastName] = useState("");
@@ -888,29 +886,16 @@ export default function Purchases() {
               <div>
                 <Label>Fournisseur *</Label>
                 <div className="flex gap-1 mt-1">
-                  <Popover open={supplierComboOpen} onOpenChange={setSupplierComboOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="flex-1 justify-between font-normal h-9 text-sm">
-                        {form.supplierId ? (allSuppliers.find(s => String(s.id) === form.supplierId)?.displayName ?? "Choisir un fournisseur...") : "Choisir un fournisseur..."}
-                        <span className="ml-2 opacity-50">▾</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Rechercher un fournisseur..." />
-                        <CommandList>
-                          <CommandEmpty>Aucun fournisseur trouvé.</CommandEmpty>
-                          <CommandGroup>
-                            {allSuppliers.map(s => (
-                              <CommandItem key={s.id} value={s.displayName} onSelect={() => { setForm(f => ({ ...f, supplierId: String(s.id) })); setSupplierComboOpen(false); }}>
-                                {s.displayName}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <SearchableCombobox
+                    items={allSuppliers.map(s => ({ value: String(s.id), label: s.displayName }))}
+                    value={form.supplierId}
+                    onValueChange={v => setForm(f => ({ ...f, supplierId: v }))}
+                    placeholder="Choisir un fournisseur..."
+                    searchPlaceholder="Rechercher un fournisseur..."
+                    emptyMessage="Aucun fournisseur trouvé."
+                    drawerTitle="Choisir un fournisseur"
+                    triggerClassName="flex-1"
+                  />
                   <Button
                     type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0"
                     onClick={() => { setQuickSupplierFirstName(""); setQuickSupplierLastName(""); setQuickSupplierPhone(""); setQuickSupplierEmail(""); setQuickSupplierOpen(true); }}

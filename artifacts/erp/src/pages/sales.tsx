@@ -19,8 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Plus, Eye, CreditCard, Copy, XCircle, ArrowRight, FileText, FileCheck,
   ShoppingCart, Receipt, Search, AlertCircle, CheckCircle2, Clock, Ban,
@@ -313,10 +312,6 @@ export default function Sales() {
   const [quickClientEmail, setQuickClientEmail] = useState("");
   const [quickClientSaving, setQuickClientSaving] = useState(false);
 
-  // ── Combobox open states
-  const [clientComboOpen, setClientComboOpen] = useState(false);
-  const [productComboOpen, setProductComboOpen] = useState(false);
-  const [catComboOpen, setCatComboOpen] = useState(false);
   const [productCatFilter, setProductCatFilter] = useState<string>("");
 
   // ── Credit enforcement state
@@ -975,38 +970,19 @@ export default function Sales() {
                   <div>
                     <Label className="text-xs font-medium">Client</Label>
                     <div className="flex gap-1 mt-1">
-                      <Popover open={clientComboOpen} onOpenChange={setClientComboOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="h-9 flex-1 justify-between font-normal text-sm">
-                            <span className="truncate">
-                              {form.customerId === "none" || !form.customerId
-                                ? "Comptoir (sans client)"
-                                : customers.find(c => String(c.id) === form.customerId)?.displayName ?? "Comptoir (sans client)"}
-                            </span>
-                            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50 ml-1" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="p-0 w-64" align="start">
-                          <Command>
-                            <CommandInput placeholder="Rechercher un client..." className="h-9" />
-                            <CommandList>
-                              <CommandEmpty>Aucun client trouvé.</CommandEmpty>
-                              <CommandGroup>
-                                <CommandItem value="none" onSelect={() => { setForm(f => ({ ...f, customerId: "none" })); setClientComboOpen(false); }}>
-                                  <Check className={`mr-2 h-4 w-4 ${form.customerId === "none" || !form.customerId ? "opacity-100" : "opacity-0"}`} />
-                                  Comptoir (sans client)
-                                </CommandItem>
-                                {customers.map(c => (
-                                  <CommandItem key={c.id} value={c.displayName} onSelect={() => { setForm(f => ({ ...f, customerId: String(c.id) })); setClientComboOpen(false); }}>
-                                    <Check className={`mr-2 h-4 w-4 ${form.customerId === String(c.id) ? "opacity-100" : "opacity-0"}`} />
-                                    {c.displayName}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                      <SearchableCombobox
+                        items={[
+                          { value: "none", label: "Comptoir (sans client)" },
+                          ...customers.map(c => ({ value: String(c.id), label: c.displayName })),
+                        ]}
+                        value={form.customerId || "none"}
+                        onValueChange={v => setForm(f => ({ ...f, customerId: v }))}
+                        placeholder="Comptoir (sans client)"
+                        searchPlaceholder="Rechercher un client..."
+                        emptyMessage="Aucun client trouvé."
+                        drawerTitle="Choisir un client"
+                        triggerClassName="flex-1"
+                      />
                       <Button
                         type="button" variant="outline" size="icon"
                         className="h-9 w-9 shrink-0"
@@ -1066,86 +1042,41 @@ export default function Sales() {
                     {/* Category filter — separate row above product */}
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Catégorie</Label>
-                      <Popover open={catComboOpen} onOpenChange={setCatComboOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="w-full h-8 justify-between font-normal text-sm">
-                            <span className="truncate">
-                              {productCatFilter === ""
-                                ? "Toutes les catégories"
-                                : productCatFilter === "none"
-                                  ? "Sans catégorie"
-                                  : categories.find(c => String(c.id) === productCatFilter)?.name ?? "Toutes les catégories"}
-                            </span>
-                            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50 ml-1" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="p-0 w-80" align="start">
-                          <Command>
-                            <CommandInput placeholder="Rechercher une catégorie..." className="h-9" />
-                            <div style={{ maxHeight: "14rem", overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
-                              <CommandList style={{ maxHeight: "none" }}>
-                                <CommandEmpty>Aucune catégorie trouvée.</CommandEmpty>
-                                <CommandGroup className="overflow-visible">
-                                  <CommandItem value="all" onSelect={() => { setProductCatFilter(""); setNewItem(n => ({ ...n, productId: "", unitPrice: "" })); setCatComboOpen(false); }}>
-                                    <Check className={`mr-2 h-4 w-4 ${productCatFilter === "" ? "opacity-100" : "opacity-0"}`} />
-                                    Toutes les catégories
-                                  </CommandItem>
-                                  {categories.map(c => (
-                                    <CommandItem key={c.id} value={c.name} onSelect={() => { setProductCatFilter(String(c.id)); setNewItem(n => ({ ...n, productId: "", unitPrice: "" })); setCatComboOpen(false); }}>
-                                      <Check className={`mr-2 h-4 w-4 ${productCatFilter === String(c.id) ? "opacity-100" : "opacity-0"}`} />
-                                      {c.name}
-                                    </CommandItem>
-                                  ))}
-                                  <CommandItem value="none-sans-categorie" onSelect={() => { setProductCatFilter("none"); setNewItem(n => ({ ...n, productId: "", unitPrice: "" })); setCatComboOpen(false); }}>
-                                    <Check className={`mr-2 h-4 w-4 ${productCatFilter === "none" ? "opacity-100" : "opacity-0"}`} />
-                                    Sans catégorie
-                                  </CommandItem>
-                                </CommandGroup>
-                              </CommandList>
-                            </div>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                      <SearchableCombobox
+                        items={[
+                          { value: "all", label: "Toutes les catégories" },
+                          ...categories.map(c => ({ value: String(c.id), label: c.name })),
+                          { value: "none", label: "Sans catégorie" },
+                        ]}
+                        value={productCatFilter === "" ? "all" : productCatFilter}
+                        onValueChange={v => {
+                          setProductCatFilter(v === "all" ? "" : v);
+                          setNewItem(n => ({ ...n, productId: "", unitPrice: "" }));
+                        }}
+                        placeholder="Toutes les catégories"
+                        searchPlaceholder="Rechercher une catégorie..."
+                        emptyMessage="Aucune catégorie trouvée."
+                        drawerTitle="Filtrer par catégorie"
+                      />
                     </div>
                     <div className="flex gap-2">
-                      <Popover open={productComboOpen} onOpenChange={setProductComboOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="flex-1 h-8 justify-between font-normal text-sm">
-                            <span className="truncate">
-                              {newItem.productId
-                                ? products.find(p => String(p.id) === newItem.productId)?.name ?? "Ajouter un produit..."
-                                : "Ajouter un produit..."}
-                            </span>
-                            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50 ml-1" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="p-0 w-80" align="start">
-                          <Command>
-                            <CommandInput placeholder="Rechercher un produit..." className="h-9" />
-                            <div style={{ maxHeight: "18rem", overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
-                              <CommandList style={{ maxHeight: "none" }}>
-                                <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
-                                <CommandGroup className="overflow-visible">
-                                  {products
-                                    .filter(p => p.isSellable && p.type === "finished")
-                                    .filter(p => {
-                                      if (!productCatFilter || productCatFilter === "all") return true;
-                                      if (productCatFilter === "none") return !(p as any).categoryId;
-                                      return String((p as any).categoryId) === productCatFilter;
-                                    })
-                                    .map(p => (
-                                      <CommandItem key={p.id} value={p.name} onSelect={() => { selectProduct(String(p.id)); setProductComboOpen(false); }}>
-                                        <Check className={`mr-2 h-4 w-4 ${newItem.productId === String(p.id) ? "opacity-100" : "opacity-0"}`} />
-                                        <span className="flex-1">{p.name}</span>
-                                        <span className="text-xs text-muted-foreground ml-2">{formatDA(parseFloat(p.sellingPrice as string))}</span>
-                                      </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </div>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                      <SearchableCombobox
+                        items={products
+                          .filter(p => p.isSellable && p.type === "finished")
+                          .filter(p => {
+                            if (!productCatFilter || productCatFilter === "all") return true;
+                            if (productCatFilter === "none") return !(p as any).categoryId;
+                            return String((p as any).categoryId) === productCatFilter;
+                          })
+                          .map(p => ({ value: String(p.id), label: p.name }))}
+                        value={newItem.productId}
+                        onValueChange={v => selectProduct(v)}
+                        placeholder="Ajouter un produit..."
+                        searchPlaceholder="Rechercher un produit..."
+                        emptyMessage="Aucun produit trouvé."
+                        drawerTitle="Choisir un produit"
+                        triggerClassName="flex-1 h-8"
+                      />
                       <Input type="number" min={qtyAllowsDecimals ? "0.001" : "1"} step={qtyAllowsDecimals ? "0.001" : "1"} className="w-16 h-8 text-sm" placeholder="Qté" value={newItem.quantity} onChange={e => { const v = e.target.value; setNewItem(n => ({ ...n, quantity: qtyAllowsDecimals ? v : String(Math.max(1, Math.round(parseFloat(v) || 1))) })); }} />
                       <Input type="number" className="w-28 h-8 text-sm" placeholder="Prix unit." value={newItem.unitPrice} onChange={e => setNewItem(n => ({ ...n, unitPrice: e.target.value }))} />
                       <Button variant="outline" size="sm" className="h-8 px-3 gap-1" onClick={addItem}>
