@@ -59,6 +59,8 @@ function parseQ(req: any) {
     channel: req.query.channel as string | undefined,      // "pos" | "delivery"
     docType: req.query.docType as string | undefined,      // "sale" | "order" | "quotation"
     paymentStatus: req.query.paymentStatus as string | undefined,
+    categoryId: req.query.categoryId as string | undefined,
+    subCategoryId: req.query.subCategoryId as string | undefined,
   };
 }
 
@@ -288,6 +290,18 @@ router.get("/trend", requireAuth, requirePermission(P.reports.view), async (req,
 router.get("/products", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
   const q = parseQ(req);
   const conds = buildBaseConds(q, { includeType: ["sale"], includeStatus: ["confirmed"] });
+
+  // Category / sub-category filter on products
+  if (q.subCategoryId) {
+    const id = parseInt(q.subCategoryId, 10);
+    if (!isNaN(id)) conds.push(eq(productsTable.categoryId, id));
+  } else if (q.categoryId) {
+    const id = parseInt(q.categoryId, 10);
+    if (!isNaN(id)) {
+      const subCatSubquery = db.select({ id: categoriesTable.id }).from(categoriesTable).where(eq(categoriesTable.parentId, id));
+      conds.push(or(eq(productsTable.categoryId, id), inArray(productsTable.categoryId, subCatSubquery)));
+    }
+  }
 
   const search = (req.query.search as string | undefined)?.toLowerCase().trim();
   const limitParam = Math.min(2000, parseInt(req.query.limit as string ?? "500", 10));

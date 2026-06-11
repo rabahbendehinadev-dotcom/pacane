@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { customFetch, useGetBranches } from "@workspace/api-client-react";
+import { customFetch, useGetBranches, useGetCategories } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -188,6 +189,8 @@ export default function AnalyticsSales() {
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [docType, setDocType] = useState("all");
   const [paymentStatus, setPaymentStatus] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [activePreset, setActivePreset] = useState(2);
 
   // ─── Sort states ────────────────────────────────────────────────────────────
@@ -253,7 +256,19 @@ export default function AnalyticsSales() {
   }
 
   const { data: branches } = useGetBranches();
+  const { data: allCategories = [] } = useGetCategories();
   const showBranchFilter = user?.adminAccess || (user?.branchIds && user.branchIds.length > 1);
+
+  const parentCategories = useMemo(
+    () => (allCategories as any[]).filter(c => !c.parentId),
+    [allCategories],
+  );
+  const subCategories = useMemo(
+    () => categoryFilter !== "all"
+      ? (allCategories as any[]).filter(c => String(c.parentId) === categoryFilter)
+      : [],
+    [allCategories, categoryFilter],
+  );
 
   const params = useMemo(() => {
     const p: Record<string, string> = {};
@@ -262,8 +277,10 @@ export default function AnalyticsSales() {
     if (branchIds.length > 0) p.branchIds = branchIds.join(",");
     if (docType !== "all") p.docType = docType;
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
+    if (categoryFilter !== "all") p.categoryId = categoryFilter;
+    if (subCategoryFilter !== "all") p.subCategoryId = subCategoryFilter;
     return p;
-  }, [from, to, branchIds, docType, paymentStatus]);
+  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter]);
   const qs = new URLSearchParams(params).toString();
   // kpis always on sales (not filtered by docType)
   const kpisQs = useMemo(() => {
@@ -272,8 +289,10 @@ export default function AnalyticsSales() {
     if (to) p.to = to;
     if (branchIds.length > 0) p.branchIds = branchIds.join(",");
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
+    if (categoryFilter !== "all") p.categoryId = categoryFilter;
+    if (subCategoryFilter !== "all") p.subCategoryId = subCategoryFilter;
     return new URLSearchParams(p).toString();
-  }, [from, to, branchIds, paymentStatus]);
+  }, [from, to, branchIds, paymentStatus, categoryFilter, subCategoryFilter]);
 
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
@@ -491,6 +510,34 @@ export default function AnalyticsSales() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Catégorie</Label>
+              <SearchableCombobox
+                items={[{ value: "all", label: "Toutes" }, ...parentCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                value={categoryFilter}
+                onValueChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }}
+                placeholder="Toutes"
+                searchPlaceholder="Chercher..."
+                emptyMessage="Aucune catégorie."
+                drawerTitle="Catégorie"
+                triggerClassName="h-8 text-xs w-36"
+              />
+            </div>
+            {subCategories.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Sous-catégorie</Label>
+                <SearchableCombobox
+                  items={[{ value: "all", label: "Toutes" }, ...subCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                  value={subCategoryFilter}
+                  onValueChange={setSubCategoryFilter}
+                  placeholder="Toutes"
+                  searchPlaceholder="Chercher..."
+                  emptyMessage="Aucune sous-catégorie."
+                  drawerTitle="Sous-catégorie"
+                  triggerClassName="h-8 text-xs w-36"
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
