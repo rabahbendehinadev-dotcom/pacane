@@ -79,7 +79,7 @@ export default function Login() {
               />
             </div>
           </CardContent>
-          <CardFooter className="pb-10">
+          <CardFooter className="pb-10 flex-col gap-4">
             <Button 
               type="submit" 
               className="w-full h-12 text-base font-medium" 
@@ -94,6 +94,7 @@ export default function Login() {
                 t("login")
               )}
             </Button>
+            <p className="text-xs text-muted-foreground text-center">Powered by Rabah Bendehina</p>
           </CardFooter>
         </form>
       </Card>

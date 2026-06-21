@@ -48,3 +48,4 @@ Full ERP for Pacane: authentication, inventory management, order management, cli
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+test push 21-06-2026
