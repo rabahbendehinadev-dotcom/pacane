@@ -609,6 +609,17 @@ export default function Sales() {
     });
   }
 
+  async function openDetail(sale: Sale) {
+    setDetailDoc(sale);
+    try {
+      const token = localStorage.getItem("erp_token") ?? "";
+      const r = await fetch(`/api/sales/${sale.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (r.ok) setDetailDoc(await r.json());
+    } catch { /* keep list item as fallback */ }
+  }
+
   const canConvert = detailDoc && !["cancelled", "converted"].includes(detailDoc.status);
   const canCancel  = detailDoc && !["cancelled", "converted", "refunded"].includes(detailDoc.status);
   const conversions = detailDoc ? (CONVERSIONS[detailDoc.type] ?? []) : [];
@@ -853,7 +864,7 @@ export default function Sales() {
                 <TableRow
                   key={s.id}
                   className={`cursor-pointer hover:bg-muted/40 transition-colors ${s.status === "cancelled" ? "opacity-50" : ""}`}
-                  onClick={() => setDetailDoc(s)}
+                  onClick={() => openDetail(s)}
                 >
                   <TableCell className="font-mono text-xs font-semibold tracking-wide">{s.reference}</TableCell>
                   {tab === "all" && <TableCell><TypeBadge type={s.type} fulfillmentType={(s as any).fulfillmentType} /></TableCell>}
@@ -894,7 +905,7 @@ export default function Sales() {
                   )}
                   <TableCell onClick={e => e.stopPropagation()}>
                     <div className="flex gap-0.5 justify-end">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetailDoc(s)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(s)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -1226,13 +1237,21 @@ export default function Sales() {
                       <SheetTitle className="font-mono text-2xl">{detailDoc.reference}</SheetTitle>
                       <div className="flex items-center gap-1 shrink-0">
                         <PdfButton
-                          onGenerate={() => generateSaleTicketPdf(detailDoc, companySettings as any)}
+                          onGenerate={() => {
+                            if (!companySettings) throw new Error("Paramètres entreprise non disponibles");
+                            const safeDoc = { ...detailDoc, items: detailDoc.items ?? [], payments: detailDoc.payments ?? [] };
+                            generateSaleTicketPdf(safeDoc as any, companySettings as any);
+                          }}
                           label="Ticket"
                           size="sm"
                           variant="outline"
                         />
                         <PdfButton
-                          onGenerate={() => generateSalePdf(detailDoc, companySettings as any)}
+                          onGenerate={() => {
+                            if (!companySettings) throw new Error("Paramètres entreprise non disponibles");
+                            const safeDoc = { ...detailDoc, items: detailDoc.items ?? [], payments: detailDoc.payments ?? [] };
+                            generateSalePdf(safeDoc as any, companySettings as any);
+                          }}
                           label="A4"
                           size="sm"
                           variant="outline"
