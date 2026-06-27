@@ -36,12 +36,23 @@ app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 app.use("/api", router);
 
-// Serve uploaded product images
-const uploadDir = process.env.UPLOAD_DIR
+// ── Serve uploaded files (/uploads/products/..., /uploads/preparations/...) ──
+// Registered here — BEFORE express.static(distDir) and the SPA /{*path} fallback —
+// so the correct Content-Type is returned instead of index.html.
+// Multiple candidate directories are tried in order; express.static calls next()
+// when a file is not found, so later candidates act as fallbacks.
+const uploadsDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-app.use("/uploads", express.static(uploadDir));
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+// Candidate 1: env var or cwd-based path
+app.use("/uploads", express.static(uploadsDir));
+// Candidate 2: relative to the compiled bundle (dist/index.mjs → ../uploads)
+// Reliable in Docker where cwd may differ from the app root.
+app.use("/uploads", express.static(
+  path.resolve(path.dirname(new URL(import.meta.url).pathname), "../uploads")
+));
+// Candidate 3: explicit cwd-based (guards against UPLOAD_DIR being wrong)
 app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
 // ── Serve frontend static files in production ──────────────────────────────
