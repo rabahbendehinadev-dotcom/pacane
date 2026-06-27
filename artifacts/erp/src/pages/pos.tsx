@@ -541,7 +541,7 @@ export default function POS() {
                         <div className="w-full aspect-square bg-amber-50 flex items-center justify-center overflow-hidden relative">
                           {p.imageUrl ? (
                             <img
-                              src={p.imageUrl}
+                              src={`${p.imageUrl}?v=${p.updatedAt ? new Date((p as any).updatedAt).getTime() : p.id}`}
                               alt={p.name}
                               className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               onError={e => { const el = e.target as HTMLImageElement; el.style.display = "none"; el.parentElement?.querySelector(".pos-fallback-icon")?.classList.remove("hidden"); }}

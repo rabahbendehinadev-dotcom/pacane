@@ -21,10 +21,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { toast } from "@/hooks/use-toast";
 import { ExportButton } from "@/components/ExportButton";
 
-function ProductThumb({ url, name }: { url: string | null; name: string }) {
+function cacheBust(url: string, updatedAt?: string | Date | null, id?: number | null): string {
+  const v = updatedAt ? new Date(updatedAt).getTime() : (id ?? "");
+  return `${url}?v=${v}`;
+}
+
+function ProductThumb({ url, name, updatedAt, id }: { url: string | null; name: string; updatedAt?: string | Date | null; id?: number | null }) {
   const [broken, setBroken] = useState(false);
   if (!url || broken) return <Package className="h-4 w-4 text-primary" />;
-  return <img src={url} alt={name} className="h-full w-full object-cover" onError={() => setBroken(true)} />;
+  return <img src={cacheBust(url, updatedAt, id)} alt={name} className="h-full w-full object-cover" onError={() => setBroken(true)} />;
 }
 
 function formatDA(n: number) { return new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(n) + " DA"; }
@@ -421,7 +426,7 @@ export default function Products() {
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
-                        <ProductThumb url={p.imageUrl ?? null} name={p.name} />
+                        <ProductThumb url={p.imageUrl ?? null} name={p.name} updatedAt={p.updatedAt} id={p.id} />
                       </div>
                       <div>
                         <p className="font-medium text-sm">{p.name}</p>
