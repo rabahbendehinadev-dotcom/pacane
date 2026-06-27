@@ -37,9 +37,12 @@ app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use("/api", router);
 
 // Serve uploaded product images
-const uploadDir = getUploadDir();
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use("/uploads", express.static(uploadDir));
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
 // ── Serve frontend static files in production ──────────────────────────────
 // In production (Docker), the built frontend is copied to ./frontend-dist
