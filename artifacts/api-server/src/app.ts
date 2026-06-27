@@ -36,24 +36,33 @@ app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 app.use("/api", router);
 
-// ── Serve uploaded files (/uploads/products/..., /uploads/preparations/...) ──
-// Registered here — BEFORE express.static(distDir) and the SPA /{*path} fallback —
-// so the correct Content-Type is returned instead of index.html.
-// Multiple candidate directories are tried in order; express.static calls next()
-// when a file is not found, so later candidates act as fallbacks.
-const uploadsDir = process.env.UPLOAD_DIR
+// ── Serve uploaded files — BEFORE frontend static and SPA fallback ───────────
+const uploadsRoot = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-// Candidate 1: env var or cwd-based path
-app.use("/uploads", express.static(uploadsDir));
-// Candidate 2: relative to the compiled bundle (dist/index.mjs → ../uploads)
-// Reliable in Docker where cwd may differ from the app root.
-app.use("/uploads", express.static(
-  path.resolve(path.dirname(new URL(import.meta.url).pathname), "../uploads")
-));
-// Candidate 3: explicit cwd-based (guards against UPLOAD_DIR being wrong)
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+if (!fs.existsSync(uploadsRoot)) fs.mkdirSync(uploadsRoot, { recursive: true });
+
+// Explicit GET handler: resolves the file path, validates it, and uses
+// res.sendFile() so Express sets the correct Content-Type (image/jpeg etc.)
+// instead of falling through to the SPA which returns text/html.
+app.get("/uploads/{*path}", (req, res, next) => {
+  const relativePath = req.path.replace(/^\/uploads\//, "");
+  const filePath = path.resolve(uploadsRoot, relativePath);
+
+  // Path traversal guard
+  if (!filePath.startsWith(uploadsRoot)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return next();
+  }
+
+  return res.sendFile(filePath);
+});
+
+// express.static as additional fallback (handles cache headers, ETags, etc.)
+app.use("/uploads", express.static(uploadsRoot, { fallthrough: false }));
 
 // ── Serve frontend static files in production ──────────────────────────────
 // In production (Docker), the built frontend is copied to ./frontend-dist
