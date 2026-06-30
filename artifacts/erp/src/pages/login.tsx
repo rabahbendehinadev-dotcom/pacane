@@ -94,7 +94,6 @@ export default function Login() {
                 t("login")
               )}
             </Button>
-            <p className="text-xs text-muted-foreground text-center">Powered by Rabah Bendehina</p>
           </CardFooter>
         </form>
       </Card>
