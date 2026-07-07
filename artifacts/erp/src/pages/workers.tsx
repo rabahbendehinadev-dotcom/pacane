@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ async function fetchWorkers(): Promise<Worker[]> {
 
 export default function WorkersPage() {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
@@ -169,12 +171,15 @@ export default function WorkersPage() {
               ) : filtered.map(w => (
                 <TableRow key={w.id} className={`hover:bg-muted/40 ${!w.isActive ? "opacity-60" : ""}`}>
                   <TableCell>
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <button
+                      onClick={() => setLocation(`/workers/${w.id}`)}
+                      className="flex items-center gap-2.5 text-left hover:text-primary group"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
                         <HardHat className="h-4 w-4 text-primary" />
                       </div>
-                      <span className="font-medium text-sm">{w.name}</span>
-                    </div>
+                      <span className="font-medium text-sm group-hover:underline underline-offset-2">{w.name}</span>
+                    </button>
                   </TableCell>
                   <TableCell>
                     {w.phone ? (

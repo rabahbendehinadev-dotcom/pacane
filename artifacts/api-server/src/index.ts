@@ -302,6 +302,82 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE transfers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;`);
     // workers: add phone column if missing
     await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS phone TEXT;`);
+    // workers: fiche technique — personal info
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS last_name TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS first_name TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS photo_url TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS birth_date DATE;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS gender TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS whatsapp TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS email TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS address TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS city TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS national_id TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS marital_status TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS children_count INTEGER;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS emergency_contact TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS emergency_phone TEXT;`);
+    // workers: fiche technique — work info
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS hire_date DATE;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS position TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS department TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS contract_type TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS base_salary TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS commission_rate TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS work_hours TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS rest_days TEXT;`);
+    // workers: fiche technique — medical
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS has_chronic_disease BOOLEAN;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS chronic_disease_details TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS takes_medication BOOLEAN;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS allergies TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS blood_type TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS medical_notes TEXT;`);
+    // workers: fiche technique — notes + meta
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS notes TEXT;`);
+    await db.execute(sql`ALTER TABLE workers ADD COLUMN IF NOT EXISTS meta JSONB;`);
+    // worker_documents — dossier numérique de l'employé
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_documents (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL,
+        category TEXT NOT NULL DEFAULT 'other',
+        label TEXT NOT NULL,
+        file_url TEXT NOT NULL,
+        mime_type TEXT,
+        file_size INTEGER,
+        uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        uploaded_by_user_id INTEGER
+      );
+    `);
+    // worker_skills — compétences de l'employé
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_skills (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL,
+        skill TEXT NOT NULL,
+        level TEXT,
+        years_experience INTEGER,
+        certification TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    // worker_activity_logs — audit trail extensible
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_activity_logs (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        field TEXT,
+        old_value TEXT,
+        new_value TEXT,
+        performed_by_user_id INTEGER,
+        performed_by_name TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        meta JSONB
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_activity_logs_worker_id ON worker_activity_logs (worker_id, created_at DESC);`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");

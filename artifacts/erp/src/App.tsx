@@ -42,6 +42,7 @@ import InternalConsumptions from "@/pages/internal-consumptions";
 import InternalConsumptionReports from "@/pages/internal-consumptions-reports";
 import Receptions from "@/pages/receptions";
 import WorkersPage from "@/pages/workers";
+import WorkerFichePage from "@/pages/worker-fiche";
 import PreparationOrdersPage from "@/pages/preparation-orders";
 import MyPreparationsPage from "@/pages/my-preparations";
 import AnalyticsSellers from "@/pages/analytics-sellers";
@@ -203,6 +204,9 @@ function AppRoutes() {
       </Route>
       <Route path="/workers">
         <DashboardLayout><WorkersPage /></DashboardLayout>
+      </Route>
+      <Route path="/workers/:id">
+        <DashboardLayout><WorkerFichePage /></DashboardLayout>
       </Route>
       <Route path="/preparation-orders">
         <DashboardLayout><PreparationOrdersPage /></DashboardLayout>

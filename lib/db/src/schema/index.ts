@@ -25,6 +25,7 @@ export { purchaseReturnsTable, purchaseReturnItemsTable } from "./purchases";
 export * from "./replenishment";
 export * from "./internal-consumptions";
 export * from "./workers";
+export { workerDocumentsTable, workerSkillsTable, workerActivityLogsTable } from "./workers";
 export * from "./preparation-orders";
 export * from "./branch-sellers";
 export * from "./checklist";
