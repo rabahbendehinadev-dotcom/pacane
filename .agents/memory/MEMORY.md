@@ -4,3 +4,4 @@
 - [drizzle-kit push fails in post-merge (TTY)](drizzle-push-postmerge-tty.md) — merged schema columns often miss the dev DB; verify with information_schema and apply via direct idempotent psql SQL, never interactive drizzle push.
 - [Prod schema via startup migration block](prod-schema-startup-migration-block.md) — deployed app self-heals schema at boot via ALTER TABLE ... IF NOT EXISTS in api-server/src/index.ts; new columns must be added there too.
 - [ERP branches edit crash fix](erp-branches-crash.md) — sellers useQuery must use null-safe queryFn + throwOnError:false; Dialog.onOpenChange must reset editing/sellers state.
+- [Fetch body consumed once](fetch-body-consumed.md) — Never call r.json() twice on the same response; read once into a variable then branch on r.ok.

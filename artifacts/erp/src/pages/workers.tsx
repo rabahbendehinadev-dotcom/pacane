@@ -9,15 +9,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Edit2, UserX, UserCheck, HardHat, Search, Phone } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Plus, Edit2, UserX, UserCheck, Search, Phone } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const AUTH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
+
+function getInitials(name: string) {
+  return name.split(" ").filter(Boolean).map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+}
 
 interface Worker {
   id: number;
   name: string;
   phone: string | null;
+  photoUrl: string | null;
+  position: string | null;
+  department: string | null;
   isActive: boolean;
   productCount: number;
   createdAt: string;
@@ -169,19 +177,30 @@ export default function WorkersPage() {
                   </TableCell>
                 </TableRow>
               ) : filtered.map(w => (
-                <TableRow key={w.id} className={`hover:bg-muted/40 ${!w.isActive ? "opacity-60" : ""}`}>
+                <TableRow
+                  key={w.id}
+                  className={`hover:bg-muted/40 cursor-pointer ${!w.isActive ? "opacity-60" : ""}`}
+                  onClick={() => setLocation(`/workers/${w.id}`)}
+                >
                   <TableCell>
-                    <button
-                      onClick={() => setLocation(`/workers/${w.id}`)}
-                      className="flex items-center gap-2.5 text-left hover:text-primary group"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                        <HardHat className="h-4 w-4 text-primary" />
+                    <div className="flex items-center gap-2.5">
+                      <Avatar className="h-8 w-8 shrink-0">
+                        <AvatarImage src={w.photoUrl ?? undefined} alt={w.name} />
+                        <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">
+                          {getInitials(w.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm leading-tight truncate">{w.name}</p>
+                        {(w.position || w.department) && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {[w.position, w.department].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
                       </div>
-                      <span className="font-medium text-sm group-hover:underline underline-offset-2">{w.name}</span>
-                    </button>
+                    </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     {w.phone ? (
                       <a
                         href={`https://wa.me/${w.phone.replace(/\D/g, "")}`}
@@ -210,9 +229,15 @@ export default function WorkersPage() {
                       <span className="text-muted-foreground/50">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 justify-end">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(w)} title="Modifier">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => openEdit(w)}
+                        title="Modifier"
+                      >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                       <Button
