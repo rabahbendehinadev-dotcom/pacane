@@ -12,11 +12,16 @@ import { TabDocuments } from "./tabs/TabDocuments";
 import { TabCompetences } from "./tabs/TabCompetences";
 import { TabNotes } from "./tabs/TabNotes";
 import { TabHistorique } from "./tabs/TabHistorique";
+import { TabPresence } from "./tabs/TabPresence";
+import { TabAvertissements } from "./tabs/TabAvertissements";
+import { TabPrimes } from "./tabs/TabPrimes";
+import { TabPerformance } from "./tabs/TabPerformance";
 import type { WorkerProfile, EditForm } from "./types";
 import { profileToForm, formToPayload } from "./types";
 import {
   User, Briefcase, HeartPulse, FileText, Star,
   StickyNote, History, Loader2, AlertCircle,
+  CalendarCheck, AlertTriangle, Gift, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -278,6 +283,37 @@ export default function WorkerFichePage() {
                 <History className="h-3.5 w-3.5" />
                 <span>Historique</span>
               </TabsTrigger>
+
+              {/* ── HR tabs ── */}
+              <div className="h-5 w-px bg-border mx-1" />
+              <TabsTrigger
+                value="presence"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                <span>Présence</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="avertissements"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span>Avertissements</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="primes"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Gift className="h-3.5 w-3.5" />
+                <span>Primes</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="performance"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Performance</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -301,6 +337,18 @@ export default function WorkerFichePage() {
           </TabsContent>
           <TabsContent value="historique" className="mt-0">
             <TabHistorique logs={currentWorker.recentActivity} />
+          </TabsContent>
+          <TabsContent value="presence" className="mt-0">
+            <TabPresence worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="avertissements" className="mt-0">
+            <TabAvertissements worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="primes" className="mt-0">
+            <TabPrimes worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="performance" className="mt-0">
+            <TabPerformance worker={currentWorker} />
           </TabsContent>
         </Tabs>
       </div>

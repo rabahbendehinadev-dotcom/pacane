@@ -86,6 +86,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
         { label: t("categories"), href: "/categories", icon: Tags, perm: "products.view" },
         { label: t("units"), href: "/units", icon: Scale, perm: "products.view" },
         { label: "Ouvriers", href: "/workers", icon: HardHat, perm: "workers.view" },
+        { label: "Gestion RH", href: "/workers/hr", icon: BarChart2, perm: "workers.view" },
         { label: "Recettes", href: "/recipes", icon: ChefHat, perm: "recipes.view" },
       ],
     },

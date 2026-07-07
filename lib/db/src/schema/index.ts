@@ -29,3 +29,5 @@ export { workerDocumentsTable, workerSkillsTable, workerActivityLogsTable } from
 export * from "./preparation-orders";
 export * from "./branch-sellers";
 export * from "./checklist";
+export * from "./hr";
+export { workerAttendanceTable, workerWarningsTable, workerBonusesTable, workerNotificationsTable } from "./hr";

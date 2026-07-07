@@ -38,6 +38,7 @@ import catalogImportRouter from "./catalog-import";
 import replenishmentRouter from "./replenishment";
 import internalConsumptionsRouter from "./internal-consumptions";
 import receptionsRouter from "./receptions";
+import { workersHRRouter } from "./workersHR";
 import workersRouter from "./workers";
 import preparationOrdersRouter from "./preparation-orders";
 import analyticsSellersRouter from "./analytics-sellers";
@@ -88,6 +89,8 @@ router.use(catalogImportRouter);
 router.use(replenishmentRouter);
 router.use(internalConsumptionsRouter);
 router.use(receptionsRouter);
+// HR routes MUST be registered before workersRouter to avoid :id wildcard conflicts
+router.use(workersHRRouter);
 router.use(workersRouter);
 router.use(preparationOrdersRouter);
 router.use(analyticsSellersRouter);

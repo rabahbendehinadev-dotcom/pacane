@@ -378,6 +378,62 @@ async function runMigrations() {
       );
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_activity_logs_worker_id ON worker_activity_logs (worker_id, created_at DESC);`);
+    // ── HR Management tables ──────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_attendance (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'present',
+        check_in TIME,
+        check_out TIME,
+        reason TEXT,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        UNIQUE(worker_id, date)
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_attendance_worker_date ON worker_attendance (worker_id, date DESC);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_warnings (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        title VARCHAR(200) NOT NULL,
+        description TEXT,
+        severity VARCHAR(20) DEFAULT 'medium',
+        status VARCHAR(20) DEFAULT 'open',
+        closed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_warnings_worker_id ON worker_warnings (worker_id, created_at DESC);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_bonuses (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        amount DECIMAL(10,2) NOT NULL,
+        reason TEXT NOT NULL,
+        bonus_type VARCHAR(50) DEFAULT 'performance',
+        bonus_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_bonuses_worker_id ON worker_bonuses (worker_id, bonus_date DESC);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_notifications (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        reference_id INTEGER,
+        title VARCHAR(200) NOT NULL,
+        message TEXT,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_notifications_worker_unread ON worker_notifications (worker_id, is_read, created_at DESC);`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
