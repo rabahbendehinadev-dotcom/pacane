@@ -16,12 +16,16 @@ import { TabPresence } from "./tabs/TabPresence";
 import { TabAvertissements } from "./tabs/TabAvertissements";
 import { TabPrimes } from "./tabs/TabPrimes";
 import { TabPerformance } from "./tabs/TabPerformance";
+import { TabSalaire } from "./tabs/TabSalaire";
+import { TabDemandes } from "./tabs/TabDemandes";
+import { TabObjectifs } from "./tabs/TabObjectifs";
 import type { WorkerProfile, EditForm } from "./types";
 import { profileToForm, formToPayload } from "./types";
 import {
   User, Briefcase, HeartPulse, FileText, Star,
   StickyNote, History, Loader2, AlertCircle,
   CalendarCheck, AlertTriangle, Gift, TrendingUp,
+  Banknote, Send, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -314,6 +318,27 @@ export default function WorkerFichePage() {
                 <TrendingUp className="h-3.5 w-3.5" />
                 <span>Performance</span>
               </TabsTrigger>
+              <TabsTrigger
+                value="salaire"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Banknote className="h-3.5 w-3.5" />
+                <span>Salaire</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="demandes"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Demandes</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="objectifs"
+                className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Target className="h-3.5 w-3.5" />
+                <span>Objectifs</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -349,6 +374,15 @@ export default function WorkerFichePage() {
           </TabsContent>
           <TabsContent value="performance" className="mt-0">
             <TabPerformance worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="salaire" className="mt-0">
+            <TabSalaire worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="demandes" className="mt-0">
+            <TabDemandes worker={currentWorker} />
+          </TabsContent>
+          <TabsContent value="objectifs" className="mt-0">
+            <TabObjectifs worker={currentWorker} />
           </TabsContent>
         </Tabs>
       </div>

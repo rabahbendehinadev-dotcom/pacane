@@ -7,6 +7,9 @@ import {
   workerBonusesTable,
   workerNotificationsTable,
   workerActivityLogsTable,
+  workerSalariesTable,
+  workerRequestsTable,
+  workerObjectivesTable,
 } from "@workspace/db/schema";
 import { eq, desc, and, gte, lte, sql, count, sum, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -528,4 +531,481 @@ router.get("/workers/hr-report", requireAuth, requirePermission(P.workers.view),
   res.json({ month: monthParam, workers: report });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTENDANCE TREND (last 30 days — for dashboard chart)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/workers/attendance-trend", requireAuth, requirePermission(P.workers.view), async (_req, res): Promise<void> => {
+  const days = 30;
+  const now = new Date();
+  const rows: { date: string; present: number; late: number; absent: number; vacation: number; other: number }[] = [];
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const ds = d.toISOString().split("T")[0];
+    const att = await db.select({ status: workerAttendanceTable.status, cnt: count() })
+      .from(workerAttendanceTable)
+      .where(eq(workerAttendanceTable.date, ds))
+      .groupBy(workerAttendanceTable.status);
+    const m: Record<string, number> = {};
+    att.forEach(r => { m[r.status] = Number(r.cnt); });
+    rows.push({
+      date: ds,
+      present: m["present"] ?? 0,
+      late: m["late"] ?? 0,
+      absent: m["absent"] ?? 0,
+      vacation: (m["vacation"] ?? 0) + (m["sick"] ?? 0),
+      other: (m["half_day"] ?? 0),
+    });
+  }
+  res.json(rows);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEPARTMENT STATS
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/workers/department-stats", requireAuth, requirePermission(P.workers.view), async (_req, res): Promise<void> => {
+  const workers = await db.select({
+    id: workersTable.id,
+    department: workersTable.department,
+    isActive: workersTable.isActive,
+  }).from(workersTable);
+
+  const deptMap: Record<string, { total: number; active: number }> = {};
+  workers.forEach(w => {
+    const dept = w.department ?? "Non défini";
+    if (!deptMap[dept]) deptMap[dept] = { total: 0, active: 0 };
+    deptMap[dept].total++;
+    if (w.isActive) deptMap[dept].active++;
+  });
+
+  const result = Object.entries(deptMap)
+    .map(([dept, v]) => ({ department: dept, total: v.total, active: v.active }))
+    .sort((a, b) => b.total - a.total);
+  res.json(result);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMPLOYEE OF THE MONTH
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/workers/employee-of-month", requireAuth, requirePermission(P.workers.view), async (_req, res): Promise<void> => {
+  const workers = await db.select({
+    id: workersTable.id,
+    name: workersTable.name,
+    photoUrl: workersTable.photoUrl,
+    position: workersTable.position,
+    department: workersTable.department,
+  }).from(workersTable).where(eq(workersTable.isActive, true));
+
+  if (workers.length === 0) { res.json(null); return; }
+
+  const scored = await Promise.all(workers.map(async w => {
+    const perf = await computePerformanceScore(w.id);
+    return { ...w, ...perf };
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  res.json(scored[0] ?? null);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SALARIES
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /workers/:id/salary?month=YYYY-MM — single salary for a month
+router.get("/workers/:id/salary", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const monthParam = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+  const monthDate = monthParam + "-01";
+
+  const [row] = await db.select().from(workerSalariesTable)
+    .where(and(eq(workerSalariesTable.workerId, id), eq(workerSalariesTable.month, monthDate)));
+  res.json(row ?? null);
+});
+
+// GET /workers/:id/salary/history — all salary records for a worker
+router.get("/workers/:id/salary/history", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+  const rows = await db.select().from(workerSalariesTable)
+    .where(eq(workerSalariesTable.workerId, id))
+    .orderBy(desc(workerSalariesTable.month))
+    .limit(24);
+  res.json(rows);
+});
+
+// POST /workers/:id/salary
+router.post("/workers/:id/salary", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { month, baseSalary, bonuses, deductions, overtimeHours, overtimeAmount, advance, notes } = req.body;
+  if (!month) { res.status(400).json({ error: "Mois requis (YYYY-MM)" }); return; }
+  const monthDate = month + "-01";
+
+  const [row] = await db.insert(workerSalariesTable)
+    .values({
+      workerId: id,
+      month: monthDate,
+      baseSalary: String(parseFloat(baseSalary) || 0),
+      bonuses: String(parseFloat(bonuses) || 0),
+      deductions: String(parseFloat(deductions) || 0),
+      overtimeHours: String(parseFloat(overtimeHours) || 0),
+      overtimeAmount: String(parseFloat(overtimeAmount) || 0),
+      advance: String(parseFloat(advance) || 0),
+      notes: notes || null,
+    })
+    .onConflictDoUpdate({
+      target: [workerSalariesTable.workerId, workerSalariesTable.month],
+      set: {
+        baseSalary: String(parseFloat(baseSalary) || 0),
+        bonuses: String(parseFloat(bonuses) || 0),
+        deductions: String(parseFloat(deductions) || 0),
+        overtimeHours: String(parseFloat(overtimeHours) || 0),
+        overtimeAmount: String(parseFloat(overtimeAmount) || 0),
+        advance: String(parseFloat(advance) || 0),
+        notes: notes || null,
+        updatedAt: sql`NOW()`,
+      },
+    })
+    .returning();
+
+  await db.insert(workerActivityLogsTable).values({
+    workerId: id,
+    action: "salary_recorded",
+    newValue: `Paie ${month}`,
+    performedByUserId: (req as any).user?.id ?? null,
+    performedByName: (req as any).user?.username ?? null,
+  });
+
+  res.status(201).json(row);
+});
+
+// PATCH /workers/:id/salary/:salaryId
+router.patch("/workers/:id/salary/:salaryId", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const workerId = parseInt(req.params.id, 10);
+  const salaryId = parseInt(req.params.salaryId, 10);
+  if (isNaN(workerId) || isNaN(salaryId)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { baseSalary, bonuses, deductions, overtimeHours, overtimeAmount, advance, notes } = req.body;
+  const patch: Record<string, any> = { updatedAt: sql`NOW()` };
+  if (baseSalary !== undefined) patch.baseSalary = String(parseFloat(baseSalary) || 0);
+  if (bonuses !== undefined) patch.bonuses = String(parseFloat(bonuses) || 0);
+  if (deductions !== undefined) patch.deductions = String(parseFloat(deductions) || 0);
+  if (overtimeHours !== undefined) patch.overtimeHours = String(parseFloat(overtimeHours) || 0);
+  if (overtimeAmount !== undefined) patch.overtimeAmount = String(parseFloat(overtimeAmount) || 0);
+  if (advance !== undefined) patch.advance = String(parseFloat(advance) || 0);
+  if (notes !== undefined) patch.notes = notes || null;
+
+  const [row] = await db.update(workerSalariesTable).set(patch)
+    .where(and(eq(workerSalariesTable.id, salaryId), eq(workerSalariesTable.workerId, workerId)))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Fiche de paie introuvable" }); return; }
+  res.json(row);
+});
+
+// GET /workers/salary-stats — monthly salary totals for dashboard
+router.get("/workers/salary-stats", requireAuth, requirePermission(P.workers.view), async (_req, res): Promise<void> => {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const [stats] = await db.select({
+    totalBase:     sql<string>`COALESCE(SUM(base_salary), 0)`,
+    totalBonuses:  sql<string>`COALESCE(SUM(bonuses), 0)`,
+    totalDeductions: sql<string>`COALESCE(SUM(deductions), 0)`,
+    totalAdvance:  sql<string>`COALESCE(SUM(advance), 0)`,
+    totalOvertime: sql<string>`COALESCE(SUM(overtime_amount), 0)`,
+    count:         count(),
+  }).from(workerSalariesTable).where(eq(workerSalariesTable.month, currentMonth));
+
+  const base       = parseFloat(stats?.totalBase ?? "0");
+  const bonuses    = parseFloat(stats?.totalBonuses ?? "0");
+  const deductions = parseFloat(stats?.totalDeductions ?? "0");
+  const advance    = parseFloat(stats?.totalAdvance ?? "0");
+  const overtime   = parseFloat(stats?.totalOvertime ?? "0");
+  const net        = base + bonuses + overtime - deductions - advance;
+
+  res.json({ base, bonuses, deductions, advance, overtime, net, count: Number(stats?.count ?? 0) });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUESTS (Demandes)
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /workers/:id/requests
+router.get("/workers/:id/requests", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+  const rows = await db.select().from(workerRequestsTable)
+    .where(eq(workerRequestsTable.workerId, id))
+    .orderBy(desc(workerRequestsTable.createdAt));
+  res.json(rows);
+});
+
+// POST /workers/:id/requests
+router.post("/workers/:id/requests", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { type, title, description, startDate, endDate, amount } = req.body;
+  const TYPES = ["conge", "maladie", "avance", "changement_horaire", "autre"];
+  if (!TYPES.includes(type)) { res.status(400).json({ error: "Type invalide" }); return; }
+  if (!title?.trim()) { res.status(400).json({ error: "Titre requis" }); return; }
+
+  const [row] = await db.insert(workerRequestsTable)
+    .values({
+      workerId: id,
+      type,
+      title: title.trim(),
+      description: description?.trim() || null,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      amount: amount ? String(parseFloat(amount)) : null,
+    })
+    .returning();
+
+  await db.insert(workerNotificationsTable).values({
+    workerId: id,
+    type: "request",
+    referenceId: row.id,
+    title: `Nouvelle demande : ${title.trim()}`,
+    message: description?.trim() || null,
+  });
+
+  res.status(201).json(row);
+});
+
+// PATCH /workers/:id/requests/:reqId — approve or reject
+router.patch("/workers/:id/requests/:reqId", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const workerId = parseInt(req.params.id, 10);
+  const reqId = parseInt(req.params.reqId, 10);
+  if (isNaN(workerId) || isNaN(reqId)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { status, responseNotes } = req.body;
+  if (!["approved", "rejected", "pending"].includes(status)) { res.status(400).json({ error: "Statut invalide" }); return; }
+
+  const [row] = await db.update(workerRequestsTable)
+    .set({
+      status,
+      responseNotes: responseNotes?.trim() || null,
+      respondedByUserId: (req as any).user?.id ?? null,
+      respondedAt: sql`NOW()`,
+      updatedAt: sql`NOW()`,
+    })
+    .where(and(eq(workerRequestsTable.id, reqId), eq(workerRequestsTable.workerId, workerId)))
+    .returning();
+
+  if (!row) { res.status(404).json({ error: "Demande introuvable" }); return; }
+
+  await db.insert(workerNotificationsTable).values({
+    workerId,
+    type: status === "approved" ? "request_approved" : "request_rejected",
+    referenceId: reqId,
+    title: status === "approved" ? "Demande approuvée" : "Demande refusée",
+    message: responseNotes?.trim() || null,
+  });
+
+  res.json(row);
+});
+
+// DELETE /workers/:id/requests/:reqId
+router.delete("/workers/:id/requests/:reqId", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const workerId = parseInt(req.params.id, 10);
+  const reqId = parseInt(req.params.reqId, 10);
+  if (isNaN(workerId) || isNaN(reqId)) { res.status(400).json({ error: "ID invalide" }); return; }
+  await db.delete(workerRequestsTable).where(and(eq(workerRequestsTable.id, reqId), eq(workerRequestsTable.workerId, workerId)));
+  res.json({ ok: true });
+});
+
+// GET /workers/requests-pending — all pending requests (manager view)
+router.get("/workers/requests-pending", requireAuth, requirePermission(P.workers.view), async (_req, res): Promise<void> => {
+  const requests = await db.select({
+    id: workerRequestsTable.id,
+    workerId: workerRequestsTable.workerId,
+    type: workerRequestsTable.type,
+    title: workerRequestsTable.title,
+    description: workerRequestsTable.description,
+    startDate: workerRequestsTable.startDate,
+    endDate: workerRequestsTable.endDate,
+    amount: workerRequestsTable.amount,
+    status: workerRequestsTable.status,
+    createdAt: workerRequestsTable.createdAt,
+    workerName: workersTable.name,
+    workerPhoto: workersTable.photoUrl,
+    workerPosition: workersTable.position,
+  })
+    .from(workerRequestsTable)
+    .innerJoin(workersTable, eq(workerRequestsTable.workerId, workersTable.id))
+    .where(eq(workerRequestsTable.status, "pending"))
+    .orderBy(desc(workerRequestsTable.createdAt));
+  res.json(requests);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBJECTIVES
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /workers/:id/objectives?month=YYYY-MM
+router.get("/workers/:id/objectives", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const monthParam = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+  const monthDate = monthParam + "-01";
+
+  const rows = await db.select().from(workerObjectivesTable)
+    .where(and(eq(workerObjectivesTable.workerId, id), eq(workerObjectivesTable.month, monthDate)))
+    .orderBy(workerObjectivesTable.createdAt);
+  res.json(rows);
+});
+
+// POST /workers/:id/objectives
+router.post("/workers/:id/objectives", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { month, title, type, targetValue, currentValue, unit, status, notes } = req.body;
+  if (!title?.trim() || !targetValue) { res.status(400).json({ error: "Titre et valeur cible requis" }); return; }
+  const monthDate = (month || new Date().toISOString().slice(0, 7)) + "-01";
+
+  const [row] = await db.insert(workerObjectivesTable)
+    .values({
+      workerId: id,
+      month: monthDate,
+      title: title.trim(),
+      type: type || "custom",
+      targetValue: String(parseFloat(targetValue)),
+      currentValue: String(parseFloat(currentValue ?? "0")),
+      unit: unit || null,
+      status: status || "in_progress",
+      notes: notes?.trim() || null,
+    })
+    .returning();
+  res.status(201).json(row);
+});
+
+// PATCH /workers/:id/objectives/:objId
+router.patch("/workers/:id/objectives/:objId", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const workerId = parseInt(req.params.id, 10);
+  const objId = parseInt(req.params.objId, 10);
+  if (isNaN(workerId) || isNaN(objId)) { res.status(400).json({ error: "ID invalide" }); return; }
+
+  const { title, targetValue, currentValue, unit, status, notes } = req.body;
+  const patch: Record<string, any> = { updatedAt: sql`NOW()` };
+  if (title !== undefined) patch.title = title.trim();
+  if (targetValue !== undefined) patch.targetValue = String(parseFloat(targetValue));
+  if (currentValue !== undefined) patch.currentValue = String(parseFloat(currentValue));
+  if (unit !== undefined) patch.unit = unit || null;
+  if (status !== undefined) patch.status = status;
+  if (notes !== undefined) patch.notes = notes?.trim() || null;
+
+  const [row] = await db.update(workerObjectivesTable).set(patch)
+    .where(and(eq(workerObjectivesTable.id, objId), eq(workerObjectivesTable.workerId, workerId)))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Objectif introuvable" }); return; }
+  res.json(row);
+});
+
+// DELETE /workers/:id/objectives/:objId
+router.delete("/workers/:id/objectives/:objId", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const workerId = parseInt(req.params.id, 10);
+  const objId = parseInt(req.params.objId, 10);
+  if (isNaN(workerId) || isNaN(objId)) { res.status(400).json({ error: "ID invalide" }); return; }
+  await db.delete(workerObjectivesTable).where(and(eq(workerObjectivesTable.id, objId), eq(workerObjectivesTable.workerId, workerId)));
+  res.json({ ok: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CALENDAR EVENTS (absences, vacations, birthdays, contract dates)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/workers/calendar-events", requireAuth, requirePermission(P.workers.view), async (req, res): Promise<void> => {
+  const monthParam = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+  const [y, m] = monthParam.split("-");
+  const from = `${y}-${m}-01`;
+  const toDate = new Date(parseInt(y), parseInt(m), 0);
+  const to = toDate.toISOString().split("T")[0];
+
+  const [workers, attendance, requests] = await Promise.all([
+    db.select({
+      id: workersTable.id,
+      name: workersTable.name,
+      photoUrl: workersTable.photoUrl,
+      birthDate: workersTable.birthDate,
+      hireDate: workersTable.hireDate,
+    }).from(workersTable).where(eq(workersTable.isActive, true)),
+    db.select().from(workerAttendanceTable)
+      .where(and(
+        gte(workerAttendanceTable.date, from),
+        lte(workerAttendanceTable.date, to),
+      )),
+    db.select({
+      id: workerRequestsTable.id,
+      workerId: workerRequestsTable.workerId,
+      type: workerRequestsTable.type,
+      title: workerRequestsTable.title,
+      startDate: workerRequestsTable.startDate,
+      endDate: workerRequestsTable.endDate,
+      status: workerRequestsTable.status,
+    }).from(workerRequestsTable)
+      .where(and(
+        eq(workerRequestsTable.status, "approved"),
+        gte(workerRequestsTable.startDate, from),
+        lte(workerRequestsTable.startDate, to),
+      )),
+  ]);
+
+  const workerMap = new Map(workers.map(w => [w.id, w]));
+  const events: { date: string; type: string; label: string; workerName: string; workerId: number }[] = [];
+
+  // Attendance events (absences / vacations only)
+  attendance
+    .filter(a => ["absent", "vacation", "sick"].includes(a.status))
+    .forEach(a => {
+      const w = workerMap.get(a.workerId);
+      if (!w) return;
+      events.push({
+        date: a.date,
+        type: a.status,
+        label: a.status === "absent" ? "Absence" : a.status === "vacation" ? "Congé" : "Maladie",
+        workerName: w.name,
+        workerId: w.id,
+      });
+    });
+
+  // Approved requests
+  requests.forEach(r => {
+    const w = workerMap.get(r.workerId);
+    if (!w || !r.startDate) return;
+    events.push({
+      date: r.startDate,
+      type: "request_" + r.type,
+      label: r.title,
+      workerName: w.name,
+      workerId: w.id,
+    });
+  });
+
+  // Birthdays this month
+  workers.forEach(w => {
+    if (!w.birthDate) return;
+    const bd = w.birthDate;
+    const bdDay = bd.slice(5); // MM-DD
+    const eventDate = `${y}-${bdDay}`;
+    if (eventDate >= from && eventDate <= to) {
+      events.push({ date: eventDate, type: "birthday", label: "Anniversaire", workerName: w.name, workerId: w.id });
+    }
+  });
+
+  // Hire anniversaries this month
+  workers.forEach(w => {
+    if (!w.hireDate) return;
+    const hdDay = w.hireDate.slice(5);
+    const eventDate = `${y}-${hdDay}`;
+    if (eventDate >= from && eventDate <= to) {
+      events.push({ date: eventDate, type: "anniversary", label: "Anniversaire d'embauche", workerName: w.name, workerId: w.id });
+    }
+  });
+
+  events.sort((a, b) => a.date.localeCompare(b.date));
+  res.json(events);
+});
+
 export { router as workersHRRouter };
+

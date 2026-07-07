@@ -434,6 +434,61 @@ async function runMigrations() {
       );
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_notifications_worker_unread ON worker_notifications (worker_id, is_read, created_at DESC);`);
+    // HR extended tables
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_salaries (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        month DATE NOT NULL,
+        base_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
+        bonuses DECIMAL(12,2) NOT NULL DEFAULT 0,
+        deductions DECIMAL(12,2) NOT NULL DEFAULT 0,
+        overtime_hours DECIMAL(6,2) NOT NULL DEFAULT 0,
+        overtime_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+        advance DECIMAL(12,2) NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        UNIQUE(worker_id, month)
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_salaries_worker_month ON worker_salaries (worker_id, month DESC);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_requests (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        description TEXT,
+        start_date DATE,
+        end_date DATE,
+        amount DECIMAL(10,2),
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        response_notes TEXT,
+        responded_by_user_id INTEGER,
+        responded_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_requests_worker_status ON worker_requests (worker_id, status, created_at DESC);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS worker_objectives (
+        id SERIAL PRIMARY KEY,
+        worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+        month DATE NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        type VARCHAR(50) NOT NULL DEFAULT 'custom',
+        target_value DECIMAL(10,2) NOT NULL,
+        current_value DECIMAL(10,2) NOT NULL DEFAULT 0,
+        unit VARCHAR(30),
+        status VARCHAR(20) DEFAULT 'in_progress',
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_objectives_worker_month ON worker_objectives (worker_id, month DESC);`);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
