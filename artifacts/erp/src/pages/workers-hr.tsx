@@ -274,11 +274,11 @@ export default function WorkersHR() {
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary" className="gap-1.5">
               <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
-              {stats.today.present + stats.today.late} présent{stats.today.present + stats.today.late > 1 ? "s" : ""} aujourd'hui
+              {(stats.today?.present ?? 0) + (stats.today?.late ?? 0)} présent{(stats.today?.present ?? 0) + (stats.today?.late ?? 0) > 1 ? "s" : ""} aujourd'hui
             </Badge>
-            {stats.monthly.openWarnings > 0 && (
+            {(stats.monthly?.openWarnings ?? 0) > 0 && (
               <Badge className="bg-amber-100 text-amber-700 gap-1.5 hover:bg-amber-100">
-                <AlertTriangle className="h-3 w-3" />{stats.monthly.openWarnings} avert. ouverts
+                <AlertTriangle className="h-3 w-3" />{stats.monthly?.openWarnings} avert. ouverts
               </Badge>
             )}
           </div>
@@ -309,11 +309,11 @@ export default function WorkersHR() {
         <div className="space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: "Présents", value: stats?.today.present ?? "—", icon: UserCheck,   color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200" },
-              { label: "Retards",  value: stats?.today.late ?? "—",    icon: Clock,        color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200" },
-              { label: "Absents",  value: stats?.today.absent ?? "—",  icon: UserX,        color: "text-red-600",     bg: "bg-red-50",      border: "border-red-200" },
-              { label: "Malades",  value: stats?.today.sick ?? "—",    icon: Stethoscope,  color: "text-purple-600",  bg: "bg-purple-50",   border: "border-purple-200" },
-              { label: "Congés",   value: stats?.today.vacation ?? "—", icon: Palmtree,    color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200" },
+              { label: "Présents", value: stats?.today?.present ?? "—", icon: UserCheck,   color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200" },
+              { label: "Retards",  value: stats?.today?.late ?? "—",    icon: Clock,        color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200" },
+              { label: "Absents",  value: stats?.today?.absent ?? "—",  icon: UserX,        color: "text-red-600",     bg: "bg-red-50",      border: "border-red-200" },
+              { label: "Malades",  value: stats?.today?.sick ?? "—",    icon: Stethoscope,  color: "text-purple-600",  bg: "bg-purple-50",   border: "border-purple-200" },
+              { label: "Congés",   value: stats?.today?.vacation ?? "—", icon: Palmtree,    color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200" },
               { label: "Actifs",   value: stats?.totalActive ?? "—",   icon: Users,        color: "text-primary",     bg: "bg-primary/5",   border: "border-primary/20" },
             ].map(k => (
               <Card key={k.label} className={`${k.bg} ${k.border} border`}>
@@ -465,14 +465,14 @@ export default function WorkersHR() {
                 <div className="space-y-2 pt-2 border-t">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Taux de présence</span>
-                    <span className="font-semibold text-emerald-600">{stats?.monthly.attendanceRate ?? 0}%</span>
+                    <span className="font-semibold text-emerald-600">{stats?.monthly?.attendanceRate ?? 0}%</span>
                   </div>
-                  <Progress value={stats?.monthly.attendanceRate ?? 0} className="h-2" />
+                  <Progress value={stats?.monthly?.attendanceRate ?? 0} className="h-2" />
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Taux de ponctualité</span>
-                    <span className="font-semibold text-blue-600">{stats?.monthly.punctualityRate ?? 0}%</span>
+                    <span className="font-semibold text-blue-600">{stats?.monthly?.punctualityRate ?? 0}%</span>
                   </div>
-                  <Progress value={stats?.monthly.punctualityRate ?? 0} className="h-2 [&>div]:bg-blue-500" />
+                  <Progress value={stats?.monthly?.punctualityRate ?? 0} className="h-2 [&>div]:bg-blue-500" />
                 </div>
               </CardContent>
             </Card>
@@ -927,9 +927,9 @@ export default function WorkersHR() {
             <CardContent>
               <div className="space-y-2.5">
                 {[
-                  stats && stats.monthly.attendanceRate < 80 ? { icon: "⚠️", text: `Taux de présence bas (${stats.monthly.attendanceRate}%). Envisagez des entretiens individuels.` } : null,
-                  stats && stats.monthly.openWarnings > 3 ? { icon: "🔔", text: `${stats.monthly.openWarnings} avertissements ouverts. Planifiez des réunions disciplinaires.` } : null,
-                  stats && stats.monthly.punctualityRate < 85 ? { icon: "⏰", text: `Ponctualité à ${stats.monthly.punctualityRate}%. Revoyez les horaires ou proposez plus de flexibilité.` } : null,
+                  (stats?.monthly?.attendanceRate ?? 100) < 80 ? { icon: "⚠️", text: `Taux de présence bas (${stats?.monthly?.attendanceRate ?? 0}%). Envisagez des entretiens individuels.` } : null,
+                  (stats?.monthly?.openWarnings ?? 0) > 3 ? { icon: "🔔", text: `${stats?.monthly?.openWarnings} avertissements ouverts. Planifiez des réunions disciplinaires.` } : null,
+                  (stats?.monthly?.punctualityRate ?? 100) < 85 ? { icon: "⏰", text: `Ponctualité à ${stats?.monthly?.punctualityRate ?? 0}%. Revoyez les horaires ou proposez plus de flexibilité.` } : null,
                   topAbsent.length > 0 && topAbsent[0]?.absent > 4 ? { icon: "📋", text: `${topAbsent[0]?.worker?.name} a ${topAbsent[0]?.absent} absences ce mois. Un suivi RH est recommandé.` } : null,
                   deptAbsences.length > 0 && deptAbsences[0]?.absences > 3 ? { icon: "🏢", text: `Le département "${deptAbsences[0].dept}" enregistre le plus d'absences (${deptAbsences[0].absences}). Investiguer les causes.` } : null,
                   { icon: "✅", text: "Continuez à enregistrer les présences quotidiennement pour des analyses plus précises et des rapports complets." },
