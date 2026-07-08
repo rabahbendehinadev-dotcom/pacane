@@ -513,25 +513,25 @@ export default function WorkersHR() {
           ) : (
             <div className="grid gap-2">
               {filteredToday.map(entry => {
-                const current = bulkStatus[entry.worker.id] ?? entry.attendance?.status ?? "absent";
+                const current = bulkStatus[entry.worker?.id] ?? entry.attendance?.status ?? "absent";
                 const opt = STATUS_OPTIONS.find(s => s.value === current);
                 return (
-                  <Card key={entry.worker.id} className="hover:shadow-sm transition-shadow">
+                  <Card key={entry.worker?.id ?? Math.random()} className="hover:shadow-sm transition-shadow">
                     <CardContent className="p-3 flex items-center gap-3">
-                      {entry.worker.photoUrl ? (
-                        <img src={entry.worker.photoUrl} alt={entry.worker.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-border shrink-0" />
+                      {entry.worker?.photoUrl ? (
+                        <img src={entry.worker.photoUrl} alt={entry.worker?.name ?? ""} className="h-9 w-9 rounded-full object-cover ring-2 ring-border shrink-0" />
                       ) : (
                         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-                          {entry.worker.name.charAt(0).toUpperCase()}
+                          {(entry.worker?.name ?? "?").charAt(0).toUpperCase()}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <Link href={`/workers/${entry.worker.id}`}>
-                          <p className="text-sm font-medium hover:text-primary cursor-pointer truncate">{entry.worker.name}</p>
+                        <Link href={`/workers/${entry.worker?.id}`}>
+                          <p className="text-sm font-medium hover:text-primary cursor-pointer truncate">{entry.worker?.name ?? "—"}</p>
                         </Link>
-                        <p className="text-[11px] text-muted-foreground truncate">{entry.worker.position ?? entry.worker.department ?? "—"}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{entry.worker?.position ?? entry.worker?.department ?? "—"}</p>
                       </div>
-                      <Select value={current} onValueChange={v => setBulkStatus(prev => ({ ...prev, [entry.worker.id]: v }))}>
+                      <Select value={current} onValueChange={v => setBulkStatus(prev => ({ ...prev, [entry.worker?.id ?? 0]: v }))}>
                         <SelectTrigger className="h-7 w-36 text-xs">
                           <div className="flex items-center gap-1.5">
                             <div className={`h-2 w-2 rounded-full shrink-0 ${opt?.color ?? "bg-gray-400"}`} />
@@ -790,9 +790,9 @@ export default function WorkersHR() {
                           <div key={rank} className="flex flex-col items-center gap-2">
                             <span className="text-2xl">{medals[rank]}</span>
                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                              {e.worker.name.charAt(0).toUpperCase()}
+                              {(e.worker?.name ?? "?").charAt(0).toUpperCase()}
                             </div>
-                            <p className="text-xs font-medium text-center w-20 truncate">{e.worker.name}</p>
+                            <p className="text-xs font-medium text-center w-20 truncate">{e.worker?.name ?? "—"}</p>
                             <p className="text-[10px] text-muted-foreground">{e.score}/100</p>
                             <div className={`w-20 ${colors[rank]} rounded-t-lg`} style={{ height: `${heights[rank] * 3}px` }} />
                           </div>
@@ -806,13 +806,13 @@ export default function WorkersHR() {
                 <CardContent className="p-0">
                   <div className="divide-y">
                     {ranking.map((e, i) => (
-                      <div key={e.worker.id} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? "bg-amber-50/30" : ""}`}>
+                      <div key={e.worker?.id ?? i} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? "bg-amber-50/30" : ""}`}>
                         <span className="text-sm font-bold text-muted-foreground w-6 shrink-0">
                           {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{e.worker.name}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{e.worker.position ?? e.worker.department ?? "—"}</p>
+                          <p className="text-sm font-medium truncate">{e.worker?.name ?? "—"}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{e.worker?.position ?? e.worker?.department ?? "—"}</p>
                         </div>
                         <div className="text-right mr-4 hidden sm:block">
                           <p className="text-xs text-muted-foreground">Présence</p>
@@ -823,7 +823,7 @@ export default function WorkersHR() {
                           <span className="text-sm font-bold text-primary w-14 text-right">{e.score}/100</span>
                         </div>
                         <Badge variant="outline" className="text-[10px] hidden sm:flex">{e.label}</Badge>
-                        <Link href={`/workers/${e.worker.id}`}>
+                        <Link href={`/workers/${e.worker?.id}`}>
                           <Button variant="ghost" size="sm" className="h-7 text-xs">Voir</Button>
                         </Link>
                       </div>
@@ -883,10 +883,10 @@ export default function WorkersHR() {
                     <div key={i} className="flex items-center gap-3 px-4 py-2.5">
                       <span className="text-sm">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{e.worker.name}</p>
+                        <p className="text-xs font-medium truncate">{e.worker?.name ?? "—"}</p>
                         <p className="text-[10px] text-muted-foreground">{e.score}/100 — {e.label}</p>
                       </div>
-                      <Link href={`/workers/${e.worker.id}`}><Button variant="ghost" size="sm" className="h-6 text-xs px-2">→</Button></Link>
+                      <Link href={`/workers/${e.worker?.id}`}><Button variant="ghost" size="sm" className="h-6 text-xs px-2">→</Button></Link>
                     </div>
                   ))}
                 </div>
