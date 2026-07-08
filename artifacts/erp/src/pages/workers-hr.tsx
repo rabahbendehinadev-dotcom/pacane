@@ -181,14 +181,14 @@ export default function WorkersHR() {
   const filteredToday = useMemo(() => {
     return todayAttendance.filter(e => {
       const q = searchQuery.toLowerCase();
-      const nameMatch = !q || e.worker.name.toLowerCase().includes(q);
-      const deptMatch = deptFilter === "all" || e.worker.department === deptFilter;
+      const nameMatch = !q || (e.worker?.name ?? "").toLowerCase().includes(q);
+      const deptMatch = deptFilter === "all" || e.worker?.department === deptFilter;
       return nameMatch && deptMatch;
     });
   }, [todayAttendance, searchQuery, deptFilter]);
 
   const departments = useMemo(() => {
-    const ds = new Set(todayAttendance.map(e => e.worker.department).filter(Boolean));
+    const ds = new Set(todayAttendance.map(e => e.worker?.department).filter(Boolean));
     return Array.from(ds) as string[];
   }, [todayAttendance]);
 
@@ -519,7 +519,7 @@ export default function WorkersHR() {
                   <Card key={entry.worker?.id ?? Math.random()} className="hover:shadow-sm transition-shadow">
                     <CardContent className="p-3 flex items-center gap-3">
                       {entry.worker?.photoUrl ? (
-                        <img src={entry.worker.photoUrl} alt={entry.worker?.name ?? ""} className="h-9 w-9 rounded-full object-cover ring-2 ring-border shrink-0" />
+                        <img src={entry.worker?.photoUrl} alt={entry.worker?.name ?? ""} className="h-9 w-9 rounded-full object-cover ring-2 ring-border shrink-0" />
                       ) : (
                         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                           {(entry.worker?.name ?? "?").charAt(0).toUpperCase()}
