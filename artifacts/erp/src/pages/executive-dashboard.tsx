@@ -267,22 +267,21 @@ async function exportCompareToExcel(opts: {
   cmpBrRows: { branchId: number; branchName: string; revA: number; revB: number }[];
   cmpCatRows: { category: string; revA: number; revB: number }[];
 }) {
-  const XLSX = await import("xlsx");
+  const ExcelJS = (await import("exceljs")).default;
   const deltaStr = (a: number, b: number) => {
     if (b === 0) return a > 0 ? "+100%" : "—";
     const d = Math.round(((a - b) / Math.abs(b)) * 100);
     return d === 0 ? "—" : `${d > 0 ? "+" : ""}${d}%`;
   };
-  const wb = XLSX.utils.book_new();
-  const header = [
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("CA Comparatif");
+  ws.columns = [{ width: 28 }, { width: 20 }, { width: 20 }, { width: 12 }];
+  const rows: (string | number)[][] = [
     [`Analyse Comparative CA — Pacane ERP`],
     [`Exporté le : ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
     [`A (${opts.labelA}) : ${opts.fromA} → ${opts.toA}`],
     [`B (${opts.labelB}) : ${opts.fromB} → ${opts.toB}`],
     [],
-  ];
-  const ws = XLSX.utils.aoa_to_sheet([
-    ...header,
     ["Indicateur", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
     ["CA",              opts.pA.grossRevenue, opts.pB.grossRevenue, deltaStr(opts.pA.grossRevenue, opts.pB.grossRevenue)],
     ["Encaissé",        opts.pA.encaisse,     opts.pB.encaisse,     deltaStr(opts.pA.encaisse, opts.pB.encaisse)],
@@ -300,10 +299,16 @@ async function exportCompareToExcel(opts: {
       ["CA par produit / catégorie", `A — ${opts.labelA}`, `B — ${opts.labelB}`, "Δ"],
       ...opts.cmpCatRows.map(c => [c.category || "—", c.revA, c.revB, deltaStr(c.revA, c.revB)]),
     ] : []),
-  ]);
-  ws["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, ws, "CA Comparatif");
-  XLSX.writeFile(wb, `CA-comparatif-${opts.labelA}-vs-${opts.labelB}.xlsx`);
+  ];
+  rows.forEach(r => ws.addRow(r));
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `CA-comparatif-${opts.labelA}-vs-${opts.labelB}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
