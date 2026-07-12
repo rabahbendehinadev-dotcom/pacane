@@ -331,7 +331,7 @@ function CostPreviewPanel({ recipeId, quantity, wastePercentage }: { recipeId: s
         <p className="font-semibold text-sm text-amber-800">Estimation des coûts</p>
         {cost.warnings?.length > 0 && <AlertTriangle className="h-3.5 w-3.5 text-amber-500 ml-auto" />}
       </div>
-      <div className="grid grid-cols-3 gap-2 text-sm">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
         <div className="text-center">
           <p className="text-xs text-muted-foreground">Coût total</p>
           <p className="font-bold text-amber-700">{formatDA(cost.totalCost)}</p>
@@ -462,7 +462,7 @@ export default function Production() {
 
         <TabsContent value="orders">
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -584,14 +584,16 @@ export default function Production() {
               </SheetHeader>
               <div className="pt-4">
                 <Tabs value={detailTab} onValueChange={setDetailTab}>
-                  <TabsList className="w-full grid grid-cols-4">
-                    <TabsTrigger value="availability" className="text-xs"><ClipboardList className="h-3.5 w-3.5 mr-1" />Dispo.</TabsTrigger>
-                    <TabsTrigger value="cost" className="text-xs"><DollarSign className="h-3.5 w-3.5 mr-1" />Coûts</TabsTrigger>
-                    <TabsTrigger value="bom" className="text-xs"><GitBranch className="h-3.5 w-3.5 mr-1" />BOM</TabsTrigger>
-                    <TabsTrigger value="overrides" className="text-xs">
+                  <div className="overflow-x-auto -mx-1 px-1">
+                  <TabsList className="inline-flex w-max min-w-full">
+                    <TabsTrigger value="availability" className="text-xs whitespace-nowrap"><ClipboardList className="h-3.5 w-3.5 mr-1" />Dispo.</TabsTrigger>
+                    <TabsTrigger value="cost" className="text-xs whitespace-nowrap"><DollarSign className="h-3.5 w-3.5 mr-1" />Coûts</TabsTrigger>
+                    <TabsTrigger value="bom" className="text-xs whitespace-nowrap"><GitBranch className="h-3.5 w-3.5 mr-1" />BOM</TabsTrigger>
+                    <TabsTrigger value="overrides" className="text-xs whitespace-nowrap">
                       <Shield className="h-3.5 w-3.5 mr-1" />Dérog.{overrideLogs.length > 0 && <Badge variant="secondary" className="ml-1 text-xs">{overrideLogs.length}</Badge>}
                     </TabsTrigger>
                   </TabsList>
+                  </div>
                   <TabsContent value="availability" className="mt-4"><AvailabilityPanel availability={availability} loading={availLoading} /></TabsContent>
                   <TabsContent value="cost" className="mt-4"><CostPanel orderId={detailOrderId} order={detailOrder} /></TabsContent>
                   <TabsContent value="bom" className="mt-4"><BomPanel orderId={detailOrderId} /></TabsContent>

@@ -225,7 +225,7 @@ export default function AnalyticsProduction() {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {DATE_PRESETS.map((p, i) => (
                   <Button
                     key={i}
@@ -502,7 +502,7 @@ export default function AnalyticsProduction() {
                 Classement recettes — Production et performance
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(recipes) && (recipes as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -571,7 +571,7 @@ export default function AnalyticsProduction() {
                 Analyse de rendement — Ordres terminés
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(yieldData) && (yieldData as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -641,7 +641,7 @@ export default function AnalyticsProduction() {
                 Consommation calculée à partir des fiches recettes × quantités réellement produites (avec pertes incluses)
               </p>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(ingredients) && (ingredients as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -691,7 +691,7 @@ export default function AnalyticsProduction() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Tous les ordres de production</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(orders) && (orders as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>

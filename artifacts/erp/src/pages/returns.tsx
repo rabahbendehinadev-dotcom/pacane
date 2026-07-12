@@ -641,7 +641,7 @@ export default function Returns() {
         </div>
 
         {/* Stats bar */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           {[
             { label: "Total", value: stats.total, cls: "text-foreground" },
             { label: "Brouillons", value: stats.draft, cls: "text-gray-600" },

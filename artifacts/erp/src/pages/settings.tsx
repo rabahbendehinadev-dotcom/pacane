@@ -262,16 +262,18 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="company" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8 h-10">
-          <TabsTrigger value="company" className="text-xs">Entreprise</TabsTrigger>
-          <TabsTrigger value="numbering" className="text-xs">Numérotation</TabsTrigger>
-          <TabsTrigger value="tax" className="text-xs">TVA</TabsTrigger>
-          <TabsTrigger value="payments" className="text-xs">Paiements</TabsTrigger>
-          <TabsTrigger value="discounts" className="text-xs">Remises</TabsTrigger>
-          <TabsTrigger value="system" className="text-xs">Système</TabsTrigger>
-          <TabsTrigger value="notifications" className="text-xs">Notifs</TabsTrigger>
-          <TabsTrigger value="devices" className="text-xs">Appareils</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <TabsList className="inline-flex w-max min-w-full h-10">
+            <TabsTrigger value="company" className="text-xs whitespace-nowrap">Entreprise</TabsTrigger>
+            <TabsTrigger value="numbering" className="text-xs whitespace-nowrap">Numérotation</TabsTrigger>
+            <TabsTrigger value="tax" className="text-xs whitespace-nowrap">TVA</TabsTrigger>
+            <TabsTrigger value="payments" className="text-xs whitespace-nowrap">Paiements</TabsTrigger>
+            <TabsTrigger value="discounts" className="text-xs whitespace-nowrap">Remises</TabsTrigger>
+            <TabsTrigger value="system" className="text-xs whitespace-nowrap">Système</TabsTrigger>
+            <TabsTrigger value="notifications" className="text-xs whitespace-nowrap">Notifs</TabsTrigger>
+            <TabsTrigger value="devices" className="text-xs whitespace-nowrap">Appareils</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ── TAB: ENTREPRISE ── */}
         <TabsContent value="company" className="space-y-4">

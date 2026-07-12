@@ -414,7 +414,7 @@ function CreateReturnDialog({ onClose }: { onClose: () => void }) {
 
             <div className="border rounded-lg p-3 space-y-3">
               <p className="text-sm font-medium text-muted-foreground">Ajouter un article libre</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <div className="col-span-1">
                   <Select value={freeProductId} onValueChange={setFreeProductId}>
                     <SelectTrigger><SelectValue placeholder="Produit..." /></SelectTrigger>

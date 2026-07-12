@@ -114,7 +114,7 @@ function ScorePips({ score, max = 5 }: { score: number; max?: number }) {
 
 function RfmScoreCard({ r, f, m, total }: { r: number; f: number; m: number; total: number }) {
   return (
-    <div className="grid grid-cols-4 gap-2 text-center">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
       {[["R", r, "text-blue-700"], ["F", f, "text-green-700"], ["M", m, "text-amber-700"]].map(([lbl, val, cls]) => (
         <div key={String(lbl)} className="bg-muted/30 rounded-lg p-2">
           <p className="text-[10px] text-muted-foreground">{lbl}</p>
@@ -515,7 +515,7 @@ export default function LoyaltyPage() {
                     {crmLoading ? (
                       <div className="flex gap-2"><div className="h-12 flex-1 bg-muted animate-pulse rounded" /><div className="h-12 flex-1 bg-muted animate-pulse rounded" /><div className="h-12 flex-1 bg-muted animate-pulse rounded" /></div>
                     ) : (
-                      <div className="grid grid-cols-4 gap-2 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                         {[
                           { key: "VIP",      color: "text-amber-700",  bg: "bg-amber-50",  label: "VIP",      icon: Crown },
                           { key: "Régulier", color: "text-blue-700",   bg: "bg-blue-50",   label: "Régulier", icon: Users },
@@ -555,7 +555,7 @@ export default function LoyaltyPage() {
             </div>
 
             <Card className="border-0 shadow-sm">
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 {segLoading ? (
                   <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Calcul RFM en cours...</div>
                 ) : segs.length > 0 ? (
@@ -766,7 +766,7 @@ export default function LoyaltyPage() {
             </div>
 
             <Card className="border-0 shadow-sm">
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 {rankLoading ? (
                   <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Calcul...</div>
                 ) : (ranks?.[rankTab]?.length > 0) ? (
@@ -901,7 +901,7 @@ export default function LoyaltyPage() {
                 ].map((s, i) => (
                   <Card key={i} className={`border ${s.color} shadow-sm`}>
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <p className={`text-sm font-bold ${s.titleColor}`}>{s.title}</p>
@@ -926,7 +926,7 @@ export default function LoyaltyPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold">Aperçu audience ({campaignCustomers.length} clients)</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-0">
+                    <CardContent className="p-0 overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">

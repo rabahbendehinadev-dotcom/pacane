@@ -239,7 +239,7 @@ export default function AnalyticsSellers() {
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
             {/* Presets */}
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {DATE_PRESETS.map((p, i) => (
                 <Button
                   key={i} size="sm" variant={activePreset === i ? "default" : "outline"}
@@ -414,7 +414,7 @@ export default function AnalyticsSellers() {
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">

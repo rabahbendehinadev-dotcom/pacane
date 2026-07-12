@@ -812,7 +812,7 @@ export default function Purchases() {
       {/* List */}
       <div className="flex gap-6">
         <Card className="flex-1">
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -988,7 +988,7 @@ export default function Purchases() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div><Label>Remise (DA)</Label><Input type="number" min="0" value={form.discount} onChange={e => setForm(f => ({ ...f, discount: e.target.value }))} /></div>
               <div><Label>Taxes (DA)</Label><Input type="number" min="0" value={form.tax} onChange={e => setForm(f => ({ ...f, tax: e.target.value }))} /></div>
               <div className="flex flex-col justify-end pb-1">

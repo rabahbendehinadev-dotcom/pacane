@@ -416,7 +416,7 @@ function ProductionPlanPanel({ plans }: { plans: ProductionPlan[] | undefined })
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 text-center">
           <p className="text-xl font-bold text-amber-700">{allItems.filter(i => i.priority === "urgent").length}</p>
           <p className="text-xs text-muted-foreground">Ordres urgents</p>
@@ -483,7 +483,7 @@ function TransfersPanel({ plan }: { plan: StockDistPlan | undefined }) {
   if (!plan) return null;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border bg-purple-50 border-purple-200 p-3 text-center">
           <p className="text-xl font-bold text-purple-700">{plan.totalTransfers}</p>
           <p className="text-xs text-muted-foreground">Transferts suggérés</p>

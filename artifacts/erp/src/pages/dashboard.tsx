@@ -529,8 +529,8 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className="pt-0 space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-white border border-red-100 p-3 text-center">
+              <div className="grid grid-cols-3 gap-3 min-w-0">
+                <div className="rounded-lg bg-white border border-red-100 p-3 text-center min-w-0">
                   <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
                     <AlertTriangle className="h-3 w-3 text-red-400" />Valeur perdue
                   </div>
@@ -560,8 +560,8 @@ export default function Dashboard() {
               {lossStats.byReason.length > 0 ? (
                 <div>
                   <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Détail par motif</div>
-                  <div className="rounded-md border border-red-100 bg-white overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto rounded-md border border-red-100 bg-white">
+                    <table className="w-full text-sm min-w-[400px]">
                       <thead>
                         <tr className="border-b border-red-100 bg-red-50/50">
                           <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Motif</th>

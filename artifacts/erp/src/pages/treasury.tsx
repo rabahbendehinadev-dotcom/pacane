@@ -217,7 +217,7 @@ export default function Treasury() {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {DATE_PRESETS.map((p, i) => (
                   <Button
                     key={i}
@@ -420,7 +420,7 @@ export default function Treasury() {
               Comparaison des agences
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -488,7 +488,7 @@ export default function Treasury() {
                   Créances clients — Ancienneté
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -530,7 +530,7 @@ export default function Treasury() {
                   Dettes fournisseurs — Ancienneté
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -584,7 +584,7 @@ export default function Treasury() {
                 </Select>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {filteredMovements.length > 0 ? (
                 <Table>
                   <TableHeader>

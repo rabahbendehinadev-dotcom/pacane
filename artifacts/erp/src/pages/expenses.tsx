@@ -430,7 +430,7 @@ export default function Expenses() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -542,7 +542,7 @@ export default function Expenses() {
           {detail ? (
             <div className="space-y-5">
               {/* Reference & status */}
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-sm text-muted-foreground">{detail.reference}</span>
                 <div className="flex items-center gap-2">
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusInfo(detail.status).color}`}>

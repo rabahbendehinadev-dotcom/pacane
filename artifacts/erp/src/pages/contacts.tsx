@@ -224,7 +224,7 @@ function ContactProfile({ contact, onEdit }: { contact: Contact; onEdit: () => v
           </Button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 text-sm">
           {contact.phone && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{contact.phone}</span>
@@ -719,7 +719,7 @@ export default function Contacts() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

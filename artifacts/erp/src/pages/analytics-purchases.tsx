@@ -250,7 +250,7 @@ export default function AnalyticsPurchases() {
             {/* Presets */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {DATE_PRESETS.map((p, i) => (
                   <Button
                     key={i}
@@ -565,7 +565,7 @@ export default function AnalyticsPurchases() {
                 Classement fournisseurs
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(suppliers) && (suppliers as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -640,7 +640,7 @@ export default function AnalyticsPurchases() {
                 </Select>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {filteredReceptions.length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -704,7 +704,7 @@ export default function AnalyticsPurchases() {
                 Top produits achetés — par coût total
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(products) && (products as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -775,7 +775,7 @@ export default function AnalyticsPurchases() {
                 </Select>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {filteredOrders.length > 0 ? (
                 <Table>
                   <TableHeader>

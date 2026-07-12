@@ -501,7 +501,7 @@ export default function AnalyticsSales() {
             Chiffre d'affaires · Produits · Clients · Vendeurs · Conversion
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {k && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold ${k.netRevenue >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
               <TrendingUp className="h-4 w-4" />
@@ -521,7 +521,7 @@ export default function AnalyticsSales() {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {DATE_PRESETS.map((p, i) => (
                   <Button
                     key={i}
@@ -847,7 +847,7 @@ export default function AnalyticsSales() {
                 Ventes par agence
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
@@ -1059,7 +1059,7 @@ export default function AnalyticsSales() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(products) && (products as any[]).length > 0 ? (
                 <>
                   <Table>
@@ -1152,7 +1152,7 @@ export default function AnalyticsSales() {
                 Classement clients — par chiffre d'affaires
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(customers) && (customers as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -1207,7 +1207,7 @@ export default function AnalyticsSales() {
                 Performance vendeurs / caissiers
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(sellers) && (sellers as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -1269,7 +1269,7 @@ export default function AnalyticsSales() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {Array.isArray(documents) && (documents as any[]).length > 0 ? (
                 <Table>
                   <TableHeader>
@@ -1480,7 +1480,7 @@ export default function AnalyticsSales() {
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 overflow-x-auto">
                     <div className="divide-y divide-border/60">
                       {al.stagnantProducts.map((p: any) => (
                         <div
@@ -1515,7 +1515,7 @@ export default function AnalyticsSales() {
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 overflow-x-auto">
                     <div className="divide-y divide-border/60">
                       {al.inactiveCustomers.map((c: any) => (
                         <div
@@ -1555,7 +1555,7 @@ export default function AnalyticsSales() {
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 overflow-x-auto">
                     <div className="divide-y divide-border/60">
                       {al.negativeMarginProducts.map((p: any) => (
                         <div
@@ -1783,7 +1783,7 @@ export default function AnalyticsSales() {
                     />
                   </div>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>

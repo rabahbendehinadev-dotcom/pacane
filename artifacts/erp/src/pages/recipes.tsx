@@ -143,7 +143,7 @@ function CostAnalysisPanel({ recipeId, quantity, yieldQty }: { recipeId: number;
           )}
 
           {/* Summary cards */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="rounded-lg border bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 p-3 text-center">
               <p className="text-xs text-muted-foreground mb-1">Coût total</p>
               <p className="text-lg font-bold text-amber-700">{formatDA(cost.totalCost)}</p>
@@ -812,7 +812,7 @@ export default function Recipes() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label>Produit associé</Label>
                 <SearchableCombobox

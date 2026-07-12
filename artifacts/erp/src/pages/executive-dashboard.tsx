@@ -493,7 +493,7 @@ export default function ExecutiveDashboard() {
     <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-indigo-50 rounded-xl">
@@ -939,8 +939,8 @@ export default function ExecutiveDashboard() {
 
             {/* Detail table */}
             <Card className="border-0 shadow-sm">
-              <CardContent className="p-0">
-                <div className="divide-y divide-border/50">
+              <CardContent className="p-0 overflow-x-auto">
+                <div className="divide-y divide-border/50 min-w-[560px]">
                   {/* Header */}
                   <div className="grid grid-cols-7 px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                     <span className="col-span-2">Agence</span>
@@ -1303,7 +1303,7 @@ export default function ExecutiveDashboard() {
                           <Building2 className="h-3.5 w-3.5" /> CA par agence — A vs B
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0">
+                      <CardContent className="p-0 overflow-x-auto">
                         <div className="divide-y divide-border/50">
                           <div className="grid grid-cols-[1fr_auto_auto_auto] px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider gap-3">
                             <span>Agence</span>
@@ -1394,7 +1394,7 @@ export default function ExecutiveDashboard() {
                           <Package className="h-3.5 w-3.5" /> CA par produit / catégorie — A vs B
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0">
+                      <CardContent className="p-0 overflow-x-auto">
                         <div className="divide-y divide-border/50">
                           <div className="grid grid-cols-[1fr_auto_auto_auto] px-4 py-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider gap-3">
                             <span>Catégorie</span>

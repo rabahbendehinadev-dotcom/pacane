@@ -366,7 +366,7 @@ export default function Stock() {
 
         <TabsContent value="levels">
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -427,7 +427,7 @@ export default function Stock() {
 
         <TabsContent value="alerts">
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -458,7 +458,7 @@ export default function Stock() {
 
         <TabsContent value="movements">
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

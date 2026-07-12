@@ -280,7 +280,7 @@ function SalesTab({ filters }: { filters: Filters }) {
         <SectionCard title="Top produits vendus">
           {(da.topProducts ?? []).length === 0 ? <EmptyState /> : (
             <div className="flex gap-4">
-              <ResponsiveContainer width="55%" height={180}>
+              <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie data={da.topProducts} dataKey="revenue" nameKey="productName" cx="50%" cy="50%" outerRadius={75} innerRadius={35}>
                     {(da.topProducts ?? []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
@@ -594,7 +594,7 @@ function StockTab({ filters }: { filters: Filters }) {
         <SectionCard title="Répartition par catégorie">
           {(d.byCategory ?? []).length === 0 ? <EmptyState /> : (
             <div className="flex gap-4">
-              <ResponsiveContainer width="55%" height={180}>
+              <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie data={d.byCategory} dataKey="value" nameKey="categoryName" cx="50%" cy="50%" outerRadius={75} innerRadius={35}>
                     {(d.byCategory ?? []).map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
@@ -1491,7 +1491,7 @@ function ReturnsTab({ filters }: { filters: Filters }) {
             {statusPieData.length > 0 && (
               <SectionCard title="Répartition par statut">
                 <div className="flex gap-4 items-center">
-                  <ResponsiveContainer width={140} height={140}>
+                  <ResponsiveContainer width="100%" height={140}>
                     <PieChart>
                       <Pie data={statusPieData} dataKey="value" cx="50%" cy="50%" outerRadius={60} innerRadius={30}>
                         {statusPieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}

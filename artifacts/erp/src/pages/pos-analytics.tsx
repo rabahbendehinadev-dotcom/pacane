@@ -213,7 +213,7 @@ export default function PosAnalytics() {
   return (
     <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <MonitorSmartphone className="h-6 w-6 text-amber-600" />
@@ -232,7 +232,7 @@ export default function PosAnalytics() {
             {/* Date presets */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {DATE_PRESETS.map((p, i) => (
                   <Button
                     key={i}
@@ -559,7 +559,7 @@ export default function PosAnalytics() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {productsLoading ? (
                 <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Chargement...</div>
               ) : Array.isArray(products) && products.length > 0 ? (
@@ -612,7 +612,7 @@ export default function PosAnalytics() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {cashiersLoading ? (
                 <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Chargement...</div>
               ) : Array.isArray(cashiersData) && cashiersData.length > 0 ? (
@@ -674,7 +674,7 @@ export default function PosAnalytics() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               {sessionsLoading ? (
                 <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Chargement...</div>
               ) : Array.isArray(sessionsData) && sessionsData.length > 0 ? (

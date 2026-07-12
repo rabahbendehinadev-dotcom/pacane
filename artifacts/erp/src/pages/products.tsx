@@ -394,7 +394,7 @@ export default function Products() {
       )}
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -646,7 +646,7 @@ export default function Products() {
               )}
             </div>
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div><Label>Prix coût (DA)</Label><Input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} /></div>
               <div><Label>Prix vente (DA)</Label><Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} /></div>
               <div>
@@ -954,7 +954,7 @@ export default function Products() {
 
           {importStep === "confirm" && importResult && (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-3 gap-3 text-center min-w-0">
                 <div className="rounded-lg bg-green-50 p-3"><p className="text-xl font-bold text-green-600">{importResult.createdCount}</p><p className="text-xs text-muted-foreground">Créés</p></div>
                 <div className="rounded-lg bg-blue-50 p-3"><p className="text-xl font-bold text-blue-600">{importResult.updatedCount}</p><p className="text-xs text-muted-foreground">Mis à jour</p></div>
                 <div className="rounded-lg bg-gray-50 p-3"><p className="text-xl font-bold text-gray-500">{importResult.archivedCount}</p><p className="text-xs text-muted-foreground">Archivés</p></div>

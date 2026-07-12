@@ -61,7 +61,7 @@ function ReceptionDetailPanel({ reception, onClose }: { reception: Reception; on
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-6 pt-5 pb-4 border-b shrink-0">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="font-mono text-sm font-bold text-primary">REC-{String(reception.id).padStart(5, "0")}</span>
@@ -106,7 +106,7 @@ function ReceptionDetailPanel({ reception, onClose }: { reception: Reception; on
         </button>
 
         {/* KPI row */}
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-center">
             <p className="text-xs text-emerald-600 font-medium">Articles</p>
             <p className="text-lg font-bold text-emerald-700">{reception.itemCount}</p>
@@ -252,7 +252,7 @@ export default function Receptions() {
 
       {/* KPI summary strip */}
       {!isLoading && filtered.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
@@ -349,7 +349,7 @@ export default function Receptions() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

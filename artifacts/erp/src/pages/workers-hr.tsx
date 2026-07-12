@@ -582,7 +582,8 @@ export default function WorkersHR() {
           </div>
 
           <Card>
-            <CardContent className="p-3 sm:p-4">
+            <CardContent className="p-3 sm:p-4 overflow-x-auto">
+              <div className="min-w-[280px]">
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map(d => (
                   <div key={d} className="text-center text-[11px] font-semibold text-muted-foreground py-1">{d}</div>
@@ -595,7 +596,7 @@ export default function WorkersHR() {
                   const todayStr = `${calYear}-${String(calMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                   const isToday = todayStr === new Date().toISOString().split("T")[0];
                   return (
-                    <div key={day} className={`min-h-[70px] rounded-lg p-1 border transition-colors ${isToday ? "border-primary/50 bg-primary/5" : "border-transparent hover:border-border"}`}>
+                    <div key={day} className={`min-h-[60px] rounded-lg p-1 border transition-colors ${isToday ? "border-primary/50 bg-primary/5" : "border-transparent hover:border-border"}`}>
                       <div className={`text-[11px] font-semibold text-right mb-1 ${isToday ? "text-primary" : "text-muted-foreground"}`}>{day}</div>
                       <div className="space-y-0.5">
                         {evts.slice(0, 3).map((e, j) => {
@@ -611,6 +612,7 @@ export default function WorkersHR() {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </CardContent>
           </Card>
@@ -646,7 +648,7 @@ export default function WorkersHR() {
                   Événements de {calMonthLabel}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <div className="divide-y max-h-64 overflow-y-auto">
                   {calendarEvents.map((e, i) => {
                     const cls = EVENT_COLORS[e.type] ?? EVENT_COLORS.default;
@@ -803,7 +805,7 @@ export default function WorkersHR() {
                 </Card>
               </div>
               <Card>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                   <div className="divide-y">
                     {ranking.map((e, i) => (
                       <div key={e.worker?.id ?? i} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? "bg-amber-50/30" : ""}`}>
@@ -851,7 +853,7 @@ export default function WorkersHR() {
                   <Flame className="h-3.5 w-3.5" />Plus d'absences
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <div className="divide-y">
                   {topAbsent.length === 0 ? (
                     <div className="px-4 py-6 text-center text-muted-foreground text-xs">Aucune donnée</div>
@@ -875,7 +877,7 @@ export default function WorkersHR() {
                   <Star className="h-3.5 w-3.5" />Meilleurs employés
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <div className="divide-y">
                   {topPresent.length === 0 ? (
                     <div className="px-4 py-6 text-center text-muted-foreground text-xs">Aucune donnée</div>
@@ -899,7 +901,7 @@ export default function WorkersHR() {
                   <Building2 className="h-3.5 w-3.5" />Absences / Département
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <div className="divide-y">
                   {deptAbsences.length === 0 ? (
                     <div className="px-4 py-6 text-center text-muted-foreground text-xs">Aucune donnée</div>

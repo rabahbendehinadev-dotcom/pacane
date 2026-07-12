@@ -180,10 +180,33 @@
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+  html {
+    overflow-x: hidden;
+    max-width: 100%;
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    overflow-x: hidden;
+    max-width: 100%;
   }
+  #root {
+    overflow-x: hidden;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* ── Responsive: prevent horizontal overflow globally ── */
+img, svg, video, canvas, embed, object, iframe {
+  max-width: 100%;
+}
+
+
+/* Tables inside overflow containers scroll locally */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Mobile: centrer tous les popover (combobox, dropdown) au milieu de l'écran ── */

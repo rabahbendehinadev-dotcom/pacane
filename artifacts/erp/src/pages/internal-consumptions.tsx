@@ -472,7 +472,7 @@ export default function InternalConsumptions() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -701,8 +701,8 @@ export default function InternalConsumptions() {
                   ))}
                 </div>
               )}
-              <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-5">
+              <div className="grid grid-cols-12 gap-2 min-w-0">
+                <div className="col-span-12 sm:col-span-5">
                   <div className="relative">
                     <input
                       type="text"
@@ -756,7 +756,7 @@ export default function InternalConsumptions() {
                     )}
                   </div>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-6 sm:col-span-2">
                   <Input
                     placeholder="Qté"
                     type="number"
@@ -767,7 +767,7 @@ export default function InternalConsumptions() {
                     className="h-9 text-sm"
                   />
                 </div>
-                <div className="col-span-3">
+                <div className="col-span-6 sm:col-span-3">
                   <Input
                     placeholder="Coût unitaire"
                     type="number"
@@ -778,7 +778,7 @@ export default function InternalConsumptions() {
                     className="h-9 text-sm"
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-12 sm:col-span-2">
                   <Button
                     variant="secondary"
                     className="w-full h-9 text-sm"
