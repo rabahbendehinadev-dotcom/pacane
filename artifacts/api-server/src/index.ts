@@ -489,6 +489,33 @@ async function runMigrations() {
       );
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS worker_objectives_worker_month ON worker_objectives (worker_id, month DESC);`);
+    // ── Discount reasons feature ───────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS discount_reasons (
+        id SERIAL PRIMARY KEY,
+        label TEXT NOT NULL,
+        requires_note BOOLEAN NOT NULL DEFAULT false,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_reason_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_reason_label TEXT;`);
+    await db.execute(sql`
+      INSERT INTO discount_reasons (label, requires_note, is_active, sort_order)
+      SELECT label, requires_note, is_active, sort_order FROM (VALUES
+        ('Client fidèle', false, true, 1),
+        ('Offre promotionnelle', false, true, 2),
+        ('Liquidation stock', false, true, 3),
+        ('Produit avec défaut mineur', false, true, 4),
+        ('Accord du gérant', false, true, 5),
+        ('Remise spéciale', false, true, 6),
+        ('Compensation problème antérieur', false, true, 7),
+        ('Autre raison', true, true, 8)
+      ) AS v(label, requires_note, is_active, sort_order)
+      WHERE NOT EXISTS (SELECT 1 FROM discount_reasons LIMIT 1);
+    `);
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");

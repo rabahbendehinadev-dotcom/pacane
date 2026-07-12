@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, companySettingsTable, paymentMethodsTable } from "@workspace/db";
+import { db, companySettingsTable, paymentMethodsTable, discountReasonsTable } from "@workspace/db";
 import { eq, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
@@ -76,6 +76,45 @@ router.delete("/settings/payment-methods/:id", requireAuth, requirePermission(P.
   const [existing] = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Méthode introuvable" }); return; }
   await db.delete(paymentMethodsTable).where(eq(paymentMethodsTable.id, id));
+  res.json({ success: true });
+});
+
+// ── Discount Reasons CRUD ──────────────────────────────────────────────────────
+
+router.get("/settings/discount-reasons", requireAuth, requirePermission(P.settings.view), async (_req, res): Promise<void> => {
+  const reasons = await db.select().from(discountReasonsTable).orderBy(asc(discountReasonsTable.sortOrder), asc(discountReasonsTable.label));
+  res.json(reasons);
+});
+
+router.post("/settings/discount-reasons", requireAuth, requirePermission(P.settings.edit), async (req, res): Promise<void> => {
+  const { label, requiresNote, isActive, sortOrder } = req.body;
+  if (!label) { res.status(400).json({ error: "Libellé requis" }); return; }
+  const existing = await db.select().from(discountReasonsTable);
+  const maxOrder = existing.length > 0 ? Math.max(...existing.map(r => r.sortOrder)) : 0;
+  const [reason] = await db.insert(discountReasonsTable)
+    .values({ label, requiresNote: requiresNote ?? false, isActive: isActive ?? true, sortOrder: sortOrder ?? maxOrder + 1 })
+    .returning();
+  res.status(201).json(reason);
+});
+
+router.patch("/settings/discount-reasons/:id", requireAuth, requirePermission(P.settings.edit), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [existing] = await db.select().from(discountReasonsTable).where(eq(discountReasonsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Motif introuvable" }); return; }
+  const updates: Record<string, unknown> = {};
+  if (req.body.label != null) updates.label = req.body.label;
+  if (req.body.requiresNote != null) updates.requiresNote = req.body.requiresNote;
+  if (req.body.isActive != null) updates.isActive = req.body.isActive;
+  if (req.body.sortOrder != null) updates.sortOrder = req.body.sortOrder;
+  const [reason] = await db.update(discountReasonsTable).set(updates as any).where(eq(discountReasonsTable.id, id)).returning();
+  res.json(reason);
+});
+
+router.delete("/settings/discount-reasons/:id", requireAuth, requirePermission(P.settings.edit), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [existing] = await db.select().from(discountReasonsTable).where(eq(discountReasonsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Motif introuvable" }); return; }
+  await db.delete(discountReasonsTable).where(eq(discountReasonsTable.id, id));
   res.json({ success: true });
 });
 

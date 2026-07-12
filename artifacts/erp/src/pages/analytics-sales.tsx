@@ -1725,6 +1725,31 @@ export default function AnalyticsSales() {
                     ) : <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>}
                   </CardContent>
                 </Card>
+                {/* By reason */}
+                {disc.charts.byReason?.length > 0 && (
+                  <Card className="border-0 shadow-sm lg:col-span-2">
+                    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Tag className="h-4 w-4 text-orange-500" />Remises par motif</CardTitle></CardHeader>
+                    <CardContent className="pt-0">
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={disc.charts.byReason} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                          <YAxis tick={{ fontSize: 9 }} width={48} tickFormatter={(v: number) => fmtK(v)} />
+                          <Tooltip content={<ChartTip />} />
+                          <Bar dataKey="totalDiscount" name="Remise (DA)" fill="#f97316" radius={[3,3,0,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {disc.charts.byReason.map((r: any) => (
+                          <div key={r.reasonId ?? r.name} className="flex items-center gap-1.5 text-[11px] bg-orange-50 px-2 py-1 rounded">
+                            <span className="font-medium text-orange-800">{r.name}</span>
+                            <span className="text-muted-foreground">{r.count} vente{r.count !== 1 ? "s" : ""} · {fmtDA(r.totalDiscount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               {/* ── Detail Table ─────────────────────────────────────────────────── */}
@@ -1777,7 +1802,7 @@ export default function AnalyticsSales() {
                             { label: "Profit", sk: "profit", right: true },
                             { label: "Vendeur", sk: "sellerName" },
                             { label: "Boutique", sk: "branchName" },
-                            { label: "Raison", sk: "reason" },
+                            { label: "Motif remise", sk: "discountReason" },
                           ].map(col => (
                             <SortHead key={col.sk} label={col.label} sk={col.sk} curKey={discountSortKey} curDir={discountSortDir} right={col.right}
                               onToggle={k => {
@@ -1812,7 +1837,11 @@ export default function AnalyticsSales() {
                             <TableCell className={`text-right font-semibold ${row.profit < 0 ? "text-red-600" : "text-green-700"}`}>{fmtDA(row.profit)}</TableCell>
                             <TableCell className="max-w-[100px] truncate">{row.sellerName}</TableCell>
                             <TableCell className="max-w-[100px] truncate text-muted-foreground">{row.branchName}</TableCell>
-                            <TableCell className="max-w-[120px] truncate text-muted-foreground italic">{row.reason ?? "—"}</TableCell>
+                            <TableCell className="max-w-[120px] truncate">
+                              {row.discountReason ? (
+                                <span className="text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded font-medium">{row.discountReason}</span>
+                              ) : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -37,7 +37,17 @@ export const paymentMethodsTable = pgTable("payment_methods", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const discountReasonsTable = pgTable("discount_reasons", {
+  id: serial("id").primaryKey(),
+  label: text("label").notNull(),
+  requiresNote: boolean("requires_note").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertCompanySettingsSchema = createInsertSchema(companySettingsTable).omit({ id: true, updatedAt: true });
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
 export type CompanySettings = typeof companySettingsTable.$inferSelect;
 export type PaymentMethod = typeof paymentMethodsTable.$inferSelect;
+export type DiscountReason = typeof discountReasonsTable.$inferSelect;

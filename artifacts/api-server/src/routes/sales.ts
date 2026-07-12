@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, salesTable, saleItemsTable, salePaymentsTable, contactsTable, branchesTable, productsTable, usersTable, posSessionsTable, stockLevelsTable } from "@workspace/db";
+import { db, salesTable, saleItemsTable, salePaymentsTable, contactsTable, branchesTable, productsTable, usersTable, posSessionsTable, stockLevelsTable, discountReasonsTable } from "@workspace/db";
 import { eq, and, sql, inArray, or, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -216,7 +216,7 @@ router.get("/sales", requireAuth, requirePermission(P.sales.view), async (req, r
 });
 
 router.post("/sales", requireAuth, async (req, res): Promise<void> => {
-  const { type, customerId, branchId, status, fulfillmentType, promisedDate, dueDate, discount, tax, shippingFee, notes, items, creditOverrideReason } = req.body;
+  const { type, customerId, branchId, status, fulfillmentType, promisedDate, dueDate, discount, tax, shippingFee, notes, items, creditOverrideReason, discountReasonId } = req.body;
 
   // Permission check
   const perms = req.userPermissions ?? [];
@@ -229,6 +229,12 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   if (!type || !branchId || !items?.length) { res.status(400).json({ error: "Champs requis manquants" }); return; }
+  // Validate discount reason
+  const discountAmt = parseFloat(String(discount ?? 0));
+  if (discountAmt > 0 && !discountReasonId) {
+    res.status(400).json({ error: "discount_reason_required", message: "Un motif de remise est obligatoire lorsqu'une remise est appliquée." });
+    return;
+  }
   if (!assertBranchAccess(req.user!, parseInt(String(branchId), 10), res)) return;
 
   const branchIdNum = parseInt(String(branchId), 10);
@@ -290,6 +296,15 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
   const sellerIdVal = req.body.sellerId ? parseInt(String(req.body.sellerId), 10) : null;
   const sellerNameVal = req.body.sellerName ? String(req.body.sellerName).trim() : null;
 
+  // Resolve discount reason label
+  let discountReasonIdVal: number | null = null;
+  let discountReasonLabelVal: string | null = null;
+  if (discountAmt > 0 && discountReasonId) {
+    discountReasonIdVal = parseInt(String(discountReasonId), 10);
+    const [dr] = await db.select().from(discountReasonsTable).where(eq(discountReasonsTable.id, discountReasonIdVal));
+    discountReasonLabelVal = dr?.label ?? null;
+  }
+
   // Generate reference before transaction (uses in-memory counter, must be outside)
   const reference = await genRef(type);
 
@@ -307,6 +322,8 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
         paymentMethod: type === "sale" ? paymentMethod : null,
         sellerId: sellerIdVal,
         sellerName: sellerNameVal,
+        discountReasonId: discountReasonIdVal,
+        discountReasonLabel: discountReasonLabelVal,
         createdByUserId: req.userId
       }).returning();
 

@@ -26,6 +26,8 @@ export const salesTable = pgTable("sales", {
   posSessionId: integer("pos_session_id"),
   sellerId: integer("seller_id"),
   sellerName: text("seller_name"),
+  discountReasonId: integer("discount_reason_id"),
+  discountReasonLabel: text("discount_reason_label"),
   createdByUserId: integer("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

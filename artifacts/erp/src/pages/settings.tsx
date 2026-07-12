@@ -54,6 +54,14 @@ interface PaymentMethod {
   sortOrder: number;
 }
 
+interface DiscountReason {
+  id: number;
+  label: string;
+  requiresNote: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 const PM_TYPES = [
   { value: "cash", label: "Espèces", icon: Banknote },
   { value: "card", label: "Carte bancaire", icon: CreditCard },
@@ -92,6 +100,11 @@ export default function Settings() {
   const [pmForm, setPmForm] = useState({ name: "", type: "cash", isActive: true });
   const [deletePmId, setDeletePmId] = useState<number | null>(null);
 
+  const [drDialog, setDrDialog] = useState(false);
+  const [editingDr, setEditingDr] = useState<DiscountReason | null>(null);
+  const [drForm, setDrForm] = useState({ label: "", requiresNote: false, isActive: true });
+  const [deleteDrId, setDeleteDrId] = useState<number | null>(null);
+
   useEffect(() => {
     if (rawSettings) {
       setForm(f => ({ ...f, ...rawSettings, taxRate: rawSettings.taxRate ?? 0 }));
@@ -129,6 +142,36 @@ export default function Settings() {
     mutationFn: (id: number) => customFetch(`/api/settings/payment-methods/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["payment-methods"] }); setDeletePmId(null); toast({ title: "Mode de paiement supprimé" }); },
   });
+
+  const { data: discountReasons = [], isLoading: drLoading } = useQuery<DiscountReason[]>({
+    queryKey: ["discount-reasons"],
+    queryFn: () => customFetch("/api/settings/discount-reasons"),
+  });
+
+  const createDr = useMutation({
+    mutationFn: (data: typeof drForm) => customFetch("/api/settings/discount-reasons", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["discount-reasons"] }); setDrDialog(false); toast({ title: "Motif ajouté" }); },
+    onError: (e: Error) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
+  });
+
+  const updateDr = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<DiscountReason> }) =>
+      customFetch(`/api/settings/discount-reasons/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["discount-reasons"] }); setDrDialog(false); setEditingDr(null); toast({ title: "Motif mis à jour" }); },
+  });
+
+  const deleteDr = useMutation({
+    mutationFn: (id: number) => customFetch(`/api/settings/discount-reasons/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["discount-reasons"] }); setDeleteDrId(null); toast({ title: "Motif supprimé" }); },
+  });
+
+  function openCreateDr() { setEditingDr(null); setDrForm({ label: "", requiresNote: false, isActive: true }); setDrDialog(true); }
+  function openEditDr(dr: DiscountReason) { setEditingDr(dr); setDrForm({ label: dr.label, requiresNote: dr.requiresNote, isActive: dr.isActive }); setDrDialog(true); }
+  function handleDrSubmit() {
+    if (!drForm.label) return;
+    if (editingDr) { updateDr.mutate({ id: editingDr.id, data: drForm }); }
+    else { createDr.mutate(drForm); }
+  }
 
   const [resetDialog, setResetDialog] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
@@ -216,11 +259,12 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="company" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 h-10">
+        <TabsList className="grid w-full grid-cols-6 h-10">
           <TabsTrigger value="company" className="text-xs">Entreprise</TabsTrigger>
           <TabsTrigger value="numbering" className="text-xs">Numérotation</TabsTrigger>
           <TabsTrigger value="tax" className="text-xs">TVA</TabsTrigger>
           <TabsTrigger value="payments" className="text-xs">Paiements</TabsTrigger>
+          <TabsTrigger value="discounts" className="text-xs">Remises</TabsTrigger>
           <TabsTrigger value="system" className="text-xs">Système</TabsTrigger>
         </TabsList>
 
@@ -468,6 +512,66 @@ export default function Settings() {
           </div>
         </TabsContent>
 
+        {/* ── TAB: REMISES ── */}
+        <TabsContent value="discounts" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Motifs de remise</p>
+              <p className="text-xs text-muted-foreground">Raisons prédéfinies pour justifier les remises commerciales</p>
+            </div>
+            <Button size="sm" onClick={openCreateDr} className="gap-2">
+              <Plus className="h-4 w-4" /> Ajouter
+            </Button>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              {drLoading ? (
+                <div className="py-12 text-center text-muted-foreground text-sm">Chargement...</div>
+              ) : discountReasons.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground text-sm">Aucun motif configuré</div>
+              ) : (
+                <div className="divide-y">
+                  {discountReasons.map(dr => (
+                    <div key={dr.id} className="flex items-center gap-4 px-4 py-3">
+                      <GripVertical className="h-4 w-4 text-muted-foreground/30 cursor-grab" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{dr.label}</span>
+                          {dr.requiresNote && <span className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">Notes requises</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {dr.isActive ? (
+                          <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Actif</span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground"><XCircle className="h-3.5 w-3.5" /> Inactif</span>
+                        )}
+                        <button
+                          onClick={() => updateDr.mutate({ id: dr.id, data: { isActive: !dr.isActive } })}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+                        >
+                          {dr.isActive ? "Désactiver" : "Activer"}
+                        </button>
+                        <button onClick={() => openEditDr(dr)} className="p-1.5 rounded hover:bg-muted transition-colors">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                        <button onClick={() => setDeleteDrId(dr.id)} className="p-1.5 rounded hover:bg-red-50 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="text-xs text-muted-foreground">
+            {discountReasons.filter(r => r.isActive).length} motif{discountReasons.filter(r => r.isActive).length !== 1 ? "s" : ""} actif{discountReasons.filter(r => r.isActive).length !== 1 ? "s" : ""} sur {discountReasons.length}
+          </div>
+        </TabsContent>
+
         {/* ── TAB: SYSTÈME ── */}
         <TabsContent value="system" className="space-y-4">
           <Card>
@@ -572,6 +676,54 @@ export default function Settings() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deletePmId && deletePm.mutate(deletePmId)}>
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Discount Reason Dialog */}
+      <Dialog open={drDialog} onOpenChange={open => { if (!open) { setDrDialog(false); setEditingDr(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-serif">{editingDr ? "Modifier le motif" : "Nouveau motif de remise"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Libellé *</Label>
+              <Input className="mt-1" value={drForm.label} onChange={e => setDrForm(f => ({ ...f, label: e.target.value }))} placeholder="ex: Client fidèle" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch checked={drForm.requiresNote} onCheckedChange={v => setDrForm(f => ({ ...f, requiresNote: v }))} />
+              <div>
+                <Label>Notes obligatoires</Label>
+                <p className="text-xs text-muted-foreground">Le vendeur devra saisir une explication dans les notes</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch checked={drForm.isActive} onCheckedChange={v => setDrForm(f => ({ ...f, isActive: v }))} />
+              <Label>Actif</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDrDialog(false); setEditingDr(null); }}>Annuler</Button>
+            <Button onClick={handleDrSubmit} disabled={!drForm.label || createDr.isPending || updateDr.isPending}>
+              {createDr.isPending || updateDr.isPending ? "..." : editingDr ? "Mettre à jour" : "Ajouter"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Discount Reason Confirm */}
+      <AlertDialog open={deleteDrId !== null} onOpenChange={open => { if (!open) setDeleteDrId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce motif de remise ?</AlertDialogTitle>
+            <AlertDialogDescription>Cette action est irréversible. Les ventes existantes garderont leur motif enregistré.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteDrId && deleteDr.mutate(deleteDrId)}>
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>

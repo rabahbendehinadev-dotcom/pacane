@@ -110,6 +110,7 @@ export default function POS() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState("0");
+  const [discountReasonId, setDiscountReasonId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [customerId, setCustomerId] = useState("none");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -129,6 +130,10 @@ export default function POS() {
   const { data: products = [] } = useGetProducts({});
   const { data: branches = [] } = useGetBranches();
   const { data: customers = [] } = useGetContacts({ type: "customer" });
+  const { data: discountReasons = [] } = useQuery<{ id: number; label: string; requiresNote: boolean; isActive: boolean }[]>({
+    queryKey: ["discount-reasons"],
+    queryFn: () => customFetch("/api/settings/discount-reasons").catch(() => []),
+  });
   const createContactMutation = useCreateContact({
     mutation: {
       onSuccess: (newContact) => {
@@ -332,6 +337,11 @@ export default function POS() {
   const change = Math.max(0, parseFloat(cashReceived || "0") - total);
 
   function confirmSale(overrideReason?: string) {
+    if (discountAmt > 0 && !discountReasonId) {
+      toast({ title: "Motif de remise requis", description: "Veuillez sélectionner un motif pour la remise.", variant: "destructive" });
+      setCheckoutOpen(false);
+      return;
+    }
     createSale.mutate({
       data: {
         type: "sale", customerId: customerId && customerId !== "none" ? parseInt(customerId) : null,
@@ -339,6 +349,7 @@ export default function POS() {
         status: "confirmed", fulfillmentType: "pos",
         paymentMethod: paymentMethod as any,
         discount: discountAmt, tax: 0, shippingFee: 0, notes: null,
+        discountReasonId: discountAmt > 0 && discountReasonId ? parseInt(discountReasonId) : undefined,
         creditOverrideReason: overrideReason || undefined,
         sellerName: sellerName.trim() || undefined,
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.price, discount: i.discount }))
@@ -723,8 +734,23 @@ export default function POS() {
                 <div className="border-t p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Label className="text-xs text-muted-foreground w-24">Remise (DA)</Label>
-                    <Input type="number" className="h-8 text-sm" value={discount} onChange={e => setDiscount(e.target.value)} />
+                    <Input type="number" className="h-8 text-sm" value={discount} onChange={e => { setDiscount(e.target.value); if (!e.target.value || parseFloat(e.target.value) === 0) setDiscountReasonId(""); }} />
                   </div>
+                  {discountAmt > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-orange-700 w-24 shrink-0">Motif *</Label>
+                      <Select value={discountReasonId} onValueChange={setDiscountReasonId}>
+                        <SelectTrigger className="h-8 text-xs border-orange-200 flex-1">
+                          <SelectValue placeholder="Sélectionner..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {discountReasons.filter(r => r.isActive).map(r => (
+                            <SelectItem key={r.id} value={String(r.id)} className="text-xs">{r.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <Separator />
                   <div className="flex justify-between text-sm"><span className="text-muted-foreground">Sous-total</span><span>{formatDA(subtotal)}</span></div>
                   {discountAmt > 0 && <div className="flex justify-between text-sm text-green-600"><span>Remise</span><span>-{formatDA(discountAmt)}</span></div>}

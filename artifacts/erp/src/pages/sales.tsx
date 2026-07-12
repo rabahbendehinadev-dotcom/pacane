@@ -291,6 +291,7 @@ export default function Sales() {
     customerId: "none",
     branchId: "",
     discount: "0",
+    discountReasonId: "",
     tax: "0",
     shippingFee: "0",
     notes: "",
@@ -388,6 +389,15 @@ export default function Sales() {
   const { data: products = [] } = useGetProducts({});
   const { data: units = [] } = useGetUnits();
   const { data: categories = [] } = useGetCategories();
+  const { data: discountReasons = [] } = useQuery<{ id: number; label: string; requiresNote: boolean; isActive: boolean }[]>({
+    queryKey: ["discount-reasons"],
+    queryFn: async () => {
+      const token = localStorage.getItem("erp_token") ?? "";
+      const r = await fetch("/api/settings/discount-reasons", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
   const unitDecimalsMap = useMemo(() => Object.fromEntries(units.map(u => [u.id, u.allowDecimals])), [units]);
   const selectedProduct = useMemo(() => products.find(p => p.id === parseInt(newItem.productId)), [products, newItem.productId]);
   const qtyAllowsDecimals = selectedProduct ? (unitDecimalsMap[(selectedProduct as any).unitId] ?? true) : true;
@@ -502,7 +512,7 @@ export default function Sales() {
   }
 
   function openCreate(type: string) {
-    setForm({ type, customerId: "none", branchId: "", discount: "0", tax: "0", shippingFee: "0", notes: "", promisedDate: "", promisedTime: "", dueDate: "", paymentMethod: "cash", initialDeposit: "0" });
+    setForm({ type, customerId: "none", branchId: "", discount: "0", discountReasonId: "", tax: "0", shippingFee: "0", notes: "", promisedDate: "", promisedTime: "", dueDate: "", paymentMethod: "cash", initialDeposit: "0" });
     setItems([]);
     setNewItem({ productId: "", quantity: "1", unitPrice: "", discount: "0" });
     setCreateStep("form");
@@ -539,6 +549,15 @@ export default function Sales() {
   const total = subtotal - discountVal + taxVal + shippingVal;
 
   function submitCreate(overrideReasonArg?: string) {
+    if (discountVal > 0 && !form.discountReasonId) {
+      toast({ title: "Motif de remise requis", description: "Veuillez sélectionner un motif pour la remise appliquée.", variant: "destructive" });
+      return;
+    }
+    const selectedReason = discountReasons.find(r => String(r.id) === form.discountReasonId);
+    if (selectedReason?.requiresNote && !form.notes.trim()) {
+      toast({ title: "Notes obligatoires", description: `Le motif « ${selectedReason.label} » requiert des notes explicatives.`, variant: "destructive" });
+      return;
+    }
     if (form.type === "sale" && creditStatus?.state === "exceeded") {
       if (!creditStatus.canOverride) {
         toast({ title: "Facture bloquée", description: "La limite de crédit est dépassée. Contactez un gérant.", variant: "destructive" });
@@ -556,6 +575,7 @@ export default function Sales() {
         branchId: parseInt(form.branchId),
         discount: discountVal, tax: taxVal, shippingFee: shippingVal,
         notes: form.notes || null,
+        discountReasonId: discountVal > 0 && form.discountReasonId ? parseInt(form.discountReasonId) : undefined,
         promisedDate: form.promisedDate ? (form.promisedTime ? `${form.promisedDate}T${form.promisedTime}` : form.promisedDate) : null,
         dueDate: form.dueDate || null,
         paymentMethod: form.type === "sale" ? form.paymentMethod : undefined,
@@ -1101,13 +1121,32 @@ export default function Sales() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs font-medium">Remise globale (DA)</Label>
-                    <Input type="number" className="mt-1 h-9 text-sm" value={form.discount} onChange={e => setForm(f => ({ ...f, discount: e.target.value }))} />
+                    <Input type="number" className="mt-1 h-9 text-sm" value={form.discount} onChange={e => setForm(f => ({ ...f, discount: e.target.value, discountReasonId: e.target.value === "0" || !e.target.value ? "" : f.discountReasonId }))} />
                   </div>
                   <div>
                     <Label className="text-xs font-medium">Livraison (DA)</Label>
                     <Input type="number" className="mt-1 h-9 text-sm" value={form.shippingFee} onChange={e => setForm(f => ({ ...f, shippingFee: e.target.value }))} />
                   </div>
                 </div>
+
+                {discountVal > 0 && (
+                  <div>
+                    <Label className="text-xs font-medium text-orange-700">Motif de la remise *</Label>
+                    <Select value={form.discountReasonId} onValueChange={v => setForm(f => ({ ...f, discountReasonId: v }))}>
+                      <SelectTrigger className="mt-1 h-9 text-sm border-orange-200">
+                        <SelectValue placeholder="Sélectionner un motif..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {discountReasons.filter(r => r.isActive).map(r => (
+                          <SelectItem key={r.id} value={String(r.id)}>{r.label}{r.requiresNote ? " *" : ""}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {discountReasons.find(r => String(r.id) === form.discountReasonId)?.requiresNote && (
+                      <p className="text-[11px] text-orange-600 mt-1">* Ce motif requiert des notes explicatives dans le champ ci-dessous.</p>
+                    )}
+                  </div>
+                )}
 
                 {(form.type === "order" || form.type === "quotation") && (
                   <div className="space-y-3">

@@ -939,14 +939,22 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
   const discountedSaleConds = [...baseConds, sql`${salesTable.discount}::numeric > 0`];
   const discountedItemConds = [...baseConds, sql`${saleItemsTable.discount}::numeric > 0`];
 
-  const [summaryRows, totalSalesRows, topSellerRows, topBranchRows, topProductRows, topCustomerRows, byDayRows, lineRows] = await Promise.all([
+  const reasonFilter = req.query.reasonId ? parseInt(req.query.reasonId as string, 10) : null;
+  const reasonConds = reasonFilter
+    ? [...discountedSaleConds, sql`${salesTable.discountReasonId} = ${reasonFilter}`]
+    : discountedSaleConds;
+  const reasonItemConds = reasonFilter
+    ? [...discountedItemConds, sql`${salesTable.discountReasonId} = ${reasonFilter}`]
+    : discountedItemConds;
+
+  const [summaryRows, totalSalesRows, topSellerRows, topBranchRows, topProductRows, topCustomerRows, byDayRows, lineRows, byReasonRows] = await Promise.all([
     db.select({
       saleCount: sql<string>`COUNT(DISTINCT ${salesTable.id})`,
       totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
       totalAfterDiscount: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
       avgDiscount: sql<string>`COALESCE(AVG(NULLIF(${salesTable.discount}::numeric, 0)), 0)`,
     }).from(salesTable).leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
-      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined),
+      .where(reasonConds.length ? and(...reasonConds) : undefined),
 
     db.select({ total: sql<string>`COUNT(*)` }).from(salesTable)
       .where(baseConds.length ? and(...baseConds) : undefined),
@@ -956,7 +964,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
       count: sql<string>`COUNT(*)`,
     }).from(salesTable).leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
-      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .where(reasonConds.length ? and(...reasonConds) : undefined)
       .groupBy(usersTable.name).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(8),
 
     db.select({
@@ -964,7 +972,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
       count: sql<string>`COUNT(*)`,
     }).from(salesTable).innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
-      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .where(reasonConds.length ? and(...reasonConds) : undefined)
       .groupBy(branchesTable.name).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(8),
 
     db.select({
@@ -973,7 +981,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       count: sql<string>`COUNT(*)`,
     }).from(saleItemsTable).innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
       .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
-      .where(discountedItemConds.length ? and(...discountedItemConds) : undefined)
+      .where(reasonItemConds.length ? and(...reasonItemConds) : undefined)
       .groupBy(productsTable.name).orderBy(sql`SUM(${saleItemsTable.discount}::numeric) DESC`).limit(8),
 
     db.select({
@@ -981,7 +989,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
       count: sql<string>`COUNT(*)`,
     }).from(salesTable).leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
-      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .where(reasonConds.length ? and(...reasonConds) : undefined)
       .groupBy(contactsTable.displayName).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(5),
 
     db.select({
@@ -989,7 +997,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       discountAmount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
       saleAmount: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
       count: sql<string>`COUNT(*)`,
-    }).from(salesTable).where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+    }).from(salesTable).where(reasonConds.length ? and(...reasonConds) : undefined)
       .groupBy(sql`DATE(${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')`)
       .orderBy(sql`DATE(${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')`),
 
@@ -1002,6 +1010,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       branchName: branchesTable.name,
       sellerName: usersTable.name,
       saleNotes: salesTable.notes,
+      discountReasonLabel: salesTable.discountReasonLabel,
       productName: productsTable.name,
       qty: saleItemsTable.quantity,
       unitPrice: saleItemsTable.unitPrice,
@@ -1014,8 +1023,18 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       .innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
       .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
       .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
-      .where(discountedItemConds.length ? and(...discountedItemConds) : undefined)
+      .where(reasonItemConds.length ? and(...reasonItemConds) : undefined)
       .orderBy(desc(salesTable.createdAt)).limit(1000),
+
+    db.select({
+      reasonLabel: sql<string>`COALESCE(${salesTable.discountReasonLabel}, 'Sans motif')`,
+      reasonId: salesTable.discountReasonId,
+      count: sql<string>`COUNT(*)`,
+      totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+    }).from(salesTable)
+      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .groupBy(salesTable.discountReasonLabel, salesTable.discountReasonId)
+      .orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`),
   ]);
 
   const summaryRow = summaryRows[0];
@@ -1040,6 +1059,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
       bySeller:   topSellerRows.map(r => ({ name: r.sellerName ?? "—", totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
       byBranch:   topBranchRows.map(r => ({ name: r.branchName, totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
       byProduct:  topProductRows.map(r => ({ name: r.productName, totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
+      byReason:   byReasonRows.map(r => ({ reasonId: r.reasonId, name: r.reasonLabel ?? "Sans motif", totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
     },
     lines: lineRows.map(r => {
       const qty = parseFloat(r.qty as string);
@@ -1068,6 +1088,7 @@ router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (
         branchName: r.branchName,
         paymentStatus: r.paymentStatus ?? "—",
         reason: r.saleNotes ?? null,
+        discountReason: r.discountReasonLabel ?? null,
       };
     }),
   });
