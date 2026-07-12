@@ -121,7 +121,11 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
 
   return (
     <>
-      <header className="h-16 border-b bg-card flex items-center justify-between px-4 lg:px-6 z-10 shrink-0">
+      <header
+        className="border-b bg-card z-10 shrink-0"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+      <div className="h-16 flex items-center justify-between px-4 lg:px-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick}>
             <Menu className="h-5 w-5" />
@@ -205,6 +209,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
       </header>
 
       <NotificationsDrawer open={notifOpen} onClose={() => setNotifOpen(false)} />
