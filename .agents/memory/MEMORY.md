@@ -7,3 +7,4 @@
 - [Fetch body consumed once](fetch-body-consumed.md) — Never call r.json() twice on the same response; read once into a variable then branch on r.ok.
 - [ERP has no apiRequest util](erp-no-apirequest.md) — ERP uses raw fetch() + Bearer token from localStorage("erp_token"); no apiRequest abstraction exists in lib/. Always use the fetch pattern seen in NotificationsDrawer.
 - [PWA + Push architecture](pwa-push-architecture.md) — Push system: VAPID keys in env vars (VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT); push_subscriptions + notification_preferences tables; sendPushToUser() in api-server/src/lib/push-service.ts saves in-app AND sends push in one call.
+- [Babel 7 vs 8 conflict with workbox-build](babel-workbox-conflict.md) — @vitejs/plugin-react@5.x needs Babel 8; workbox-build@7.x needs Babel ^7. Fix: scoped pnpm override "workbox-build>@babel/core": "^7.x" alongside global ">=7.x". Also set workbox.maximumFileSizeToCacheInBytes: 4MB in VitePWA config.
