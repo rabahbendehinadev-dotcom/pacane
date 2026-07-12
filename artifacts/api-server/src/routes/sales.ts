@@ -402,6 +402,25 @@ router.post("/sales", requireAuth, async (req, res): Promise<void> => {
     throw err;
   }
 
+  // ── Push notification for sales with discounts (fire-and-forget) ──────────
+  if (discountAmt > 0 && type === "sale") {
+    import("../lib/push-service").then(({ sendPushToUsers }) => {
+      db.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.status, "active"))
+        .then(adminUsers => {
+          const ids = adminUsers.map(u => u.id).filter(id => id !== req.userId);
+          if (ids.length === 0) return;
+          const pct = ((discountAmt / (subtotal || 1)) * 100).toFixed(1);
+          sendPushToUsers(ids, {
+            title: "Remise appliquée",
+            body: `Remise de ${discountAmt.toFixed(2)} DA (${pct}%) — ${discountReasonLabelVal ?? "sans motif"} — Réf. ${createdSale.reference}`,
+            type: "remise",
+            link: `/sales/${createdSale.id}`,
+          });
+        });
+    }).catch(() => {});
+  }
+
   // ── Credit override log (outside transaction — non-critical audit trail) ──
   if (type === "sale" && customerId && creditOverrideReason) {
     const credit = await computeCreditStatus(customerId, 0);

@@ -209,15 +209,16 @@ router.post("/checklist", requireAuth, requirePermission(P.checklist.manage), as
   }).returning();
 
   try {
-    await db.insert(userNotificationsTable).values({
-      userId,
-      type: "task_assigned",
+    const { sendPushToUser } = await import("../lib/push-service");
+    await sendPushToUser(userId, {
       title: "Nouvelle tâche assignée",
-      message: `Vous avez une nouvelle tâche : ${title.trim()}`,
-      meta: { taskId: task.id },
+      body: `Vous avez une nouvelle tâche : ${title.trim()}`,
+      type: "updates",
+      link: "/checklist",
+      data: { taskId: task.id },
     });
   } catch (notifErr) {
-    req.log.warn({ err: notifErr, taskId: task.id }, "Failed to insert user notification for task assignment");
+    req.log.warn({ err: notifErr, taskId: task.id }, "Failed to send push notification for task assignment");
   }
 
   res.status(201).json(task);

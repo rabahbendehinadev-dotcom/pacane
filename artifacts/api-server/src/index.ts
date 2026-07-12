@@ -516,6 +516,53 @@ async function runMigrations() {
       ) AS v(label, requires_note, is_active, sort_order)
       WHERE NOT EXISTS (SELECT 1 FROM discount_reasons LIMIT 1);
     `);
+
+    // ── Phase 2: Push Subscriptions + Notification Preferences ──────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        device_name TEXT,
+        browser TEXT,
+        os TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        last_active TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS notification_preferences (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE,
+        push_enabled BOOLEAN NOT NULL DEFAULT true,
+        in_app_enabled BOOLEAN NOT NULL DEFAULT true,
+        pref_sales BOOLEAN NOT NULL DEFAULT true,
+        pref_remise BOOLEAN NOT NULL DEFAULT true,
+        pref_stock_low BOOLEAN NOT NULL DEFAULT true,
+        pref_new_product BOOLEAN NOT NULL DEFAULT false,
+        pref_receivables BOOLEAN NOT NULL DEFAULT true,
+        pref_invoices BOOLEAN NOT NULL DEFAULT true,
+        pref_returns BOOLEAN NOT NULL DEFAULT true,
+        pref_expenses BOOLEAN NOT NULL DEFAULT true,
+        pref_customers BOOLEAN NOT NULL DEFAULT false,
+        pref_workers BOOLEAN NOT NULL DEFAULT false,
+        pref_absence BOOLEAN NOT NULL DEFAULT false,
+        pref_primes BOOLEAN NOT NULL DEFAULT false,
+        pref_avertissements BOOLEAN NOT NULL DEFAULT false,
+        pref_leaves BOOLEAN NOT NULL DEFAULT false,
+        pref_updates BOOLEAN NOT NULL DEFAULT true,
+        pref_security BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      ALTER TABLE erp_user_notifications ADD COLUMN IF NOT EXISTS link TEXT;
+    `);
+
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");

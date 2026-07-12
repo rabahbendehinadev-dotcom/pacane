@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   AlertTriangle, AlertCircle, Info, Bell, BellOff,
   CheckCheck, Package, RotateCcw, CreditCard, Factory, TrendingDown,
-  ChevronRight, ClipboardList,
+  ChevronRight, ClipboardList, Trash2, ShoppingCart, DollarSign,
+  Users, UserCheck, Calendar, Award, FileText, Settings2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -15,6 +16,7 @@ import { fr } from "date-fns/locale";
 import { useLocation } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 interface EAlert {
   id: number;
   alertKey: string;
@@ -37,12 +39,14 @@ interface UserNotif {
   type: string;
   title: string;
   message: string;
+  link: string | null;
   isRead: boolean;
   meta: Record<string, unknown> | null;
   createdAt: string;
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
+
 const MODULE_LABELS: Record<string, string> = {
   stock: "Stock",
   returns: "Retours",
@@ -50,15 +54,6 @@ const MODULE_LABELS: Record<string, string> = {
   contacts: "Clients",
   production: "Production",
   analytics: "Analytique Ventes",
-};
-
-const TYPE_ICON: Record<string, React.ElementType> = {
-  stock_low: Package,
-  return_pending: RotateCcw,
-  refund_pending: RotateCcw,
-  credit_limit_exceeded: CreditCard,
-  production_blocked: Factory,
-  receivable_overdue: TrendingDown,
 };
 
 const MODULE_ROUTES: Record<string, string> = {
@@ -70,17 +65,39 @@ const MODULE_ROUTES: Record<string, string> = {
   analytics: "/analytics/sales",
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const ALERT_TYPE_ICON: Record<string, React.ElementType> = {
+  stock_low: Package,
+  return_pending: RotateCcw,
+  refund_pending: RotateCcw,
+  credit_limit_exceeded: CreditCard,
+  production_blocked: Factory,
+  receivable_overdue: TrendingDown,
+};
 
-function SeverityIcon({ severity }: { severity: string }) {
-  if (severity === "critical") return <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />;
-  if (severity === "warning") return <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />;
-  return <Info className="h-4 w-4 text-blue-500 shrink-0" />;
-}
+const NOTIF_TYPE_ICON: Record<string, React.ElementType> = {
+  task_assigned: ClipboardList,
+  sales: ShoppingCart,
+  remise: DollarSign,
+  stock_low: Package,
+  receivables: TrendingDown,
+  invoices: FileText,
+  returns: RotateCcw,
+  expenses: DollarSign,
+  customers: Users,
+  workers: UserCheck,
+  absence: Calendar,
+  primes: Award,
+  avertissements: AlertTriangle,
+  leaves: Calendar,
+  updates: Settings2,
+  security: AlertCircle,
+};
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SeverityBadge({ severity }: { severity: string }) {
   if (severity === "critical") return <Badge className="text-[10px] h-4 px-1.5 bg-red-100 text-red-700 border-red-200">Critique</Badge>;
-  if (severity === "warning") return <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-700 border-amber-200">Avertissement</Badge>;
+  if (severity === "warning")  return <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-700 border-amber-200">Avertissement</Badge>;
   return <Badge className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-700 border-blue-200">Info</Badge>;
 }
 
@@ -89,21 +106,19 @@ function AlertCard({ alert, onRead, onNavigate }: {
   onRead: (id: number) => void;
   onNavigate: (module: string) => void;
 }) {
-  const Icon = TYPE_ICON[alert.type] ?? Bell;
-  const age = formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true, locale: fr });
+  const Icon = ALERT_TYPE_ICON[alert.type] ?? Bell;
+  const age  = formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true, locale: fr });
 
   return (
-    <div
-      className={`group relative flex gap-3 p-3 rounded-lg border transition-all ${
-        alert.isRead
-          ? "border-border/50 bg-background opacity-60"
-          : alert.severity === "critical"
-          ? "border-red-200 bg-red-50/40"
-          : alert.severity === "warning"
-          ? "border-amber-200 bg-amber-50/30"
-          : "border-blue-200 bg-blue-50/30"
-      }`}
-    >
+    <div className={`group relative flex gap-3 p-3 rounded-lg border transition-all ${
+      alert.isRead
+        ? "border-border/50 bg-background opacity-60"
+        : alert.severity === "critical"
+        ? "border-red-200 bg-red-50/40"
+        : alert.severity === "warning"
+        ? "border-amber-200 bg-amber-50/30"
+        : "border-blue-200 bg-blue-50/30"
+    }`}>
       {!alert.isRead && (
         <span className={`absolute top-3 right-3 h-2 w-2 rounded-full ${
           alert.severity === "critical" ? "bg-red-500" : alert.severity === "warning" ? "bg-amber-500" : "bg-blue-500"
@@ -147,32 +162,31 @@ function AlertCard({ alert, onRead, onNavigate }: {
   );
 }
 
-function UserNotifCard({ notif, onRead, onNavigate }: {
+function UserNotifCard({ notif, onRead, onDelete, onNavigate }: {
   notif: UserNotif;
   onRead: (id: number) => void;
+  onDelete: (id: number) => void;
   onNavigate?: () => void;
 }) {
-  const age = formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: fr });
+  const age  = formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true, locale: fr });
+  const Icon = NOTIF_TYPE_ICON[notif.type] ?? Bell;
+  const link = notif.link ?? (notif.meta?.link as string | undefined);
 
   return (
-    <div
-      className={`group relative flex gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
-        notif.isRead
-          ? "border-border/50 bg-background opacity-60"
-          : "border-primary/30 bg-primary/5"
-      }`}
-      onClick={() => { if (!notif.isRead) onRead(notif.id); }}
-      title={notif.isRead ? "Lu" : "Cliquer pour marquer comme lu"}
-    >
-      {!notif.isRead && (
-        <span className="absolute top-3 left-3 h-2 w-2 rounded-full bg-primary" />
-      )}
+    <div className={`group relative flex gap-3 p-3 rounded-lg border transition-all ${
+      notif.isRead ? "border-border/50 bg-background opacity-60" : "border-primary/30 bg-primary/5"
+    }`}>
+      {!notif.isRead && <span className="absolute top-3 left-3 h-2 w-2 rounded-full bg-primary" />}
 
       <div className={`mt-0.5 p-1.5 rounded-md shrink-0 ${notif.isRead ? "bg-muted" : "bg-primary/10"}`}>
-        <ClipboardList className={`h-3.5 w-3.5 ${notif.isRead ? "text-muted-foreground" : "text-primary"}`} />
+        <Icon className={`h-3.5 w-3.5 ${notif.isRead ? "text-muted-foreground" : "text-primary"}`} />
       </div>
 
-      <div className="flex-1 min-w-0 space-y-1">
+      <div
+        className="flex-1 min-w-0 space-y-1 cursor-pointer"
+        onClick={() => { if (!notif.isRead) onRead(notif.id); if (link) onNavigate?.(); }}
+        title={notif.isRead ? "Lu" : "Cliquer pour marquer comme lu"}
+      >
         <p className={`text-sm font-semibold leading-tight ${notif.isRead ? "text-muted-foreground" : "text-foreground"}`}>
           {notif.title}
         </p>
@@ -180,15 +194,24 @@ function UserNotifCard({ notif, onRead, onNavigate }: {
         <span className="text-[10px] text-muted-foreground">{age}</span>
       </div>
 
-      {onNavigate && (
+      <div className="shrink-0 mt-0.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {link && (
+          <button
+            className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+            onClick={e => { e.stopPropagation(); if (!notif.isRead) onRead(notif.id); onNavigate?.(); }}
+            title="Ouvrir"
+          >
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        )}
         <button
-          className="shrink-0 mt-0.5 h-6 w-6 flex items-center justify-center rounded-md hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-          onClick={e => { e.stopPropagation(); if (!notif.isRead) onRead(notif.id); onNavigate(); }}
-          title="Ouvrir Analytique Ventes → Alertes"
+          className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-red-50 hover:text-red-500 transition-colors"
+          onClick={e => { e.stopPropagation(); onDelete(notif.id); }}
+          title="Supprimer"
         >
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -205,20 +228,22 @@ type Tab = "alerts" | "personal";
 export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps) {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>("personal");
+  const [activeTab, setActiveTab]       = useState<Tab>("personal");
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
-  const [filterModule, setFilterModule] = useState<string>("all");
+  const [filterModule, setFilterModule]     = useState<string>("all");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
 
   const token = () => localStorage.getItem("erp_token") ?? "";
+
+  // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: alerts = [], isLoading: alertsLoading, refetch: refetchAlerts } = useQuery<EAlert[]>({
     queryKey: ["notifications", filterSeverity, filterModule, showUnreadOnly],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterSeverity !== "all") params.set("severity", filterSeverity);
-      if (filterModule !== "all") params.set("module", filterModule);
-      if (showUnreadOnly) params.set("unread", "true");
+      if (filterModule   !== "all") params.set("module",   filterModule);
+      if (showUnreadOnly)           params.set("unread",   "true");
       const r = await fetch(`/api/notifications?${params}`, { headers: { Authorization: `Bearer ${token()}` } });
       if (!r.ok) return [];
       const data = await r.json();
@@ -240,46 +265,70 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
     refetchInterval: open ? 30_000 : false,
   });
 
+  // ── Mutations ─────────────────────────────────────────────────────────────────
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["notifications-badge"] });
+
   const readMutation = useMutation({
     mutationFn: async (id: number) => {
       await fetch(`/api/notifications/${id}/read`, { method: "POST", headers: { Authorization: `Bearer ${token()}` } });
     },
-    onSuccess: () => { refetchAlerts(); qc.invalidateQueries({ queryKey: ["notifications-badge"] }); },
+    onSuccess: () => { refetchAlerts(); invalidate(); },
   });
 
   const readAllMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/notifications/read-all", { method: "POST", headers: { Authorization: `Bearer ${token()}` } });
     },
-    onSuccess: () => { refetchAlerts(); qc.invalidateQueries({ queryKey: ["notifications-badge"] }); },
+    onSuccess: () => { refetchAlerts(); invalidate(); },
   });
 
   const readUserNotifMutation = useMutation({
     mutationFn: async (id: number) => {
       await fetch(`/api/notifications/user/${id}/read`, { method: "POST", headers: { Authorization: `Bearer ${token()}` } });
     },
-    onSuccess: () => { refetchUserNotifs(); qc.invalidateQueries({ queryKey: ["notifications-badge"] }); },
+    onSuccess: () => { refetchUserNotifs(); invalidate(); },
   });
 
   const readAllUserNotifsMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/notifications/user/read-all", { method: "POST", headers: { Authorization: `Bearer ${token()}` } });
     },
-    onSuccess: () => { refetchUserNotifs(); qc.invalidateQueries({ queryKey: ["notifications-badge"] }); },
+    onSuccess: () => { refetchUserNotifs(); invalidate(); },
   });
+
+  const deleteUserNotifMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/notifications/user/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    },
+    onSuccess: () => { refetchUserNotifs(); invalidate(); },
+  });
+
+  const deleteAllUserNotifsMutation = useMutation({
+    mutationFn: async () => {
+      await fetch("/api/notifications/user/all", { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    },
+    onSuccess: () => { refetchUserNotifs(); invalidate(); },
+  });
+
+  // ── Navigation ────────────────────────────────────────────────────────────────
 
   const handleNavigate = useCallback((module: string) => {
     const route = MODULE_ROUTES[module];
     if (route) { navigate(route); onClose(); }
   }, [navigate, onClose]);
 
-  const unreadAlerts = alerts.filter(a => !a.isRead).length;
-  const criticalCount = alerts.filter(a => a.severity === "critical" && !a.isRead).length;
+  // ── Counts ────────────────────────────────────────────────────────────────────
+
+  const unreadAlerts     = alerts.filter(a => !a.isRead).length;
+  const criticalCount    = alerts.filter(a => a.severity === "critical" && !a.isRead).length;
   const unreadUserNotifs = userNotifs.filter(n => !n.isRead).length;
 
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent side="right" className="w-full sm:w-[440px] p-0 flex flex-col">
+
+        {/* ── Header ── */}
         <SheetHeader className="px-4 py-4 border-b shrink-0">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-base flex items-center gap-2">
@@ -327,13 +376,22 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
           </div>
         </SheetHeader>
 
-        {/* Personal notifications tab */}
+        {/* ── Personal notifications tab ── */}
         {activeTab === "personal" && (
           <>
-            {unreadUserNotifs > 0 && (
-              <div className="px-4 py-2 border-b shrink-0 flex justify-end">
-                <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => readAllUserNotifsMutation.mutate()}>
-                  <CheckCheck className="h-3.5 w-3.5" />Tout marquer comme lu
+            {userNotifs.length > 0 && (
+              <div className="px-4 py-2 border-b shrink-0 flex justify-between items-center gap-2">
+                {unreadUserNotifs > 0 && (
+                  <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => readAllUserNotifsMutation.mutate()}>
+                    <CheckCheck className="h-3.5 w-3.5" />Tout lire
+                  </Button>
+                )}
+                <Button
+                  variant="ghost" size="sm"
+                  className="text-xs h-7 gap-1 text-muted-foreground hover:text-destructive ml-auto"
+                  onClick={() => { if (confirm("Supprimer toutes les notifications ?")) deleteAllUserNotifsMutation.mutate(); }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />Tout supprimer
                 </Button>
               </div>
             )}
@@ -347,24 +405,28 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
                       <Bell className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">Aucune notification</p>
-                    <p className="text-xs text-muted-foreground">Les notifications de tâches qui vous sont assignées apparaîtront ici.</p>
+                    <p className="text-xs text-muted-foreground">Les notifications apparaîtront ici.</p>
                   </div>
                 ) : (
-                  userNotifs.map(n => (
-                    <UserNotifCard
-                      key={n.id}
-                      notif={n}
-                      onRead={id => readUserNotifMutation.mutate(id)}
-                      onNavigate={n.meta?.link ? () => { navigate(n.meta!.link as string); onClose(); } : undefined}
-                    />
-                  ))
+                  userNotifs.map(n => {
+                    const link = n.link ?? (n.meta?.link as string | undefined);
+                    return (
+                      <UserNotifCard
+                        key={n.id}
+                        notif={n}
+                        onRead={id => readUserNotifMutation.mutate(id)}
+                        onDelete={id => deleteUserNotifMutation.mutate(id)}
+                        onNavigate={link ? () => { navigate(link); onClose(); } : undefined}
+                      />
+                    );
+                  })
                 )}
               </div>
             </ScrollArea>
           </>
         )}
 
-        {/* Operational alerts tab */}
+        {/* ── Operational alerts tab ── */}
         {activeTab === "alerts" && (
           <>
             {unreadAlerts > 0 && (
@@ -416,6 +478,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
                 size="sm"
                 className="h-7 text-xs px-2 shrink-0"
                 onClick={() => setShowUnreadOnly(!showUnreadOnly)}
+                title={showUnreadOnly ? "Afficher tout" : "Non lues seulement"}
               >
                 {showUnreadOnly ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
               </Button>
@@ -469,7 +532,7 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
         <div className="px-4 py-3 border-t shrink-0 bg-muted/20">
           <p className="text-[10px] text-muted-foreground text-center">
             {activeTab === "personal"
-              ? "Notifications personnelles — tâches qui vous sont assignées"
+              ? "Vos notifications personnelles — cliquez pour marquer comme lu"
               : "Alertes générées en temps réel à partir des données du système"}
           </p>
         </div>

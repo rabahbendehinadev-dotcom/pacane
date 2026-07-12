@@ -452,6 +452,27 @@ router.post("/notifications/:id/read", requireAuth, async (req, res) => {
   res.json(updated ?? { error: "Not found" });
 });
 
+// DELETE /api/notifications/user/:id — delete a single user notification
+router.delete("/notifications/user/:id", requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const userId = req.user!.id;
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  await db
+    .delete(userNotificationsTable)
+    .where(and(eq(userNotificationsTable.id, id), eq(userNotificationsTable.userId, userId)));
+  res.json({ ok: true });
+});
+
+// DELETE /api/notifications/user/all — delete all user notifications
+router.delete("/notifications/user/all", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const result = await db
+    .delete(userNotificationsTable)
+    .where(eq(userNotificationsTable.userId, userId))
+    .returning({ id: userNotificationsTable.id });
+  res.json({ deleted: result.length });
+});
+
 // POST /api/notifications/read-all — mark all (scoped) as read
 router.post("/notifications/read-all", requireAuth, async (req, res) => {
   const allowed = visibleBranchIds(req.user!);
@@ -591,18 +612,17 @@ export async function generateDailySalesAnalyticsNotifications(): Promise<void> 
 
       if (existing.length > 0) continue;
 
-      await db.insert(userNotificationsTable).values({
-        userId: user.id,
-        type: "sales_analytics_alert",
+      const { sendPushToUser } = await import("../lib/push-service");
+      await sendPushToUser(user.id, {
         title,
-        message,
-        isRead: false,
-        meta: {
+        body: message,
+        type: "sales",
+        link: "/analytics/sales?tab=alerts",
+        data: {
           notif_key: notifKey,
           stagnantCount,
           inactiveCount,
           negMarginCount,
-          link: "/analytics/sales?tab=alerts",
         },
       });
     }

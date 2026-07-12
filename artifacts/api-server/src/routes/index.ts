@@ -46,6 +46,8 @@ import crmRouter from "./crm";
 import intelligenceRouter from "./intelligence";
 import aiControlRouter from "./ai-control";
 import checklistRouter from "./checklist";
+import pushRouter from "./push";
+import notificationSettingsRouter from "./notification-settings";
 
 const router: IRouter = Router();
 
@@ -98,5 +100,7 @@ router.use("/crm", crmRouter);
 router.use(intelligenceRouter);
 router.use(aiControlRouter);
 router.use(checklistRouter);
+router.use(pushRouter);
+router.use(notificationSettingsRouter);
 
 export default router;

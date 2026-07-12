@@ -17,9 +17,12 @@ import {
   Save, Globe, Building2, Hash, CreditCard, Banknote, FileText,
   Plus, Pencil, Trash2, CheckCircle2, XCircle, GripVertical,
   Receipt, ShoppingCart, ArrowLeftRight, Factory, Package, Wallet,
-  RotateCcw, AlertTriangle
+  RotateCcw, AlertTriangle, Bell, BellOff, Smartphone, Monitor,
+  Shield, RefreshCw
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { NotificationPrefsTab } from "@/components/settings/NotificationPrefsTab";
+import { DevicesTab } from "@/components/settings/DevicesTab";
 
 interface CompanySettings {
   id: number;
@@ -259,13 +262,15 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="company" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 h-10">
+        <TabsList className="grid w-full grid-cols-8 h-10">
           <TabsTrigger value="company" className="text-xs">Entreprise</TabsTrigger>
           <TabsTrigger value="numbering" className="text-xs">Numérotation</TabsTrigger>
           <TabsTrigger value="tax" className="text-xs">TVA</TabsTrigger>
           <TabsTrigger value="payments" className="text-xs">Paiements</TabsTrigger>
           <TabsTrigger value="discounts" className="text-xs">Remises</TabsTrigger>
           <TabsTrigger value="system" className="text-xs">Système</TabsTrigger>
+          <TabsTrigger value="notifications" className="text-xs">Notifs</TabsTrigger>
+          <TabsTrigger value="devices" className="text-xs">Appareils</TabsTrigger>
         </TabsList>
 
         {/* ── TAB: ENTREPRISE ── */}
@@ -630,6 +635,17 @@ export default function Settings() {
           </Button>
 
         </TabsContent>
+
+        {/* ── TAB: NOTIFICATIONS ── */}
+        <TabsContent value="notifications" className="space-y-4">
+          <NotificationPrefsTab />
+        </TabsContent>
+
+        {/* ── TAB: APPAREILS ── */}
+        <TabsContent value="devices" className="space-y-4">
+          <DevicesTab />
+        </TabsContent>
+
       </Tabs>
 
       {/* Payment Method Dialog */}

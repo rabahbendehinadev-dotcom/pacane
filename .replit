@@ -33,3 +33,10 @@ externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BAypPcrZD_vrPJo6GBSQiTix_E8vr9qos6VevXCj0yGvNuohQxFr0NDYSuuOA5iJYCqtppHxSVeBUO-wwxZ6OpA"
+VAPID_PRIVATE_KEY = "3I104lmh3t_rJoJldFqaspQF2TQSo8iPuJN5QDBwsR8"
+VAPID_SUBJECT = "mailto:admin@pacane.dz"
