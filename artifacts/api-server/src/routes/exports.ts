@@ -906,4 +906,62 @@ router.get("/export/adjustments", requireAuth, requirePermission(P.adjustments.v
   sendCsv(res, filename, csv);
 });
 
+// ── DISCOUNTS EXPORT ──────────────────────────────────────────────────────
+router.get("/export/discounts", requireAuth, requirePermission(P.sales.view), async (req, res): Promise<void> => {
+  const { from, to, branchIds: branchIdsRaw } = req.query as Record<string, string>;
+  const scope = visibleBranchIds(req.user!);
+  const branchIds = branchIdsRaw ? branchIdsRaw.split(",").map(s => parseInt(s.trim(), 10)).filter(x => !isNaN(x)) : undefined;
+
+  const conds: any[] = [
+    sql`${saleItemsTable.discount}::numeric > 0`,
+    eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed"),
+  ];
+  if (scope !== null) {
+    if (scope.length === 0) { res.json([]); return; }
+    conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+  if (from) conds.push(gte(salesTable.createdAt, new Date(from)));
+  if (to) { const d = new Date(to); d.setHours(23, 59, 59, 999); conds.push(lte(salesTable.createdAt, d)); }
+
+  const rows = await db.select({
+    reference: salesTable.reference, createdAt: salesTable.createdAt,
+    paymentStatus: salesTable.paymentStatus, notes: salesTable.notes,
+    customerName: contactsTable.displayName, branchName: branchesTable.name, sellerName: usersTable.name,
+    productName: productsTable.name, qty: saleItemsTable.quantity,
+    unitPrice: saleItemsTable.unitPrice, discount: saleItemsTable.discount,
+    total: saleItemsTable.total, costPrice: productsTable.costPrice,
+  }).from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+    .innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
+    .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+    .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(salesTable.createdAt));
+
+  const filename = buildFilename("remises-ventes", undefined, from, to);
+  type Row = typeof rows[number];
+  const csv = toCsv<Row>([
+    { header: "Référence",          value: r => r.reference },
+    { header: "Date",               value: r => fmtDate(r.createdAt!) },
+    { header: "Heure",              value: r => r.createdAt ? new Date(r.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "" },
+    { header: "Client",             value: r => r.customerName ?? "Anonyme" },
+    { header: "Produit",            value: r => r.productName },
+    { header: "Quantité",           value: r => n(r.qty) },
+    { header: "Prix unitaire (DA)", value: r => n(r.unitPrice) },
+    { header: "Prix original (DA)", value: r => Math.round(n(r.qty) * n(r.unitPrice)) },
+    { header: "Remise (DA)",        value: r => n(r.discount) },
+    { header: "% Remise",           value: r => { const orig = n(r.qty) * n(r.unitPrice); return orig > 0 ? Math.round((n(r.discount) / orig) * 1000) / 10 : 0; } },
+    { header: "Prix final (DA)",    value: r => n(r.total) },
+    { header: "Profit (DA)",        value: r => Math.round(n(r.total) - n(r.qty) * n(r.costPrice)) },
+    { header: "Vendeur",            value: r => r.sellerName ?? "—" },
+    { header: "Boutique",           value: r => r.branchName },
+    { header: "Paiement",           value: r => r.paymentStatus ?? "" },
+    { header: "Raison",             value: r => r.notes ?? "" },
+  ], rows);
+  sendCsv(res, filename, csv);
+});
+
 export default router;
+

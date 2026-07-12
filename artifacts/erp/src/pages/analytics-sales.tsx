@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch, useGetBranches, useGetCategories } from "@workspace/api-client-react";
@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -181,7 +183,7 @@ export default function AnalyticsSales() {
   const [activeMainTab, setActiveMainTab] = useState(() => {
     const p = new URLSearchParams(searchStr);
     const t = p.get("tab");
-    return (t && ["products","customers","sellers","documents","categories","alerts"].includes(t)) ? t : "products";
+    return (t && ["products","customers","sellers","documents","categories","alerts","discounts"].includes(t)) ? t : "products";
   });
 
   const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
@@ -208,6 +210,12 @@ export default function AnalyticsSales() {
   const [productSearch, setProductSearch] = useState("");
   const [productPage,   setProductPage]   = useState(1);
   const PRODUCT_PAGE_SIZE = 50;
+
+  // ─── Discounts tab state ─────────────────────────────────────────────────
+  const [discountSearch, setDiscountSearch] = useState("");
+  const [discountRow, setDiscountRow] = useState<any>(null);
+  const [discountSortKey, setDiscountSortKey] = useState<string>("discountAmount");
+  const [discountSortDir, setDiscountSortDir] = useState<"desc"|"asc">("desc");
 
   // ─── Alert thresholds (persisted in localStorage) ───────────────────────────
   const [stagnantDays, setStagnantDays] = useState<number>(() => {
@@ -360,6 +368,63 @@ export default function AnalyticsSales() {
     queryKey: ["as-alerts", alertsQs],
     queryFn: () => customFetch(`/api/analytics/sales/alerts?${alertsQs}`),
   });
+
+  // ─── Discount analytics ───────────────────────────────────────────────────
+  const { data: discountsData, isLoading: discountsLoading } = useQuery({
+    queryKey: ["as-discounts", kpisQs],
+    queryFn: () => customFetch(`/api/analytics/sales/discounts?${kpisQs}`),
+    enabled: activeMainTab === "discounts",
+  });
+  const { data: discountDetail, isLoading: detailLoading } = useQuery({
+    queryKey: ["as-discount-detail", discountRow?.saleId],
+    queryFn: () => customFetch(`/api/analytics/sales/discount-detail/${discountRow?.saleId}`),
+    enabled: !!discountRow?.saleId,
+  });
+  const disc = discountsData as any;
+  const dDetail = discountDetail as any;
+
+  const discountLines = useMemo(() => {
+    const lines: any[] = disc?.lines ?? [];
+    const q2 = discountSearch.toLowerCase();
+    const filtered = q2
+      ? lines.filter((r: any) => r.reference?.toLowerCase().includes(q2) || r.customerName?.toLowerCase().includes(q2) || r.productName?.toLowerCase().includes(q2) || r.sellerName?.toLowerCase().includes(q2) || r.branchName?.toLowerCase().includes(q2))
+      : lines;
+    return [...filtered].sort((a, b) => {
+      const va = a[discountSortKey], vb = b[discountSortKey];
+      if (typeof va === "string" && typeof vb === "string")
+        return discountSortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+      return discountSortDir === "asc" ? (Number(va ?? 0) - Number(vb ?? 0)) : (Number(vb ?? 0) - Number(va ?? 0));
+    });
+  }, [disc, discountSearch, discountSortKey, discountSortDir]);
+
+  const handleDiscountExportCsv = useCallback(async () => {
+    const r = await fetch(`/api/export/discounts?${kpisQs}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `REMISES_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(a.href);
+  }, [kpisQs]);
+
+  const handleDiscountExportExcel = useCallback(async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Remises");
+    ws.addRow(["Référence","Date","Heure","Client","Produit","Qté","Prix orig.","Remise DA","Remise %","Prix final","Profit","Vendeur","Boutique","Raison"]);
+    (disc?.lines ?? []).forEach((r: any) => {
+      ws.addRow([r.reference, r.date, r.time, r.customerName, r.productName, r.qty, r.originalPrice, r.discountAmount, r.discountPct, r.finalPrice, r.profit, r.sellerName, r.branchName, r.reason ?? ""]);
+    });
+    ws.getRow(1).font = { bold: true };
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `REMISES_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click(); URL.revokeObjectURL(a.href);
+  }, [disc]);
 
   const k = kpis as any;
   const ch = channels as any;
@@ -965,6 +1030,10 @@ export default function AnalyticsSales() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="discounts" className="text-xs h-7 px-3">
+            <Percent className="h-3.5 w-3.5 mr-1.5" />
+            Remises
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Products ─────────────────────────────────────────────────────────── */}
@@ -1515,6 +1584,341 @@ export default function AnalyticsSales() {
 
             </div>
           )}
+        </TabsContent>
+
+        {/* ── Ventes avec remise ──────────────────────────────────────────────── */}
+        <TabsContent value="discounts" className="space-y-5 mt-4">
+          {discountsLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <Card key={i} className="border-0 shadow-sm"><CardContent className="p-4"><div className="h-14 bg-muted animate-pulse rounded" /></CardContent></Card>
+              ))}
+            </div>
+          ) : disc ? (
+            <>
+              {/* ── KPI Cards Row 1 ─────────────────────────────────────────────── */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <KpiCard title="Ventes avec remise" value={String(disc.summary.saleCount)} icon={Receipt} color="violet" sub={`sur ${disc.summary.saleCount > 0 ? "toutes les ventes" : "—"}`} />
+                <KpiCard title="Valeur totale remises" value={fmtDA(disc.summary.totalDiscount)} icon={BadgeDollarSign} color="red" highlight="bad" />
+                <KpiCard title="CA après remise" value={fmtDA(disc.summary.totalAfterDiscount)} icon={TrendingUp} color="green" highlight="good" />
+                <KpiCard title="Remise moyenne" value={fmtDA(disc.summary.avgDiscount)} icon={Percent} color="amber" />
+                <KpiCard title="% ventes remisées" value={`${disc.summary.pctOfSales}%`} icon={BarChart2} color="blue" sub="des ventes confirmées" />
+              </div>
+
+              {/* ── KPI Cards Row 2 — Top performers ─────────────────────────────── */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {disc.summary.topSeller && (
+                  <Card className="border-0 shadow-sm bg-violet-50/50">
+                    <CardContent className="p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><Star className="h-3 w-3 text-violet-500" />Top vendeur remises</p>
+                      <p className="font-bold text-sm mt-0.5 truncate">{disc.summary.topSeller.name}</p>
+                      <p className="text-[11px] text-red-600 font-semibold">{fmtDA(disc.summary.topSeller.amount)} · {disc.summary.topSeller.count} vente(s)</p>
+                    </CardContent>
+                  </Card>
+                )}
+                {disc.summary.topBranch && (
+                  <Card className="border-0 shadow-sm bg-blue-50/50">
+                    <CardContent className="p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3 text-blue-500" />Top boutique remises</p>
+                      <p className="font-bold text-sm mt-0.5 truncate">{disc.summary.topBranch.name}</p>
+                      <p className="text-[11px] text-red-600 font-semibold">{fmtDA(disc.summary.topBranch.amount)} · {disc.summary.topBranch.count} vente(s)</p>
+                    </CardContent>
+                  </Card>
+                )}
+                {disc.summary.topProduct && (
+                  <Card className="border-0 shadow-sm bg-amber-50/50">
+                    <CardContent className="p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><Package className="h-3 w-3 text-amber-500" />Top produit remisé</p>
+                      <p className="font-bold text-sm mt-0.5 truncate">{disc.summary.topProduct.name}</p>
+                      <p className="text-[11px] text-red-600 font-semibold">{fmtDA(disc.summary.topProduct.amount)}</p>
+                    </CardContent>
+                  </Card>
+                )}
+                {disc.summary.topCustomer && (
+                  <Card className="border-0 shadow-sm bg-green-50/50">
+                    <CardContent className="p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3 text-green-500" />Top client remises</p>
+                      <p className="font-bold text-sm mt-0.5 truncate">{disc.summary.topCustomer.name}</p>
+                      <p className="text-[11px] text-red-600 font-semibold">{fmtDA(disc.summary.topCustomer.amount)} · {disc.summary.topCustomer.count} achat(s)</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* ── Charts ──────────────────────────────────────────────────────── */}
+              <div className="grid lg:grid-cols-2 gap-4">
+                {/* By day */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><TrendingDown className="h-4 w-4 text-red-500" />Remises par jour</CardTitle></CardHeader>
+                  <CardContent className="pt-0">
+                    {disc.charts.byDay.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <AreaChart data={disc.charts.byDay} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="date" tick={{ fontSize: 9 }} tickFormatter={d => { try { return format(new Date(d), "dd/MM"); } catch { return d; } }} />
+                          <YAxis tick={{ fontSize: 9 }} width={48} tickFormatter={v => fmtK(v)} />
+                          <Tooltip content={<ChartTip />} />
+                          <Area type="monotone" dataKey="discountAmount" name="Remise (DA)" stroke="#ef4444" fill="url(#discGrad)" strokeWidth={2} dot={false} />
+                          <Area type="monotone" dataKey="saleAmount" name="CA (DA)" stroke="#10b981" fill="none" strokeDasharray="4 2" strokeWidth={1.5} dot={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : <div className="h-44 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>}
+                  </CardContent>
+                </Card>
+
+                {/* Comparison stacked: CA vs remises */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><BarChart2 className="h-4 w-4 text-indigo-500" />CA vs Remises (par boutique)</CardTitle></CardHeader>
+                  <CardContent className="pt-0">
+                    {disc.charts.byBranch.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={disc.charts.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                          <YAxis tick={{ fontSize: 9 }} width={48} tickFormatter={v => fmtK(v)} />
+                          <Tooltip content={<ChartTip />} />
+                          <Bar dataKey="totalDiscount" name="Remise (DA)" fill="#ef4444" radius={[3,3,0,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div className="h-44 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>}
+                  </CardContent>
+                </Card>
+
+                {/* By seller */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Star className="h-4 w-4 text-violet-500" />Remises par vendeur</CardTitle></CardHeader>
+                  <CardContent className="pt-0">
+                    {disc.charts.bySeller.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={disc.charts.bySeller} layout="vertical" margin={{ top: 0, right: 8, left: 80, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => fmtK(v)} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={78} />
+                          <Tooltip content={<ChartTip />} />
+                          <Bar dataKey="totalDiscount" name="Remise (DA)" fill="#8b5cf6" radius={[0,3,3,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>}
+                  </CardContent>
+                </Card>
+
+                {/* By product */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Package className="h-4 w-4 text-amber-500" />Top produits remisés</CardTitle></CardHeader>
+                  <CardContent className="pt-0">
+                    {disc.charts.byProduct.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={disc.charts.byProduct} layout="vertical" margin={{ top: 0, right: 8, left: 90, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => fmtK(v)} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={88} />
+                          <Tooltip content={<ChartTip />} />
+                          <Bar dataKey="totalDiscount" name="Remise (DA)" fill="#f59e0b" radius={[0,3,3,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* ── Detail Table ─────────────────────────────────────────────────── */}
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Percent className="h-4 w-4 text-violet-500" />
+                      Lignes remisées
+                      <Badge variant="outline" className="text-[10px] h-4 ml-1">{discountLines.length}</Badge>
+                    </CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={handleDiscountExportCsv}>
+                        <Download className="h-3.5 w-3.5" />CSV
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={handleDiscountExportExcel}>
+                        <Download className="h-3.5 w-3.5" />Excel
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => window.print()}>
+                        <FileText className="h-3.5 w-3.5" />PDF
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="relative mt-2">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Rechercher facture, client, produit, vendeur…"
+                      value={discountSearch}
+                      onChange={e => setDiscountSearch(e.target.value)}
+                      className="pl-8 h-8 text-xs"
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          {[
+                            { label: "Facture", sk: "reference" },
+                            { label: "Date", sk: "date" },
+                            { label: "Heure", sk: "time" },
+                            { label: "Client", sk: "customerName" },
+                            { label: "Produit", sk: "productName" },
+                            { label: "Qté", sk: "qty", right: true },
+                            { label: "Prix orig.", sk: "originalPrice", right: true },
+                            { label: "Remise DA", sk: "discountAmount", right: true },
+                            { label: "Remise %", sk: "discountPct", right: true },
+                            { label: "Prix final", sk: "finalPrice", right: true },
+                            { label: "Profit", sk: "profit", right: true },
+                            { label: "Vendeur", sk: "sellerName" },
+                            { label: "Boutique", sk: "branchName" },
+                            { label: "Raison", sk: "reason" },
+                          ].map(col => (
+                            <SortHead key={col.sk} label={col.label} sk={col.sk} curKey={discountSortKey} curDir={discountSortDir} right={col.right}
+                              onToggle={k => {
+                                if (k === discountSortKey) setDiscountSortDir(d => d === "desc" ? "asc" : "desc");
+                                else { setDiscountSortKey(k); setDiscountSortDir("desc"); }
+                              }}
+                            />
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {discountLines.length === 0 ? (
+                          <TableRow><TableCell colSpan={14} className="text-center text-xs text-muted-foreground py-10">Aucune vente avec remise sur cette période</TableCell></TableRow>
+                        ) : discountLines.map((row: any, i: number) => (
+                          <TableRow
+                            key={`${row.saleId}-${i}`}
+                            className="cursor-pointer hover:bg-muted/40 transition-colors text-xs"
+                            onClick={() => setDiscountRow(row)}
+                          >
+                            <TableCell className="font-mono font-medium text-indigo-700 whitespace-nowrap">{row.reference}</TableCell>
+                            <TableCell className="whitespace-nowrap">{fmtDateShort(row.date)}</TableCell>
+                            <TableCell className="text-muted-foreground">{row.time}</TableCell>
+                            <TableCell className="max-w-[120px] truncate">{row.customerName}</TableCell>
+                            <TableCell className="max-w-[140px] truncate font-medium">{row.productName}</TableCell>
+                            <TableCell className="text-right">{row.qty}</TableCell>
+                            <TableCell className="text-right">{fmtDA(row.originalPrice)}</TableCell>
+                            <TableCell className="text-right text-red-600 font-semibold">−{fmtDA(row.discountAmount)}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="outline" className="text-[10px] text-red-600 border-red-200 bg-red-50">{row.discountPct}%</Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-green-700">{fmtDA(row.finalPrice)}</TableCell>
+                            <TableCell className={`text-right font-semibold ${row.profit < 0 ? "text-red-600" : "text-green-700"}`}>{fmtDA(row.profit)}</TableCell>
+                            <TableCell className="max-w-[100px] truncate">{row.sellerName}</TableCell>
+                            <TableCell className="max-w-[100px] truncate text-muted-foreground">{row.branchName}</TableCell>
+                            <TableCell className="max-w-[120px] truncate text-muted-foreground italic">{row.reason ?? "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+              <Percent className="h-8 w-8 mr-2 opacity-20" />
+              Aucune donnée · Activez l'onglet pour charger
+            </div>
+          )}
+
+          {/* ── Drawer Détails Vente ───────────────────────────────────────────── */}
+          <Sheet open={!!discountRow} onOpenChange={open => { if (!open) setDiscountRow(null); }}>
+            <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+              <SheetHeader className="pb-3">
+                <SheetTitle className="flex items-center gap-2 text-base">
+                  <Receipt className="h-4 w-4 text-violet-500" />
+                  {discountRow?.reference ?? "Détails vente"}
+                </SheetTitle>
+                <SheetClose />
+              </SheetHeader>
+
+              {detailLoading ? (
+                <div className="space-y-3 mt-4">
+                  {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
+                </div>
+              ) : dDetail ? (
+                <div className="space-y-4 pb-8">
+                  {/* Meta */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div><p className="text-muted-foreground">Client</p><p className="font-semibold">{dDetail.customerName ?? "Anonyme"}</p></div>
+                    <div><p className="text-muted-foreground">Vendeur</p><p className="font-semibold">{dDetail.sellerName ?? "—"}</p></div>
+                    <div><p className="text-muted-foreground">Boutique</p><p className="font-semibold">{dDetail.branchName}</p></div>
+                    <div><p className="text-muted-foreground">Paiement</p>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${(PAYMENT_CFG[dDetail.paymentStatus ?? ""] ?? PAYMENT_CFG.unpaid).cls}`}>
+                        {(PAYMENT_CFG[dDetail.paymentStatus ?? ""] ?? { label: dDetail.paymentStatus ?? "—" }).label}
+                      </span>
+                    </div>
+                    <div><p className="text-muted-foreground">Créé le</p><p className="font-medium">{dDetail.createdAt ? format(new Date(dDetail.createdAt), "dd/MM/yyyy HH:mm", { locale: fr }) : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Modifié le</p><p className="font-medium">{dDetail.updatedAt ? format(new Date(dDetail.updatedAt), "dd/MM/yyyy HH:mm", { locale: fr }) : "—"}</p></div>
+                  </div>
+
+                  {dDetail.notes && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+                      <p className="font-semibold text-amber-700 mb-0.5">Raison / Notes</p>
+                      <p className="text-amber-800">{dDetail.notes}</p>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Items table */}
+                  <div>
+                    <p className="text-xs font-semibold mb-2 flex items-center gap-1"><Package className="h-3.5 w-3.5" />Produits ({dDetail.items?.length ?? 0})</p>
+                    <div className="space-y-2">
+                      {(dDetail.items ?? []).map((item: any) => (
+                        <div key={item.id} className="bg-muted/30 rounded-lg p-3 text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold leading-tight">{item.productName}</p>
+                            {item.discount > 0 && (
+                              <Badge variant="outline" className="text-[10px] text-red-600 border-red-200 bg-red-50 shrink-0">−{item.discount} DA</Badge>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1.5 text-muted-foreground">
+                            <span>Qté: <span className="text-foreground font-medium">{item.qty}</span></span>
+                            <span>Prix unit.: <span className="text-foreground font-medium">{fmtDA(item.unitPrice)}</span></span>
+                            <span>Original: <span className="text-foreground">{fmtDA(item.originalPrice)}</span></span>
+                            {item.discount > 0 && <>
+                              <span>Remise: <span className="text-red-600 font-semibold">−{fmtDA(item.discount)} ({item.discountPct}%)</span></span>
+                            </>}
+                            <span>Final: <span className="text-green-700 font-bold">{fmtDA(item.total)}</span></span>
+                            <span>Profit: <span className={`font-semibold ${item.profit < 0 ? "text-red-600" : "text-green-700"}`}>{fmtDA(item.profit)}</span></span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Totals */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Sous-total</span><span className="font-medium">{fmtDA(dDetail.subtotal)}</span></div>
+                    {dDetail.discount > 0 && (
+                      <div className="flex justify-between text-red-600 font-semibold"><span>Remise globale</span><span>−{fmtDA(dDetail.discount)}</span></div>
+                    )}
+                    {dDetail.tax > 0 && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">TVA</span><span>{fmtDA(dDetail.tax)}</span></div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between font-bold text-sm"><span>Total</span><span className="text-green-700">{fmtDA(dDetail.total)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Payé</span><span className="text-green-600 font-semibold">{fmtDA(dDetail.paid)}</span></div>
+                    {(dDetail.total - dDetail.paid) > 0 && (
+                      <div className="flex justify-between text-red-600 font-semibold"><span>Reste dû</span><span>{fmtDA(dDetail.total - dDetail.paid)}</span></div>
+                    )}
+                  </div>
+                </div>
+              ) : discountRow ? (
+                <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Chargement…</div>
+              ) : null}
+            </SheetContent>
+          </Sheet>
         </TabsContent>
       </Tabs>
     </div>

@@ -931,4 +931,195 @@ router.get("/alerts", requireAuth, requirePermission(P.reports.view), async (req
   });
 });
 
+// ─── Discount Sales Analytics ────────────────────────────────────────────────
+// GET /analytics/sales/discounts
+router.get("/discounts", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const baseConds = buildBaseConds(q, { includeType: ["sale"], includeStatus: ["confirmed"] });
+  const discountedSaleConds = [...baseConds, sql`${salesTable.discount}::numeric > 0`];
+  const discountedItemConds = [...baseConds, sql`${saleItemsTable.discount}::numeric > 0`];
+
+  const [summaryRows, totalSalesRows, topSellerRows, topBranchRows, topProductRows, topCustomerRows, byDayRows, lineRows] = await Promise.all([
+    db.select({
+      saleCount: sql<string>`COUNT(DISTINCT ${salesTable.id})`,
+      totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+      totalAfterDiscount: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+      avgDiscount: sql<string>`COALESCE(AVG(NULLIF(${salesTable.discount}::numeric, 0)), 0)`,
+    }).from(salesTable).leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined),
+
+    db.select({ total: sql<string>`COUNT(*)` }).from(salesTable)
+      .where(baseConds.length ? and(...baseConds) : undefined),
+
+    db.select({
+      sellerName: usersTable.name,
+      totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+      count: sql<string>`COUNT(*)`,
+    }).from(salesTable).leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .groupBy(usersTable.name).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(8),
+
+    db.select({
+      branchName: branchesTable.name,
+      totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+      count: sql<string>`COUNT(*)`,
+    }).from(salesTable).innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
+      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .groupBy(branchesTable.name).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(8),
+
+    db.select({
+      productName: productsTable.name,
+      totalDiscount: sql<string>`COALESCE(SUM(${saleItemsTable.discount}::numeric), 0)`,
+      count: sql<string>`COUNT(*)`,
+    }).from(saleItemsTable).innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+      .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+      .where(discountedItemConds.length ? and(...discountedItemConds) : undefined)
+      .groupBy(productsTable.name).orderBy(sql`SUM(${saleItemsTable.discount}::numeric) DESC`).limit(8),
+
+    db.select({
+      customerName: contactsTable.displayName,
+      totalDiscount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+      count: sql<string>`COUNT(*)`,
+    }).from(salesTable).leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+      .where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .groupBy(contactsTable.displayName).orderBy(sql`SUM(${salesTable.discount}::numeric) DESC`).limit(5),
+
+    db.select({
+      date: sql<string>`DATE(${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')`,
+      discountAmount: sql<string>`COALESCE(SUM(${salesTable.discount}::numeric), 0)`,
+      saleAmount: sql<string>`COALESCE(SUM(${salesTable.total}::numeric), 0)`,
+      count: sql<string>`COUNT(*)`,
+    }).from(salesTable).where(discountedSaleConds.length ? and(...discountedSaleConds) : undefined)
+      .groupBy(sql`DATE(${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')`)
+      .orderBy(sql`DATE(${salesTable.createdAt} AT TIME ZONE 'Africa/Algiers')`),
+
+    db.select({
+      saleId: salesTable.id,
+      reference: salesTable.reference,
+      createdAt: salesTable.createdAt,
+      paymentStatus: salesTable.paymentStatus,
+      customerName: contactsTable.displayName,
+      branchName: branchesTable.name,
+      sellerName: usersTable.name,
+      saleNotes: salesTable.notes,
+      productName: productsTable.name,
+      qty: saleItemsTable.quantity,
+      unitPrice: saleItemsTable.unitPrice,
+      itemDiscount: saleItemsTable.discount,
+      itemTotal: saleItemsTable.total,
+      costPrice: productsTable.costPrice,
+    }).from(saleItemsTable)
+      .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+      .leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+      .innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
+      .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+      .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+      .where(discountedItemConds.length ? and(...discountedItemConds) : undefined)
+      .orderBy(desc(salesTable.createdAt)).limit(1000),
+  ]);
+
+  const summaryRow = summaryRows[0];
+  const saleCount = parseInt(summaryRow?.saleCount ?? "0", 10);
+  const totalSales = parseInt(totalSalesRows[0]?.total ?? "0", 10);
+  const totalDiscount = parseFloat(summaryRow?.totalDiscount ?? "0");
+
+  res.json({
+    summary: {
+      saleCount,
+      totalDiscount: Math.round(totalDiscount),
+      totalAfterDiscount: Math.round(parseFloat(summaryRow?.totalAfterDiscount ?? "0")),
+      avgDiscount: Math.round(parseFloat(summaryRow?.avgDiscount ?? "0")),
+      pctOfSales: totalSales > 0 ? Math.round((saleCount / totalSales) * 1000) / 10 : 0,
+      topSeller:   topSellerRows[0]   ? { name: topSellerRows[0].sellerName ?? "—",              amount: Math.round(parseFloat(topSellerRows[0].totalDiscount)),   count: parseInt(topSellerRows[0].count) }   : null,
+      topBranch:   topBranchRows[0]   ? { name: topBranchRows[0].branchName,                     amount: Math.round(parseFloat(topBranchRows[0].totalDiscount)),   count: parseInt(topBranchRows[0].count) }   : null,
+      topProduct:  topProductRows[0]  ? { name: topProductRows[0].productName,                   amount: Math.round(parseFloat(topProductRows[0].totalDiscount)),  count: parseInt(topProductRows[0].count) }  : null,
+      topCustomer: topCustomerRows[0] ? { name: topCustomerRows[0].customerName ?? "Anonyme",    amount: Math.round(parseFloat(topCustomerRows[0].totalDiscount)), count: parseInt(topCustomerRows[0].count) } : null,
+    },
+    charts: {
+      byDay:      byDayRows.map(r => ({ date: r.date, discountAmount: Math.round(parseFloat(r.discountAmount)), saleAmount: Math.round(parseFloat(r.saleAmount)), count: parseInt(r.count) })),
+      bySeller:   topSellerRows.map(r => ({ name: r.sellerName ?? "—", totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
+      byBranch:   topBranchRows.map(r => ({ name: r.branchName, totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
+      byProduct:  topProductRows.map(r => ({ name: r.productName, totalDiscount: Math.round(parseFloat(r.totalDiscount)), count: parseInt(r.count) })),
+    },
+    lines: lineRows.map(r => {
+      const qty = parseFloat(r.qty as string);
+      const unitPrice = parseFloat(r.unitPrice as string);
+      const itemDiscount = parseFloat(r.itemDiscount as string ?? "0");
+      const itemTotal = parseFloat(r.itemTotal as string ?? "0");
+      const costPrice = parseFloat(r.costPrice as string ?? "0");
+      const originalPrice = qty * unitPrice;
+      const discountPct = originalPrice > 0 ? Math.round((itemDiscount / originalPrice) * 1000) / 10 : 0;
+      const createdAt = r.createdAt ? new Date(r.createdAt) : null;
+      return {
+        saleId: r.saleId,
+        reference: r.reference,
+        date: createdAt ? createdAt.toISOString().slice(0, 10) : "—",
+        time: createdAt ? createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—",
+        customerName: r.customerName ?? "Anonyme",
+        productName: r.productName,
+        qty,
+        unitPrice: Math.round(unitPrice),
+        originalPrice: Math.round(originalPrice),
+        discountAmount: Math.round(itemDiscount),
+        discountPct,
+        finalPrice: Math.round(itemTotal),
+        profit: Math.round(itemTotal - qty * costPrice),
+        sellerName: r.sellerName ?? "—",
+        branchName: r.branchName,
+        paymentStatus: r.paymentStatus ?? "—",
+        reason: r.saleNotes ?? null,
+      };
+    }),
+  });
+});
+
+// ─── Discount Sale Detail (for drawer) ───────────────────────────────────────
+router.get("/discount-detail/:saleId", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const saleId = parseInt(req.params.saleId, 10);
+  if (!saleId) { res.status(400).json({ error: "Invalid saleId" }); return; }
+  const scope = visibleBranchIds(req.user!);
+  const scopeCond = scope !== null ? (scope.length === 0 ? sql`FALSE` : inArray(salesTable.branchId, scope)) : undefined;
+
+  const [saleRows, itemRows] = await Promise.all([
+    db.select({
+      id: salesTable.id, reference: salesTable.reference, type: salesTable.type,
+      status: salesTable.status, paymentStatus: salesTable.paymentStatus,
+      total: salesTable.total, subtotal: salesTable.subtotal,
+      discount: salesTable.discount, tax: salesTable.tax, paid: salesTable.paid,
+      notes: salesTable.notes, createdAt: salesTable.createdAt, updatedAt: salesTable.updatedAt,
+      customerName: contactsTable.displayName, branchName: branchesTable.name, sellerName: usersTable.name,
+    }).from(salesTable)
+      .leftJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+      .innerJoin(branchesTable, eq(salesTable.branchId, branchesTable.id))
+      .leftJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+      .where(and(eq(salesTable.id, saleId), ...(scopeCond ? [scopeCond] : []))).limit(1),
+
+    db.select({
+      id: saleItemsTable.id, productName: productsTable.name,
+      qty: saleItemsTable.quantity, unitPrice: saleItemsTable.unitPrice,
+      discount: saleItemsTable.discount, total: saleItemsTable.total, costPrice: productsTable.costPrice,
+    }).from(saleItemsTable).innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+      .where(eq(saleItemsTable.saleId, saleId)).orderBy(saleItemsTable.id),
+  ]);
+
+  if (!saleRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  const s = saleRows[0];
+  const n = (v: unknown) => parseFloat((v as string) ?? "0") || 0;
+  res.json({
+    ...s,
+    total: n(s.total), subtotal: n(s.subtotal), discount: n(s.discount), tax: n(s.tax), paid: n(s.paid),
+    items: itemRows.map(i => {
+      const qty = n(i.qty); const up = n(i.unitPrice); const disc = n(i.discount); const tot = n(i.total); const cp = n(i.costPrice);
+      const orig = qty * up;
+      return {
+        id: i.id, productName: i.productName, qty, unitPrice: Math.round(up),
+        originalPrice: Math.round(orig), discount: Math.round(disc),
+        discountPct: orig > 0 ? Math.round((disc / orig) * 1000) / 10 : 0,
+        total: Math.round(tot), profit: Math.round(tot - qty * cp),
+      };
+    }),
+  });
+});
+
 export default router;
+
