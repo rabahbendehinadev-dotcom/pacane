@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, useGetAdjustmentsStats, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
+import { useGetAdjustments, useCreateAdjustment, useGetBranches, useGetProducts, useGetStockLevels, getGetAdjustmentsQueryKey, getGetStockLevelsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { generateAdjustmentPdf } from "@/lib/pdf-generator";
 import { ExportButton } from "@/components/ExportButton";
 import { Button } from "@/components/ui/button";
@@ -83,7 +83,6 @@ export default function Adjustments() {
   };
 
   const { data: adjustments = [], isLoading } = useGetAdjustments(queryParams);
-  const { data: stats } = useGetAdjustmentsStats(queryParams);
   const { data: branches = [] } = useGetBranches();
   const { data: products = [] } = useGetProducts({});
   const { data: companySettings } = useGetCompanySettings();

@@ -204,6 +204,11 @@ export default function Dashboard() {
     ? { branchId: selectedBranchIds[0] }
     : { branchIds: selectedBranchIds.join(",") };
 
+  const canViewAdjustments = !!(user as any)?.adminAccess
+    || !!((user as any)?.permissions as string[] | undefined)?.some(
+      (p: string) => p === "*" || p === "adjustments.*" || p === "adjustments.view"
+    );
+
   const REFRESH = { query: { staleTime: 0, refetchInterval: 30_000, refetchOnWindowFocus: true } };
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary(branchParam, REFRESH);
@@ -212,7 +217,13 @@ export default function Dashboard() {
   const { data: _trend } = useGetSalesTrend({ ...branchParam, days: 14 }, REFRESH);
   const { data: _topProducts } = useGetTopProducts(REFRESH);
   const { data: _branchPerf } = useGetBranchPerformance(REFRESH);
-  const { data: lossStats } = useGetAdjustmentsStats(branchParam, REFRESH);
+  const { data: lossStats } = useGetAdjustmentsStats(branchParam, {
+    query: {
+      ...REFRESH.query,
+      enabled: canViewAdjustments,
+      retry: (_count: number, err: any) => err?.status !== 403,
+    },
+  });
 
   const alerts = Array.isArray(_alerts) ? _alerts : [];
   const activity = Array.isArray(_activity) ? _activity : [];
