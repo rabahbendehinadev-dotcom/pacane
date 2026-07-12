@@ -231,7 +231,18 @@ export default function LoyaltyPage() {
   const [rankTab, setRankTab] = useState<"byRevenue" | "byFrequency" | "byBasket" | "byScore">("byRevenue");
   const [campaignFilters, setCampaignFilters] = useState({ minRevenue: "", maxInactivity: "", segmentKey: "all", branchId: "all" });
 
-  const handleExport = () => window.open(`/api/export/loyalty-customers?${segmentsQs}`, "_blank");
+  const handleExport = async () => {
+    const r = await fetch(`/api/export/loyalty-customers?${segmentsQs}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `CLIENTS_FIDELITE_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   const handleRecompute = async () => {
     try {

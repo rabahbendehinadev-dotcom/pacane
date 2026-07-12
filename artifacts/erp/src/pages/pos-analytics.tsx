@@ -197,10 +197,17 @@ export default function PosAnalytics() {
   };
 
   // CSV export
-  const exportCsv = (type: string) => {
-    const token = localStorage.getItem("auth_token");
-    const url = `/api/analytics/pos/${type}?${qs}`;
-    window.open(url, "_blank");
+  const exportCsv = async (type: string) => {
+    const r = await fetch(`/api/analytics/pos/${type}?${qs}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `POS_${type}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   return (

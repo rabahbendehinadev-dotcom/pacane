@@ -210,9 +210,18 @@ export default function AnalyticsPurchases() {
     });
   }, [rd, receptionFilter]);
 
-  const handleCsvExport = () => {
+  const handleCsvExport = async () => {
     const qsExport = new URLSearchParams({ ...params, _t: Date.now().toString() }).toString();
-    window.open(`/api/export/purchases?${qsExport}`, "_blank");
+    const r = await fetch(`/api/export/purchases?${qsExport}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ACHATS_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   return (

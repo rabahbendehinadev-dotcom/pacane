@@ -409,8 +409,17 @@ export default function AnalyticsSales() {
   // ─── Time distribution typed ─────────────────────────────────────────────
   const td = timeDistribution as any;
 
-  const handleExport = () => {
-    window.open(`/api/export/sales?${kpisQs}`, "_blank");
+  const handleExport = async () => {
+    const r = await fetch(`/api/export/sales?${kpisQs}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `VENTES_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   return (
