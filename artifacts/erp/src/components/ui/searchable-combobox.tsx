@@ -23,6 +23,7 @@ interface SearchableComboboxProps {
   loading?: boolean;
   triggerClassName?: string;
   drawerTitle?: string;
+  onSearchChange?: (search: string) => void;
 }
 
 function useIsMobile(breakpoint = 640) {
@@ -50,6 +51,7 @@ export function SearchableCombobox({
   loading,
   triggerClassName,
   drawerTitle,
+  onSearchChange,
 }: SearchableComboboxProps) {
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -82,7 +84,7 @@ export function SearchableCombobox({
 
   const commandContent = (
     <Command>
-      <CommandInput placeholder={searchPlaceholder} className="h-10 text-base" />
+      <CommandInput placeholder={searchPlaceholder} className="h-10 text-base" onValueChange={onSearchChange} />
       <CommandList className="max-h-[50vh] overflow-y-auto">
         <CommandEmpty>{emptyMessage}</CommandEmpty>
         <CommandGroup>

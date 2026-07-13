@@ -56,11 +56,19 @@ function parseQ(req: any) {
     branchIds,
     customerId: req.query.customerId as string | undefined,
     sellerId: req.query.sellerId as string | undefined,
-    channel: req.query.channel as string | undefined,      // "pos" | "delivery"
-    docType: req.query.docType as string | undefined,      // "sale" | "order" | "quotation"
+    channel: req.query.channel as string | undefined,
+    docType: req.query.docType as string | undefined,
     paymentStatus: req.query.paymentStatus as string | undefined,
     categoryId: req.query.categoryId as string | undefined,
     subCategoryId: req.query.subCategoryId as string | undefined,
+    productId: req.query.productId as string | undefined,
+    withDiscount: req.query.withDiscount as string | undefined,
+    paymentMode: req.query.paymentMode as string | undefined,
+    reference: req.query.reference as string | undefined,
+    discountReasonId: req.query.discountReasonId as string | undefined,
+    discountMin: req.query.discountMin as string | undefined,
+    discountMax: req.query.discountMax as string | undefined,
+    saleStatus: req.query.saleStatus as string | undefined,
   };
 }
 
@@ -102,25 +110,40 @@ function buildBaseConds(q: ReturnType<typeof parseQ>, {
   if (customerId) c.push(eq(salesTable.customerId, parseInt(customerId, 10)));
   if (sellerId) c.push(eq(salesTable.createdByUserId, parseInt(sellerId, 10)));
   if (channel) c.push(eq(salesTable.fulfillmentType, channel));
-  if (paymentStatus) c.push(eq(salesTable.paymentStatus, paymentStatus));
+  if (paymentStatus && paymentStatus !== "all") c.push(eq(salesTable.paymentStatus, paymentStatus));
+
+  if (q.productId) {
+    const pid = parseInt(q.productId, 10);
+    if (!isNaN(pid) && pid > 0) {
+      const subq = db.select({ saleId: saleItemsTable.saleId }).from(saleItemsTable).where(eq(saleItemsTable.productId, pid));
+      c.push(inArray(salesTable.id, subq));
+    }
+  }
+  if (q.withDiscount === "yes") c.push(sql`${salesTable.discount}::numeric > 0`);
+  else if (q.withDiscount === "no") c.push(sql`(${salesTable.discount} IS NULL OR ${salesTable.discount}::numeric = 0)`);
+  if (q.paymentMode && q.paymentMode !== "all") c.push(eq(salesTable.paymentMethod, q.paymentMode));
+  if (q.reference) c.push(sql`LOWER(${salesTable.reference}) LIKE ${'%' + q.reference.toLowerCase() + '%'}`);
+  if (q.discountReasonId && q.discountReasonId !== "all") {
+    const rid = parseInt(q.discountReasonId, 10);
+    if (!isNaN(rid)) c.push(eq(salesTable.discountReasonId, rid));
+  }
+  if (q.discountMin) { const mn = parseFloat(q.discountMin); if (!isNaN(mn)) c.push(sql`${salesTable.discount}::numeric >= ${mn}`); }
+  if (q.discountMax) { const mx = parseFloat(q.discountMax); if (!isNaN(mx)) c.push(sql`${salesTable.discount}::numeric <= ${mx}`); }
 
   return c;
 }
 
 // ─── KPI helper — reusable for current & previous period ──────────────────────
-// Accepts all filters used by buildBaseConds so no filter is silently dropped.
 async function runSaleKpis(
-  scope: number[] | null,
-  branchId: string | undefined,
-  branchIds: number[] | undefined,
-  from: string | undefined,
-  to: string | undefined,
-  paymentStatus: string | undefined,
-  customerId: string | undefined,
-  sellerId: string | undefined,
-  channel: string | undefined,
+  q: ReturnType<typeof parseQ>,
+  fromOverride?: string,
+  toOverride?: string,
 ) {
-  // Helper: apply common branch / customer / seller / channel conditions
+  const { scope, branchId, branchIds, paymentStatus, customerId, sellerId, channel,
+          productId, withDiscount, paymentMode, reference, discountReasonId, discountMin, discountMax } = q;
+  const from = fromOverride ?? q.from;
+  const to   = toOverride   ?? q.to;
+
   function addCommon(conds: any[]) {
     if (scope !== null) {
       if (scope.length === 0) conds.push(sql`FALSE`);
@@ -131,6 +154,23 @@ async function runSaleKpis(
     if (customerId) conds.push(eq(salesTable.customerId, parseInt(customerId, 10)));
     if (sellerId)   conds.push(eq(salesTable.createdByUserId, parseInt(sellerId, 10)));
     if (channel)    conds.push(eq(salesTable.fulfillmentType, channel));
+    if (productId) {
+      const pid = parseInt(productId, 10);
+      if (!isNaN(pid) && pid > 0) {
+        const subq = db.select({ saleId: saleItemsTable.saleId }).from(saleItemsTable).where(eq(saleItemsTable.productId, pid));
+        conds.push(inArray(salesTable.id, subq));
+      }
+    }
+    if (withDiscount === "yes") conds.push(sql`${salesTable.discount}::numeric > 0`);
+    else if (withDiscount === "no") conds.push(sql`(${salesTable.discount} IS NULL OR ${salesTable.discount}::numeric = 0)`);
+    if (paymentMode && paymentMode !== "all") conds.push(eq(salesTable.paymentMethod, paymentMode));
+    if (reference) conds.push(sql`LOWER(${salesTable.reference}) LIKE ${'%' + reference.toLowerCase() + '%'}`);
+    if (discountReasonId && discountReasonId !== "all") {
+      const rid = parseInt(discountReasonId, 10);
+      if (!isNaN(rid)) conds.push(eq(salesTable.discountReasonId, rid));
+    }
+    if (discountMin) { const mn = parseFloat(discountMin); if (!isNaN(mn)) conds.push(sql`${salesTable.discount}::numeric >= ${mn}`); }
+    if (discountMax) { const mx = parseFloat(discountMax); if (!isNaN(mx)) conds.push(sql`${salesTable.discount}::numeric <= ${mx}`); }
   }
 
   // ── 1. Confirmed sales ──────────────────────────────────────────────────────
@@ -242,20 +282,19 @@ router.get("/kpis", requireAuth, requirePermission(P.reports.view), async (req, 
   const q = parseQ(req);
   const compare = req.query.compare === "true";
 
-  const args = [q.scope, q.branchId, q.branchIds, q.from, q.to, q.paymentStatus, q.customerId, q.sellerId, q.channel] as const;
-  const current = await runSaleKpis(...args);
+  const current = await runSaleKpis(q);
 
   // Previous period (same duration, shifted back by one period)
   let prev: Awaited<ReturnType<typeof runSaleKpis>> | null = null;
   if (compare && q.from && q.to) {
     const fromDate   = new Date(q.from);
     const toDate     = new Date(q.to);
-    const durationMs = toDate.getTime() - fromDate.getTime() + 86_400_000; // inclusive days
+    const durationMs = toDate.getTime() - fromDate.getTime() + 86_400_000;
     const prevToDate   = new Date(fromDate.getTime() - 86_400_000);
     const prevFromDate = new Date(prevToDate.getTime() - durationMs + 86_400_000);
     const prevFrom = prevFromDate.toISOString().slice(0, 10);
     const prevTo   = prevToDate.toISOString().slice(0, 10);
-    prev = await runSaleKpis(q.scope, q.branchId, q.branchIds, prevFrom, prevTo, q.paymentStatus, q.customerId, q.sellerId, q.channel);
+    prev = await runSaleKpis(q, prevFrom, prevTo);
   }
 
   res.json({ ...current, prev });
@@ -1140,6 +1179,98 @@ router.get("/discount-detail/:saleId", requireAuth, requirePermission(P.reports.
       };
     }),
   });
+});
+
+// ─── Sellers list (for filter dropdown, filtered by branch+period) ─────────────
+router.get("/sellers-list", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const { scope, branchIds, from, to } = q;
+  const conds: any[] = [eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed")];
+  if (from || to) conds.push(...dateConds(salesTable.createdAt, from, to));
+  if (scope !== null) {
+    if (scope.length === 0) { res.json([]); return; }
+    conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+  const rows = await db.selectDistinct({ id: usersTable.id, name: usersTable.name })
+    .from(salesTable)
+    .innerJoin(usersTable, eq(salesTable.createdByUserId, usersTable.id))
+    .where(and(...conds))
+    .orderBy(usersTable.name);
+  res.json(rows);
+});
+
+// ─── Customers list (for filter dropdown, with search) ─────────────────────────
+router.get("/customers-list", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const { scope, branchIds, from, to } = q;
+  const search = (req.query.search as string | undefined)?.toLowerCase().trim() ?? "";
+  const conds: any[] = [eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed")];
+  if (from || to) conds.push(...dateConds(salesTable.createdAt, from, to));
+  if (scope !== null) {
+    if (scope.length === 0) { res.json([]); return; }
+    conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+  if (search) conds.push(sql`LOWER(${contactsTable.displayName}) LIKE ${'%' + search + '%'}`);
+  const rows = await db.selectDistinct({ id: contactsTable.id, name: contactsTable.displayName })
+    .from(salesTable)
+    .innerJoin(contactsTable, eq(salesTable.customerId, contactsTable.id))
+    .where(and(...conds))
+    .orderBy(contactsTable.displayName)
+    .limit(60);
+  res.json(rows);
+});
+
+// ─── Products list (for filter dropdown, with search) ──────────────────────────
+router.get("/products-list", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const { scope, branchIds, from, to } = q;
+  const search = (req.query.search as string | undefined)?.toLowerCase().trim() ?? "";
+  const conds: any[] = [eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed")];
+  if (from || to) conds.push(...dateConds(salesTable.createdAt, from, to));
+  if (scope !== null) {
+    if (scope.length === 0) { res.json([]); return; }
+    conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+  if (search) {
+    conds.push(or(
+      sql`LOWER(${productsTable.name}) LIKE ${'%' + search + '%'}`,
+      sql`LOWER(COALESCE(${productsTable.sku}, '')) LIKE ${'%' + search + '%'}`,
+      sql`LOWER(COALESCE(${productsTable.barcode}, '')) LIKE ${'%' + search + '%'}`,
+    )!);
+  }
+  const rows = await db.selectDistinct({ id: productsTable.id, name: productsTable.name, sku: productsTable.sku })
+    .from(saleItemsTable)
+    .innerJoin(salesTable, eq(saleItemsTable.saleId, salesTable.id))
+    .innerJoin(productsTable, eq(saleItemsTable.productId, productsTable.id))
+    .where(and(...conds))
+    .orderBy(productsTable.name)
+    .limit(60);
+  res.json(rows.map(r => ({ id: r.id, name: r.name, sku: r.sku })));
+});
+
+// ─── Discount reasons list (distinct reasons used in current period) ────────────
+router.get("/discount-reasons", requireAuth, requirePermission(P.reports.view), async (req, res): Promise<void> => {
+  const q = parseQ(req);
+  const { scope, branchIds, from, to } = q;
+  const conds: any[] = [
+    eq(salesTable.type, "sale"), eq(salesTable.status, "confirmed"),
+    sql`${salesTable.discount}::numeric > 0`,
+    isNotNull(salesTable.discountReasonId),
+  ];
+  if (from || to) conds.push(...dateConds(salesTable.createdAt, from, to));
+  if (scope !== null) {
+    if (scope.length === 0) { res.json([]); return; }
+    conds.push(inArray(salesTable.branchId, scope));
+  }
+  if (branchIds && branchIds.length > 0) conds.push(inArray(salesTable.branchId, branchIds));
+  const rows = await db.selectDistinct({ id: salesTable.discountReasonId, label: salesTable.discountReasonLabel })
+    .from(salesTable)
+    .where(and(...conds))
+    .orderBy(salesTable.discountReasonLabel);
+  res.json(rows.filter(r => r.id !== null));
 });
 
 export default router;

@@ -25,6 +25,7 @@ import {
   FileText, RotateCcw, CheckCircle2, AlertTriangle, Banknote, Receipt,
   ArrowUpDown, ArrowUp, ArrowDown, Percent, PackageX, BadgeDollarSign, ClipboardList, FileSearch, Layers,
   Clock, Search, ChevronLeft, ChevronRight, Bell, Package, UserX, TrendingDown as LossIcon,
+  SlidersHorizontal, X, Save, Bookmark, ChevronDown,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -230,14 +231,41 @@ export default function AnalyticsSales() {
     el.scrollBy({ left: dir === "right" ? 120 : -120, behavior: "smooth" });
   }, []);
 
-  const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
-  const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [branchIds, setBranchIds] = useState<number[]>([]);
-  const [docType, setDocType] = useState("all");
-  const [paymentStatus, setPaymentStatus] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [subCategoryFilter, setSubCategoryFilter] = useState("all");
-  const [activePreset, setActivePreset] = useState(2);
+  const [initQ] = useState(() => new URLSearchParams(searchStr));
+
+  const [from, setFrom] = useState(() => initQ.get("from") || format(subDays(new Date(), 29), "yyyy-MM-dd"));
+  const [to, setTo] = useState(() => initQ.get("to") || format(new Date(), "yyyy-MM-dd"));
+  const [branchIds, setBranchIds] = useState<number[]>(() => {
+    const v = initQ.get("branchIds"); return v ? v.split(",").map(Number).filter(Boolean) : [];
+  });
+  const [docType, setDocType] = useState(() => initQ.get("docType") || "all");
+  const [paymentStatus, setPaymentStatus] = useState(() => initQ.get("paymentStatus") || "all");
+  const [categoryFilter, setCategoryFilter] = useState(() => initQ.get("categoryId") || "all");
+  const [subCategoryFilter, setSubCategoryFilter] = useState(() => initQ.get("subCategoryId") || "all");
+  const [activePreset, setActivePreset] = useState(() => (initQ.get("from") || initQ.get("to")) ? -1 : 2);
+
+  const [sellerId, setSellerId] = useState(() => initQ.get("sellerId") || "all");
+  const [sellerLabel, setSellerLabel] = useState("");
+  const [customerId, setCustomerId] = useState(() => initQ.get("customerId") || "all");
+  const [customerLabel, setCustomerLabel] = useState("");
+  const [productId, setProductId] = useState(() => initQ.get("productId") || "all");
+  const [productLabel, setProductLabel] = useState("");
+  const [withDiscount, setWithDiscount] = useState(() => initQ.get("withDiscount") || "all");
+  const [paymentMode, setPaymentMode] = useState(() => initQ.get("paymentMode") || "all");
+  const [reference, setReference] = useState(() => initQ.get("reference") || "");
+  const [discountReasonId, setDiscountReasonId] = useState(() => initQ.get("discountReasonId") || "all");
+  const [discountReasonLabel, setDiscountReasonLabel] = useState("");
+  const [discountMin, setDiscountMin] = useState(() => initQ.get("discountMin") || "");
+  const [discountMax, setDiscountMax] = useState(() => initQ.get("discountMax") || "");
+
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
+  const [filterSnapshot, setFilterSnapshot] = useState<Record<string, any>>({});
+  const [productFilterSearch, setProductFilterSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [savedFilters, setSavedFilters] = useState<Array<{name: string; filters: Record<string, any>}>>(() => {
+    try { return JSON.parse(localStorage.getItem(`savedFilters`) || "[]"); } catch { return []; }
+  });
 
   // ─── Sort states ────────────────────────────────────────────────────────────
   const [branchSortKey,   setBranchSortKey]   = useState<"branchName"|"revenue"|"saleCount"|"avgBasket"|"unpaidBalance"|"revenuePct">("revenue");
@@ -331,10 +359,19 @@ export default function AnalyticsSales() {
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
     if (categoryFilter !== "all") p.categoryId = categoryFilter;
     if (subCategoryFilter !== "all") p.subCategoryId = subCategoryFilter;
+    if (sellerId !== "all") p.sellerId = sellerId;
+    if (customerId !== "all") p.customerId = customerId;
+    if (productId !== "all") p.productId = productId;
+    if (withDiscount !== "all") p.withDiscount = withDiscount;
+    if (paymentMode !== "all") p.paymentMode = paymentMode;
+    if (reference) p.reference = reference;
+    if (discountReasonId !== "all") p.discountReasonId = discountReasonId;
+    if (discountMin) p.discountMin = discountMin;
+    if (discountMax) p.discountMax = discountMax;
     return p;
-  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter]);
+  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      sellerId, customerId, productId, withDiscount, paymentMode, reference, discountReasonId, discountMin, discountMax]);
   const qs = new URLSearchParams(params).toString();
-  // kpis always on sales (not filtered by docType)
   const kpisQs = useMemo(() => {
     const p: Record<string, string> = {};
     if (from) p.from = from;
@@ -343,8 +380,18 @@ export default function AnalyticsSales() {
     if (paymentStatus !== "all") p.paymentStatus = paymentStatus;
     if (categoryFilter !== "all") p.categoryId = categoryFilter;
     if (subCategoryFilter !== "all") p.subCategoryId = subCategoryFilter;
+    if (sellerId !== "all") p.sellerId = sellerId;
+    if (customerId !== "all") p.customerId = customerId;
+    if (productId !== "all") p.productId = productId;
+    if (withDiscount !== "all") p.withDiscount = withDiscount;
+    if (paymentMode !== "all") p.paymentMode = paymentMode;
+    if (reference) p.reference = reference;
+    if (discountReasonId !== "all") p.discountReasonId = discountReasonId;
+    if (discountMin) p.discountMin = discountMin;
+    if (discountMax) p.discountMax = discountMax;
     return new URLSearchParams(p).toString();
-  }, [from, to, branchIds, paymentStatus, categoryFilter, subCategoryFilter]);
+  }, [from, to, branchIds, paymentStatus, categoryFilter, subCategoryFilter,
+      sellerId, customerId, productId, withDiscount, paymentMode, reference, discountReasonId, discountMin, discountMax]);
 
   const applyPreset = (i: number) => {
     const p = DATE_PRESETS[i];
@@ -356,6 +403,125 @@ export default function AnalyticsSales() {
     p.set("compare", "true");
     return p.toString();
   }, [kpisQs]);
+
+  // ─── URL sync ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (activeMainTab) p.set("tab", activeMainTab);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    if (branchIds.length > 0) p.set("branchIds", branchIds.join(","));
+    if (docType !== "all") p.set("docType", docType);
+    if (paymentStatus !== "all") p.set("paymentStatus", paymentStatus);
+    if (categoryFilter !== "all") p.set("categoryId", categoryFilter);
+    if (subCategoryFilter !== "all") p.set("subCategoryId", subCategoryFilter);
+    if (sellerId !== "all") p.set("sellerId", sellerId);
+    if (customerId !== "all") p.set("customerId", customerId);
+    if (productId !== "all") p.set("productId", productId);
+    if (withDiscount !== "all") p.set("withDiscount", withDiscount);
+    if (paymentMode !== "all") p.set("paymentMode", paymentMode);
+    if (reference) p.set("reference", reference);
+    if (discountReasonId !== "all") p.set("discountReasonId", discountReasonId);
+    if (discountMin) p.set("discountMin", discountMin);
+    if (discountMax) p.set("discountMax", discountMax);
+    const next = `?${p.toString()}`;
+    if (next !== searchStr) navigate(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      sellerId, customerId, productId, withDiscount, paymentMode, reference,
+      discountReasonId, discountMin, discountMax, activeMainTab]);
+
+  // ─── Filter helpers ───────────────────────────────────────────────────────
+  const resetAllFilters = useCallback(() => {
+    applyPreset(2);
+    setBranchIds([]);
+    setDocType("all"); setPaymentStatus("all");
+    setCategoryFilter("all"); setSubCategoryFilter("all");
+    setSellerId("all"); setSellerLabel("");
+    setCustomerId("all"); setCustomerLabel("");
+    setProductId("all"); setProductLabel("");
+    setWithDiscount("all"); setPaymentMode("all"); setReference("");
+    setDiscountReasonId("all"); setDiscountReasonLabel("");
+    setDiscountMin(""); setDiscountMax("");
+  }, []);
+
+  const openFiltersDrawer = useCallback(() => {
+    setFilterSnapshot({ from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      activePreset, sellerId, sellerLabel, customerId, customerLabel, productId, productLabel,
+      withDiscount, paymentMode, reference, discountReasonId, discountReasonLabel, discountMin, discountMax });
+    setFiltersDrawerOpen(true);
+  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      activePreset, sellerId, sellerLabel, customerId, customerLabel, productId, productLabel,
+      withDiscount, paymentMode, reference, discountReasonId, discountReasonLabel, discountMin, discountMax]);
+
+  const cancelFilters = useCallback(() => {
+    const s = filterSnapshot;
+    if (Object.keys(s).length === 0) { setFiltersDrawerOpen(false); return; }
+    setFrom(s.from); setTo(s.to); setBranchIds(s.branchIds);
+    setDocType(s.docType); setPaymentStatus(s.paymentStatus);
+    setCategoryFilter(s.categoryFilter); setSubCategoryFilter(s.subCategoryFilter);
+    setActivePreset(s.activePreset);
+    setSellerId(s.sellerId); setSellerLabel(s.sellerLabel);
+    setCustomerId(s.customerId); setCustomerLabel(s.customerLabel);
+    setProductId(s.productId); setProductLabel(s.productLabel);
+    setWithDiscount(s.withDiscount); setPaymentMode(s.paymentMode); setReference(s.reference);
+    setDiscountReasonId(s.discountReasonId); setDiscountReasonLabel(s.discountReasonLabel);
+    setDiscountMin(s.discountMin); setDiscountMax(s.discountMax);
+    setFiltersDrawerOpen(false);
+  }, [filterSnapshot]);
+
+  const handleSaveFilter = useCallback(() => {
+    const name = prompt("Nom du filtre enregistré:");
+    if (!name?.trim()) return;
+    const newFilter = { name: name.trim(), filters: {
+      from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      sellerId, sellerLabel, customerId, customerLabel, productId, productLabel,
+      withDiscount, paymentMode, reference, discountReasonId, discountReasonLabel, discountMin, discountMax,
+    }};
+    const updated = [...savedFilters, newFilter];
+    setSavedFilters(updated);
+    localStorage.setItem("savedFilters", JSON.stringify(updated));
+  }, [from, to, branchIds, docType, paymentStatus, categoryFilter, subCategoryFilter,
+      sellerId, sellerLabel, customerId, customerLabel, productId, productLabel,
+      withDiscount, paymentMode, reference, discountReasonId, discountReasonLabel, discountMin, discountMax, savedFilters]);
+
+  const loadSavedFilter = useCallback((sf: { name: string; filters: Record<string, any> }) => {
+    const f = sf.filters;
+    if (f.from) setFrom(f.from); if (f.to) setTo(f.to);
+    if (f.branchIds) setBranchIds(f.branchIds); else setBranchIds([]);
+    setDocType(f.docType ?? "all"); setPaymentStatus(f.paymentStatus ?? "all");
+    setCategoryFilter(f.categoryFilter ?? "all"); setSubCategoryFilter(f.subCategoryFilter ?? "all");
+    setActivePreset(-1);
+    setSellerId(f.sellerId ?? "all"); setSellerLabel(f.sellerLabel ?? "");
+    setCustomerId(f.customerId ?? "all"); setCustomerLabel(f.customerLabel ?? "");
+    setProductId(f.productId ?? "all"); setProductLabel(f.productLabel ?? "");
+    setWithDiscount(f.withDiscount ?? "all"); setPaymentMode(f.paymentMode ?? "all"); setReference(f.reference ?? "");
+    setDiscountReasonId(f.discountReasonId ?? "all"); setDiscountReasonLabel(f.discountReasonLabel ?? "");
+    setDiscountMin(f.discountMin ?? ""); setDiscountMax(f.discountMax ?? "");
+  }, []);
+
+  const deleteSavedFilter = useCallback((i: number) => {
+    const updated = savedFilters.filter((_, idx) => idx !== i);
+    setSavedFilters(updated);
+    localStorage.setItem("savedFilters", JSON.stringify(updated));
+  }, [savedFilters]);
+
+  const activeAdvancedFiltersCount = [
+    sellerId !== "all", customerId !== "all", productId !== "all",
+    withDiscount !== "all", paymentMode !== "all", reference !== "",
+    discountReasonId !== "all", discountMin !== "", discountMax !== "",
+    docType !== "all", paymentStatus !== "all",
+    categoryFilter !== "all",
+  ].filter(Boolean).length;
+
+  const activeFiltersCount = [
+    branchIds.length > 0, activePreset === -1,
+    ...([sellerId, customerId, productId].map(v => v !== "all")),
+    withDiscount !== "all", paymentMode !== "all", reference !== "",
+    discountReasonId !== "all", discountMin !== "", discountMax !== "",
+    docType !== "all", paymentStatus !== "all",
+    categoryFilter !== "all",
+  ].filter(Boolean).length;
 
   const { data: kpis, isLoading: kpisLoading } = useQuery({
     queryKey: ["as-kpis", kpisQsWithCompare],
@@ -418,6 +584,33 @@ export default function AnalyticsSales() {
     queryKey: ["as-discounts", kpisQs],
     queryFn: () => customFetch(`/api/analytics/sales/discounts?${kpisQs}`),
     enabled: activeMainTab === "discounts",
+  });
+
+  // ─── Filter dropdown data ─────────────────────────────────────────────────
+  const branchFilterQs = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (from) p.from = from; if (to) p.to = to;
+    if (branchIds.length > 0) p.branchIds = branchIds.join(",");
+    return new URLSearchParams(p).toString();
+  }, [from, to, branchIds]);
+
+  const { data: sellersList } = useQuery({
+    queryKey: ["as-sellers-list", branchFilterQs],
+    queryFn: () => customFetch(`/api/analytics/sales/sellers-list?${branchFilterQs}`),
+  });
+  const debouncedCustomerSearch = useMemo(() => customerSearch, [customerSearch]);
+  const { data: customersListData } = useQuery({
+    queryKey: ["as-customers-list", branchFilterQs, debouncedCustomerSearch],
+    queryFn: () => customFetch(`/api/analytics/sales/customers-list?${branchFilterQs}&search=${encodeURIComponent(debouncedCustomerSearch)}`),
+  });
+  const debouncedProductFilterSearch = useMemo(() => productFilterSearch, [productFilterSearch]);
+  const { data: productsListData } = useQuery({
+    queryKey: ["as-products-list", branchFilterQs, debouncedProductFilterSearch],
+    queryFn: () => customFetch(`/api/analytics/sales/products-list?${branchFilterQs}&search=${encodeURIComponent(debouncedProductFilterSearch)}`),
+  });
+  const { data: discountReasonsList } = useQuery({
+    queryKey: ["as-discount-reasons", branchFilterQs],
+    queryFn: () => customFetch(`/api/analytics/sales/discount-reasons?${branchFilterQs}`),
   });
   const { data: discountDetail, isLoading: detailLoading } = useQuery({
     queryKey: ["as-discount-detail", discountRow?.saleId],
@@ -561,104 +754,471 @@ export default function AnalyticsSales() {
 
       {/* ── Filters ─────────────────────────────────────────────────────────── */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Période</Label>
-              <div className="flex flex-wrap gap-1">
-                {DATE_PRESETS.map((p, i) => (
-                  <Button
-                    key={i}
-                    variant={activePreset === i ? "default" : "outline"}
-                    size="sm"
-                    className={`text-xs h-8 px-2.5 ${activePreset === i ? "bg-green-700 hover:bg-green-800 border-green-700" : ""}`}
-                    onClick={() => applyPreset(i)}
-                  >
-                    {p.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Du</Label>
-              <Input type="date" value={from} onChange={e => { setFrom(e.target.value); setActivePreset(-1); }} className="h-8 text-xs w-36" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Au</Label>
-              <Input type="date" value={to} onChange={e => { setTo(e.target.value); setActivePreset(-1); }} className="h-8 text-xs w-36" />
-            </div>
-            {showBranchFilter && (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Boutiques</Label>
-                <BranchMultiSelect
-                  branches={(branches ?? []) as { id: number; name: string }[]}
-                  selectedIds={branchIds}
-                  onChange={setBranchIds}
-                  size="sm"
-                  placeholder="Toutes les boutiques"
-                />
-              </div>
+        <CardContent className="p-4 space-y-3">
+
+          {/* Mobile: compact bar */}
+          <div className="flex sm:hidden items-center justify-between gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={openFiltersDrawer}>
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filtres
+              {activeFiltersCount > 0 && (
+                <span className="ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-700 text-[10px] text-white">{activeFiltersCount}</span>
+              )}
+            </Button>
+            {activeFiltersCount > 0 && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground gap-1" onClick={resetAllFilters}>
+                <X className="h-3.5 w-3.5" />Réinitialiser
+              </Button>
             )}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Type document</Label>
-              <Select value={docType} onValueChange={setDocType}>
-                <SelectTrigger className="h-8 text-xs w-36">
-                  <SelectValue placeholder="Tous" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="sale">Ventes</SelectItem>
-                  <SelectItem value="order">Commandes</SelectItem>
-                  <SelectItem value="quotation">Devis</SelectItem>
-                  <SelectItem value="draft">Brouillons</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Paiement</Label>
-              <Select value={paymentStatus} onValueChange={setPaymentStatus}>
-                <SelectTrigger className="h-8 text-xs w-36">
-                  <SelectValue placeholder="Tous" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="paid">Payée</SelectItem>
-                  <SelectItem value="partially_paid">Part. payée</SelectItem>
-                  <SelectItem value="unpaid">Impayée</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Catégorie</Label>
-              <SearchableCombobox
-                items={[{ value: "all", label: "Toutes" }, ...parentCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
-                value={categoryFilter}
-                onValueChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }}
-                placeholder="Toutes"
-                searchPlaceholder="Chercher..."
-                emptyMessage="Aucune catégorie."
-                drawerTitle="Catégorie"
-                triggerClassName="h-8 text-xs w-36"
-              />
-            </div>
-            {subCategories.length > 0 && (
+          </div>
+
+          {/* Desktop: full filter panel */}
+          <div className="hidden sm:block space-y-3">
+
+            {/* Row 1 — Period + Branches + toggle */}
+            <div className="flex flex-wrap gap-3 items-end">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Sous-catégorie</Label>
-                <SearchableCombobox
-                  items={[{ value: "all", label: "Toutes" }, ...subCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
-                  value={subCategoryFilter}
-                  onValueChange={setSubCategoryFilter}
-                  placeholder="Toutes"
-                  searchPlaceholder="Chercher..."
-                  emptyMessage="Aucune sous-catégorie."
-                  drawerTitle="Sous-catégorie"
-                  triggerClassName="h-8 text-xs w-36"
-                />
+                <Label className="text-xs text-muted-foreground">Période</Label>
+                <div className="flex flex-wrap gap-1">
+                  {DATE_PRESETS.map((p, i) => (
+                    <Button key={i} variant={activePreset === i ? "default" : "outline"} size="sm"
+                      className={`text-xs h-8 px-2.5 ${activePreset === i ? "bg-green-700 hover:bg-green-800 border-green-700" : ""}`}
+                      onClick={() => applyPreset(i)}>{p.label}</Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Du</Label>
+                <Input type="date" value={from} onChange={e => { setFrom(e.target.value); setActivePreset(-1); }} className="h-8 text-xs w-36" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Au</Label>
+                <Input type="date" value={to} onChange={e => { setTo(e.target.value); setActivePreset(-1); }} className="h-8 text-xs w-36" />
+              </div>
+              {showBranchFilter && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Boutiques</Label>
+                  <BranchMultiSelect branches={(branches ?? []) as { id: number; name: string }[]}
+                    selectedIds={branchIds} onChange={setBranchIds} size="sm" placeholder="Toutes les boutiques" />
+                </div>
+              )}
+              <div className="ml-auto flex items-end gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+                  onClick={() => setShowAdvancedFilters(v => !v)}>
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  Filtres avancés
+                  {activeAdvancedFiltersCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-green-700 px-1 text-[10px] text-white">{activeAdvancedFiltersCount}</span>
+                  )}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showAdvancedFilters ? "rotate-180" : ""}`} />
+                </Button>
+                {activeFiltersCount > 0 && (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground gap-1" onClick={resetAllFilters}>
+                    <X className="h-3.5 w-3.5" />Réinitialiser
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Advanced filter rows */}
+            {showAdvancedFilters && (
+              <div className="border-t pt-3 space-y-3">
+
+                {/* Row 2 — Entity filters */}
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Vendeur</Label>
+                    <SearchableCombobox
+                      items={[{ value: "all", label: "Tous les vendeurs" }, ...((sellersList ?? []) as any[]).map((s: any) => ({ value: String(s.id), label: s.name }))]}
+                      value={sellerId} onValueChange={v => { setSellerId(v); setSellerLabel(((sellersList ?? []) as any[]).find((s: any) => String(s.id) === v)?.name ?? ""); }}
+                      placeholder="Tous les vendeurs" searchPlaceholder="Chercher vendeur..."
+                      emptyMessage="Aucun vendeur." drawerTitle="Vendeur" triggerClassName="h-8 text-xs w-44" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Client</Label>
+                    <SearchableCombobox
+                      items={[{ value: "all", label: "Tous les clients" }, ...((customersListData ?? []) as any[]).map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                      value={customerId} onValueChange={v => { setCustomerId(v); setCustomerLabel(((customersListData ?? []) as any[]).find((c: any) => String(c.id) === v)?.name ?? ""); }}
+                      placeholder="Tous les clients" searchPlaceholder="Chercher client..."
+                      onSearchChange={setCustomerSearch}
+                      emptyMessage="Aucun client." drawerTitle="Client" triggerClassName="h-8 text-xs w-44" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Produit</Label>
+                    <SearchableCombobox
+                      items={[{ value: "all", label: "Tous les produits" }, ...((productsListData ?? []) as any[]).map((p: any) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))]}
+                      value={productId} onValueChange={v => { setProductId(v); setProductLabel(((productsListData ?? []) as any[]).find((p: any) => String(p.id) === v)?.name ?? ""); }}
+                      placeholder="Tous les produits" searchPlaceholder="Chercher produit..."
+                      onSearchChange={setProductFilterSearch}
+                      emptyMessage="Aucun produit." drawerTitle="Produit" triggerClassName="h-8 text-xs w-48" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Catégorie</Label>
+                    <SearchableCombobox
+                      items={[{ value: "all", label: "Toutes" }, ...parentCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                      value={categoryFilter} onValueChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }}
+                      placeholder="Toutes" searchPlaceholder="Chercher..." emptyMessage="Aucune catégorie."
+                      drawerTitle="Catégorie" triggerClassName="h-8 text-xs w-36" />
+                  </div>
+                  {subCategories.length > 0 && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Sous-catégorie</Label>
+                      <SearchableCombobox
+                        items={[{ value: "all", label: "Toutes" }, ...subCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                        value={subCategoryFilter} onValueChange={setSubCategoryFilter}
+                        placeholder="Toutes" searchPlaceholder="Chercher..." emptyMessage="Aucune."
+                        drawerTitle="Sous-catégorie" triggerClassName="h-8 text-xs w-36" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Row 3 — Status + mode filters */}
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Type document</Label>
+                    <Select value={docType} onValueChange={setDocType}>
+                      <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous</SelectItem>
+                        <SelectItem value="sale">Ventes</SelectItem>
+                        <SelectItem value="order">Commandes</SelectItem>
+                        <SelectItem value="quotation">Devis</SelectItem>
+                        <SelectItem value="draft">Brouillons</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Statut paiement</Label>
+                    <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+                      <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous</SelectItem>
+                        <SelectItem value="paid">Payée</SelectItem>
+                        <SelectItem value="partially_paid">Part. payée</SelectItem>
+                        <SelectItem value="unpaid">Impayée</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Mode paiement</Label>
+                    <Select value={paymentMode} onValueChange={setPaymentMode}>
+                      <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous</SelectItem>
+                        <SelectItem value="cash">Espèces</SelectItem>
+                        <SelectItem value="card">Carte</SelectItem>
+                        <SelectItem value="credit">Crédit</SelectItem>
+                        <SelectItem value="transfer">Virement</SelectItem>
+                        <SelectItem value="check">Chèque</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Remise</Label>
+                    <Select value={withDiscount} onValueChange={setWithDiscount}>
+                      <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Toutes les ventes</SelectItem>
+                        <SelectItem value="yes">Avec remise</SelectItem>
+                        <SelectItem value="no">Sans remise</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">N° Facture</Label>
+                    <Input type="text" placeholder="ex: VNT-001" value={reference}
+                      onChange={e => setReference(e.target.value)} className="h-8 text-xs w-32" />
+                  </div>
+                </div>
+
+                {/* Row 4 — Discount reason + range */}
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Motif remise</Label>
+                    <SearchableCombobox
+                      items={[{ value: "all", label: "Tous les motifs" }, ...((discountReasonsList ?? []) as any[]).map((r: any) => ({ value: String(r.id), label: r.label ?? "Sans motif" }))]}
+                      value={discountReasonId} onValueChange={v => { setDiscountReasonId(v); setDiscountReasonLabel(((discountReasonsList ?? []) as any[]).find((r: any) => String(r.id) === v)?.label ?? ""); }}
+                      placeholder="Tous les motifs" searchPlaceholder="Chercher motif..."
+                      emptyMessage="Aucun motif." drawerTitle="Motif remise" triggerClassName="h-8 text-xs w-44" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Remise min (DA)</Label>
+                    <Input type="number" placeholder="0" value={discountMin}
+                      onChange={e => setDiscountMin(e.target.value)} className="h-8 text-xs w-24" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Remise max (DA)</Label>
+                    <Input type="number" placeholder="∞" value={discountMax}
+                      onChange={e => setDiscountMax(e.target.value)} className="h-8 text-xs w-24" />
+                  </div>
+                </div>
+
+                {/* Saved filters footer */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 shrink-0" onClick={handleSaveFilter}>
+                    <Save className="h-3.5 w-3.5" />Enregistrer ce filtre
+                  </Button>
+                  {savedFilters.length > 0 && savedFilters.map((sf, i) => (
+                    <Badge key={i} variant="secondary" className="gap-1 pr-0.5 text-xs cursor-pointer hover:bg-secondary/80 font-normal"
+                      onClick={() => loadSavedFilter(sf)}>
+                      <Bookmark className="h-3 w-3 shrink-0" />{sf.name}
+                      <button onClick={e => { e.stopPropagation(); deleteSavedFilter(i); }}
+                        className="ml-0.5 rounded hover:text-destructive p-0.5">
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Mobile Filters Sheet ─────────────────────────────────────────────── */}
+      <Sheet open={filtersDrawerOpen} onOpenChange={open => { if (!open) cancelFilters(); }}>
+        <SheetContent side="bottom" className="h-[92dvh] flex flex-col p-0">
+          <SheetHeader className="shrink-0 px-4 pt-4 pb-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtres avancés
+              {activeFiltersCount > 0 && <Badge className="bg-green-700 text-white">{activeFiltersCount}</Badge>}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Period */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Période</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {DATE_PRESETS.map((p, i) => (
+                  <Button key={i} variant={activePreset === i ? "default" : "outline"} size="sm"
+                    className={`text-xs h-8 px-3 ${activePreset === i ? "bg-green-700 hover:bg-green-800 border-green-700" : ""}`}
+                    onClick={() => applyPreset(i)}>{p.label}</Button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Du</Label>
+                  <Input type="date" value={from} onChange={e => { setFrom(e.target.value); setActivePreset(-1); }} className="h-9 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Au</Label>
+                  <Input type="date" value={to} onChange={e => { setTo(e.target.value); setActivePreset(-1); }} className="h-9 text-sm" />
+                </div>
+              </div>
+            </div>
+            {/* Branches */}
+            {showBranchFilter && (
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Boutiques</Label>
+                <BranchMultiSelect branches={(branches ?? []) as { id: number; name: string }[]}
+                  selectedIds={branchIds} onChange={setBranchIds} placeholder="Toutes les boutiques" />
+              </div>
+            )}
+            {/* Entités */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Entités</Label>
+              <div className="space-y-2">
+                <SearchableCombobox
+                  items={[{ value: "all", label: "Tous les vendeurs" }, ...((sellersList ?? []) as any[]).map((s: any) => ({ value: String(s.id), label: s.name }))]}
+                  value={sellerId} onValueChange={v => { setSellerId(v); setSellerLabel(((sellersList ?? []) as any[]).find((s: any) => String(s.id) === v)?.name ?? ""); }}
+                  placeholder="Vendeur" searchPlaceholder="Chercher vendeur..."
+                  emptyMessage="Aucun vendeur." drawerTitle="Vendeur" />
+                <SearchableCombobox
+                  items={[{ value: "all", label: "Tous les clients" }, ...((customersListData ?? []) as any[]).map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                  value={customerId} onValueChange={v => { setCustomerId(v); setCustomerLabel(((customersListData ?? []) as any[]).find((c: any) => String(c.id) === v)?.name ?? ""); }}
+                  placeholder="Client" searchPlaceholder="Chercher client..." onSearchChange={setCustomerSearch}
+                  emptyMessage="Aucun client." drawerTitle="Client" />
+                <SearchableCombobox
+                  items={[{ value: "all", label: "Tous les produits" }, ...((productsListData ?? []) as any[]).map((p: any) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))]}
+                  value={productId} onValueChange={v => { setProductId(v); setProductLabel(((productsListData ?? []) as any[]).find((p: any) => String(p.id) === v)?.name ?? ""); }}
+                  placeholder="Produit" searchPlaceholder="Chercher produit..." onSearchChange={setProductFilterSearch}
+                  emptyMessage="Aucun produit." drawerTitle="Produit" />
+              </div>
+            </div>
+            {/* Catégories */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Catégories</Label>
+              <SearchableCombobox
+                items={[{ value: "all", label: "Toutes les catégories" }, ...parentCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                value={categoryFilter} onValueChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }}
+                placeholder="Catégorie" searchPlaceholder="Chercher..." emptyMessage="Aucune catégorie." drawerTitle="Catégorie" />
+              {subCategories.length > 0 && (
+                <SearchableCombobox
+                  items={[{ value: "all", label: "Toutes les sous-catégories" }, ...subCategories.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+                  value={subCategoryFilter} onValueChange={setSubCategoryFilter}
+                  placeholder="Sous-catégorie" searchPlaceholder="Chercher..." emptyMessage="Aucune." drawerTitle="Sous-catégorie" />
+              )}
+            </div>
+            {/* Statuts */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statuts & Mode</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Type document</Label>
+                  <Select value={docType} onValueChange={setDocType}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="sale">Ventes</SelectItem>
+                      <SelectItem value="order">Commandes</SelectItem>
+                      <SelectItem value="quotation">Devis</SelectItem>
+                      <SelectItem value="draft">Brouillons</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Statut paiement</Label>
+                  <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="paid">Payée</SelectItem>
+                      <SelectItem value="partially_paid">Part. payée</SelectItem>
+                      <SelectItem value="unpaid">Impayée</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Mode paiement</Label>
+                  <Select value={paymentMode} onValueChange={setPaymentMode}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="cash">Espèces</SelectItem>
+                      <SelectItem value="card">Carte</SelectItem>
+                      <SelectItem value="credit">Crédit</SelectItem>
+                      <SelectItem value="transfer">Virement</SelectItem>
+                      <SelectItem value="check">Chèque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Remise</Label>
+                  <Select value={withDiscount} onValueChange={setWithDiscount}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Toutes</SelectItem>
+                      <SelectItem value="yes">Avec remise</SelectItem>
+                      <SelectItem value="no">Sans remise</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            {/* Référence + Motif remise */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Remises & Référence</Label>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">N° Facture / Référence</Label>
+                <Input type="text" placeholder="ex: VNT-001" value={reference} onChange={e => setReference(e.target.value)} className="h-9 text-sm" />
+              </div>
+              <SearchableCombobox
+                items={[{ value: "all", label: "Tous les motifs" }, ...((discountReasonsList ?? []) as any[]).map((r: any) => ({ value: String(r.id), label: r.label ?? "Sans motif" }))]}
+                value={discountReasonId} onValueChange={v => { setDiscountReasonId(v); setDiscountReasonLabel(((discountReasonsList ?? []) as any[]).find((r: any) => String(r.id) === v)?.label ?? ""); }}
+                placeholder="Motif remise" searchPlaceholder="Chercher motif..." emptyMessage="Aucun motif." drawerTitle="Motif remise" />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Remise min (DA)</Label>
+                  <Input type="number" placeholder="0" value={discountMin} onChange={e => setDiscountMin(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Remise max (DA)</Label>
+                  <Input type="number" placeholder="∞" value={discountMax} onChange={e => setDiscountMax(e.target.value)} className="h-9 text-sm" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 p-4 border-t grid grid-cols-2 gap-3">
+            <Button variant="outline" onClick={cancelFilters}>Annuler</Button>
+            <Button className="bg-green-700 hover:bg-green-800" onClick={() => setFiltersDrawerOpen(false)}>Appliquer</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Active Filter Chips ──────────────────────────────────────────────── */}
+      {activeFiltersCount > 0 && (
+        <div className="flex flex-wrap gap-1.5 -mt-3">
+          {activePreset === -1 && (from || to) && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {from} → {to}
+              <button onClick={() => applyPreset(2)} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {branchIds.length > 0 && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {branchIds.length > 1 ? `${branchIds.length} boutiques` : ((branches ?? []) as any[]).find((b: any) => b.id === branchIds[0])?.name ?? "Boutique"}
+              <button onClick={() => setBranchIds([])} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {sellerId !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Vendeur: {sellerLabel || sellerId}
+              <button onClick={() => { setSellerId("all"); setSellerLabel(""); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {customerId !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Client: {customerLabel || customerId}
+              <button onClick={() => { setCustomerId("all"); setCustomerLabel(""); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {productId !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Produit: {productLabel || productId}
+              <button onClick={() => { setProductId("all"); setProductLabel(""); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {categoryFilter !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Cat: {parentCategories.find((c: any) => String(c.id) === categoryFilter)?.name ?? categoryFilter}
+              <button onClick={() => { setCategoryFilter("all"); setSubCategoryFilter("all"); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {paymentStatus !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {({ paid: "Payée", partially_paid: "Part. payée", unpaid: "Impayée" } as any)[paymentStatus] ?? paymentStatus}
+              <button onClick={() => setPaymentStatus("all")} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {docType !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {({ sale: "Ventes", order: "Commandes", quotation: "Devis", draft: "Brouillons" } as any)[docType] ?? docType}
+              <button onClick={() => setDocType("all")} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {paymentMode !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {({ cash: "Espèces", card: "Carte", credit: "Crédit", transfer: "Virement", check: "Chèque" } as any)[paymentMode] ?? paymentMode}
+              <button onClick={() => setPaymentMode("all")} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {withDiscount !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              {withDiscount === "yes" ? "Avec remise" : "Sans remise"}
+              <button onClick={() => setWithDiscount("all")} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {reference && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Réf: {reference}
+              <button onClick={() => setReference("")} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {discountReasonId !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Motif: {discountReasonLabel || discountReasonId}
+              <button onClick={() => { setDiscountReasonId("all"); setDiscountReasonLabel(""); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+          {(discountMin || discountMax) && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs font-normal">
+              Remise: {discountMin || "0"} → {discountMax || "∞"} DA
+              <button onClick={() => { setDiscountMin(""); setDiscountMax(""); }} className="ml-0.5 rounded hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* ── KPI Cards — Rangée 1 ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
