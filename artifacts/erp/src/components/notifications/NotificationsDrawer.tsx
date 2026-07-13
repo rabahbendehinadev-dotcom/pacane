@@ -326,7 +326,11 @@ export function NotificationsDrawer({ open, onClose }: NotificationsDrawerProps)
 
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:w-[440px] p-0 flex flex-col">
+      <SheetContent
+        side="right"
+        className="w-full sm:w-[440px] p-0 flex flex-col"
+        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
 
         {/* ── Header ── */}
         <SheetHeader className="px-4 py-4 border-b shrink-0">
