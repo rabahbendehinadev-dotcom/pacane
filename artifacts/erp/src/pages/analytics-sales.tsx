@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch, useGetBranches, useGetCategories } from "@workspace/api-client-react";
@@ -185,6 +185,50 @@ export default function AnalyticsSales() {
     const t = p.get("tab");
     return (t && ["products","customers","sellers","documents","categories","alerts","discounts"].includes(t)) ? t : "products";
   });
+
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    el.addEventListener("scroll", updateScrollButtons, { passive: true });
+    const ro = new ResizeObserver(updateScrollButtons);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", updateScrollButtons); ro.disconnect(); };
+  }, [updateScrollButtons]);
+
+  useEffect(() => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const active = el.querySelector(`[data-value="${activeMainTab}"]`) as HTMLElement | null;
+    if (!active) return;
+    const left = active.offsetLeft;
+    const right = left + active.offsetWidth;
+    const scrollLeft = el.scrollLeft;
+    const clientWidth = el.clientWidth;
+    if (left < scrollLeft + 8) {
+      el.scrollTo({ left: left - 8, behavior: "smooth" });
+    } else if (right > scrollLeft + clientWidth - 8) {
+      el.scrollTo({ left: right - clientWidth + 8, behavior: "smooth" });
+    }
+    updateScrollButtons();
+  }, [activeMainTab, updateScrollButtons]);
+
+  const scrollTabs = useCallback((dir: "left" | "right") => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === "right" ? 120 : -120, behavior: "smooth" });
+  }, []);
 
   const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -1000,41 +1044,69 @@ export default function AnalyticsSales() {
 
       {/* ── Tabs: Products / Customers / Sellers / Documents / Categories ───── */}
       <Tabs value={activeMainTab} onValueChange={setActiveMainTab}>
-        <TabsList className="h-8">
-          <TabsTrigger value="products" className="text-xs h-7 px-3">
-            <Tag className="h-3.5 w-3.5 mr-1.5" />
-            Produits
-          </TabsTrigger>
-          <TabsTrigger value="customers" className="text-xs h-7 px-3">
-            <Users className="h-3.5 w-3.5 mr-1.5" />
-            Clients
-          </TabsTrigger>
-          <TabsTrigger value="sellers" className="text-xs h-7 px-3">
-            <Star className="h-3.5 w-3.5 mr-1.5" />
-            Vendeurs
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="text-xs h-7 px-3">
-            <FileText className="h-3.5 w-3.5 mr-1.5" />
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="categories" className="text-xs h-7 px-3">
-            <Layers className="h-3.5 w-3.5 mr-1.5" />
-            Catégories
-          </TabsTrigger>
-          <TabsTrigger value="alerts" className="text-xs h-7 px-3 relative">
-            <Bell className="h-3.5 w-3.5 mr-1.5" />
-            Alertes
-            {totalAlerts > 0 && (
-              <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
-                {totalAlerts}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="discounts" className="text-xs h-7 px-3">
-            <Percent className="h-3.5 w-3.5 mr-1.5" />
-            Remises
-          </TabsTrigger>
-        </TabsList>
+        {/* ── Scrollable tabs bar with arrow buttons ── */}
+        <div className="relative flex items-center">
+          {/* Left arrow — shown only when scrollable and not at start */}
+          <button
+            aria-label="Défiler à gauche"
+            onClick={() => scrollTabs("left")}
+            className={`absolute left-0 z-10 flex items-center justify-center h-8 w-7 rounded-l-lg bg-gradient-to-r from-background via-background/95 to-transparent shrink-0 transition-opacity duration-150 ${canScrollLeft ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+          >
+            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+          </button>
+
+          {/* Scrollable tabs container */}
+          <div
+            ref={tabsScrollRef}
+            className="overflow-x-auto scrollbar-hide w-full"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            <TabsList className="inline-flex h-8 w-max min-w-full">
+              <TabsTrigger value="products" data-value="products" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <Tag className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Produits
+              </TabsTrigger>
+              <TabsTrigger value="customers" data-value="customers" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <Users className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Clients
+              </TabsTrigger>
+              <TabsTrigger value="sellers" data-value="sellers" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <Star className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Vendeurs
+              </TabsTrigger>
+              <TabsTrigger value="documents" data-value="documents" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Documents
+              </TabsTrigger>
+              <TabsTrigger value="categories" data-value="categories" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <Layers className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Catégories
+              </TabsTrigger>
+              <TabsTrigger value="alerts" data-value="alerts" className="text-xs h-7 px-3 whitespace-nowrap shrink-0 relative">
+                <Bell className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Alertes
+                {totalAlerts > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                    {totalAlerts}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="discounts" data-value="discounts" className="text-xs h-7 px-3 whitespace-nowrap shrink-0">
+                <Percent className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                Remises
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* Right arrow — shown only when scrollable and not at end */}
+          <button
+            aria-label="Défiler à droite"
+            onClick={() => scrollTabs("right")}
+            className={`absolute right-0 z-10 flex items-center justify-center h-8 w-7 rounded-r-lg bg-gradient-to-l from-background via-background/95 to-transparent shrink-0 transition-opacity duration-150 ${canScrollRight ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+          >
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
 
         {/* ── Products ─────────────────────────────────────────────────────────── */}
         <TabsContent value="products">
