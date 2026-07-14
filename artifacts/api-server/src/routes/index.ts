@@ -48,6 +48,7 @@ import aiControlRouter from "./ai-control";
 import checklistRouter from "./checklist";
 import pushRouter from "./push";
 import notificationSettingsRouter from "./notification-settings";
+import recipesImportRouter from "./recipes-import";
 
 const router: IRouter = Router();
 
@@ -102,5 +103,6 @@ router.use(aiControlRouter);
 router.use(checklistRouter);
 router.use(pushRouter);
 router.use(notificationSettingsRouter);
+router.use(recipesImportRouter);
 
 export default router;

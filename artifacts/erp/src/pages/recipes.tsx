@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCreateRecipe, useUpdateRecipe, useGetProducts, useGetUnits, getGetRecipesQueryKey } from "@workspace/api-client-react";
+import { RecipeImportWizard } from "@/components/RecipeImportWizard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -724,11 +725,9 @@ export default function Recipes() {
         })}
       </div>
 
-      <ImportRecipesDialog
+      <RecipeImportWizard
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        products={products}
-        units={units}
         onSuccess={() => qc.invalidateQueries({ queryKey: getGetRecipesQueryKey() })}
       />
 
