@@ -88,9 +88,36 @@ router.get("/export/sales", requireAuth, requirePermission(P.sales.view), async 
   if (customerId) conds.push(eq(salesTable.customerId, parseInt(customerId, 10)));
   conds.push(...buildDateConds(salesTable, from, to));
 
-  const sales = await db.select().from(salesTable)
+  // Fetch sale items joined with sales and products — one row per line item
+  const rawItems = await db.select({
+    saleId:       salesTable.id,
+    reference:    salesTable.reference,
+    saleType:     salesTable.type,
+    createdAt:    salesTable.createdAt,
+    branchId:     salesTable.branchId,
+    customerId:   salesTable.customerId,
+    createdBy:    salesTable.createdByUserId,
+    saleTotal:    salesTable.total,
+    salePaid:     salesTable.paid,
+    saleSubtotal: salesTable.subtotal,
+    saleDiscount: salesTable.discount,
+    saleTax:      salesTable.tax,
+    shippingFee:  salesTable.shippingFee,
+    saleStatus:   salesTable.status,
+    itemId:       saleItemsTable.id,
+    productName:  productsTable.name,
+    productSku:   productsTable.sku,
+    itemQty:      saleItemsTable.quantity,
+    itemUnit:     saleItemsTable.unit,
+    itemUnitPrice: saleItemsTable.unitPrice,
+    itemDiscount: saleItemsTable.discount,
+    itemTotal:    saleItemsTable.total,
+  })
+    .from(salesTable)
+    .innerJoin(saleItemsTable, eq(saleItemsTable.saleId, salesTable.id))
+    .innerJoin(productsTable,  eq(saleItemsTable.productId, productsTable.id))
     .where(conds.length ? and(...conds) : undefined)
-    .orderBy(desc(salesTable.createdAt));
+    .orderBy(desc(salesTable.createdAt), saleItemsTable.id);
 
   const [contacts, branches, users] = await Promise.all([
     db.select({ id: contactsTable.id, name: contactsTable.displayName }).from(contactsTable),
@@ -98,57 +125,84 @@ router.get("/export/sales", requireAuth, requirePermission(P.sales.view), async 
     db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable),
   ]);
   const contactMap = Object.fromEntries(contacts.map(c => [c.id, c.name]));
-  const branchMap = Object.fromEntries(branches.map(b => [b.id, b.name]));
-  const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  const branchMap  = Object.fromEntries(branches.map(b => [b.id, b.name]));
+  const userMap    = Object.fromEntries(users.map(u => [u.id, u.name]));
 
-  type SaleRow = {
-    reference: string; type: string; date: string; branchName: string;
-    customerName: string; subtotal: number; discount: number; tax: number;
-    shippingFee: number; total: number; paid: number; due: number;
-    paymentStatus: string; status: string; createdBy: string;
+  type ItemRow = {
+    reference: string; saleType: string; date: string;
+    branchName: string; customerName: string;
+    productName: string; productSku: string;
+    qty: number; unit: string; unitPrice: number;
+    itemDiscount: number; itemTotal: number;
+    saleSubtotal: number; saleDiscount: number; saleTax: number;
+    shippingFee: number; saleTotal: number; salePaid: number; saleDue: number;
+    paymentStatus: string; saleStatus: string; createdBy: string;
   };
 
-  let rows: SaleRow[] = sales.map(s => {
-    const total = n(s.total); const paid = n(s.paid);
+  let rows: ItemRow[] = rawItems.map(r => {
+    const total = n(r.saleTotal); const paid = n(r.salePaid);
     const ps = paid >= total ? "Payé" : paid > 0 ? "Partiel" : "Non payé";
     return {
-      reference: s.reference,
-      type: TYPE_LABELS[s.type] ?? s.type,
-      date: fmtDate(s.createdAt),
-      branchName: branchMap[s.branchId] ?? "",
-      customerName: s.customerId ? (contactMap[s.customerId] ?? "") : "Vente comptoir",
-      subtotal: n(s.subtotal), discount: n(s.discount),
-      tax: n(s.tax), shippingFee: n(s.shippingFee),
-      total, paid, due: total - paid, paymentStatus: ps,
-      status: SALE_STATUS_LABELS[s.status] ?? s.status,
-      createdBy: s.createdByUserId ? (userMap[s.createdByUserId] ?? "") : "",
+      reference:    r.reference,
+      saleType:     TYPE_LABELS[r.saleType] ?? r.saleType,
+      date:         fmtDate(r.createdAt),
+      branchName:   branchMap[r.branchId] ?? "",
+      customerName: r.customerId ? (contactMap[r.customerId] ?? "") : "Vente comptoir",
+      productName:  r.productName,
+      productSku:   r.productSku ?? "",
+      qty:          n(r.itemQty),
+      unit:         r.itemUnit ?? "",
+      unitPrice:    n(r.itemUnitPrice),
+      itemDiscount: n(r.itemDiscount),
+      itemTotal:    n(r.itemTotal),
+      saleSubtotal: n(r.saleSubtotal),
+      saleDiscount: n(r.saleDiscount),
+      saleTax:      n(r.saleTax),
+      shippingFee:  n(r.shippingFee),
+      saleTotal:    total,
+      salePaid:     paid,
+      saleDue:      total - paid,
+      paymentStatus: ps,
+      saleStatus:   SALE_STATUS_LABELS[r.saleStatus] ?? r.saleStatus,
+      createdBy:    r.createdBy ? (userMap[r.createdBy] ?? "") : "",
     };
   });
 
   if (search) {
     const q = search.toLowerCase();
-    rows = rows.filter(r => r.reference.toLowerCase().includes(q) || r.customerName.toLowerCase().includes(q));
+    rows = rows.filter(r =>
+      r.reference.toLowerCase().includes(q) ||
+      r.customerName.toLowerCase().includes(q) ||
+      r.productName.toLowerCase().includes(q)
+    );
   }
 
   const branchLabel = branchId ? (branchMap[parseInt(branchId, 10)] ?? undefined) : undefined;
-  const filename = buildFilename("ventes", branchLabel, from, to);
+  const filename = buildFilename("ventes-detail", branchLabel, from, to);
 
-  const csv = toCsv<SaleRow>([
-    { header: "Référence",    value: r => r.reference },
-    { header: "Type",         value: r => r.type },
-    { header: "Date",         value: r => r.date },
-    { header: "Succursale",   value: r => r.branchName },
-    { header: "Client",       value: r => r.customerName },
-    { header: "Sous-total (DA)", value: r => r.subtotal },
-    { header: "Remise (DA)",  value: r => r.discount },
-    { header: "TVA (DA)",     value: r => r.tax },
-    { header: "Frais livraison (DA)", value: r => r.shippingFee },
-    { header: "Total (DA)",   value: r => r.total },
-    { header: "Payé (DA)",    value: r => r.paid },
-    { header: "Solde (DA)",   value: r => r.due },
-    { header: "Statut paiement", value: r => r.paymentStatus },
-    { header: "Statut",       value: r => r.status },
-    { header: "Créé par",     value: r => r.createdBy },
+  const csv = toCsv<ItemRow>([
+    { header: "Référence",           value: r => r.reference },
+    { header: "Type",                value: r => r.saleType },
+    { header: "Date",                value: r => r.date },
+    { header: "Succursale",          value: r => r.branchName },
+    { header: "Client",              value: r => r.customerName },
+    { header: "Produit",             value: r => r.productName },
+    { header: "Réf. produit",        value: r => r.productSku },
+    { header: "Qté",                 value: r => r.qty },
+    { header: "Unité",               value: r => r.unit },
+    { header: "Prix unitaire (DA)",  value: r => r.unitPrice },
+    { header: "Remise ligne (DA)",   value: r => r.itemDiscount },
+    { header: "Total ligne (DA)",    value: r => r.itemTotal },
+    { header: "Sous-total facture (DA)", value: r => r.saleSubtotal },
+    { header: "Remise facture (DA)", value: r => r.saleDiscount },
+    { header: "TVA (DA)",            value: r => r.saleTax },
+    { header: "Frais livraison (DA)",value: r => r.shippingFee },
+    { header: "Total facture (DA)",  value: r => r.saleTotal },
+    { header: "Payé (DA)",           value: r => r.salePaid },
+    { header: "Solde (DA)",          value: r => r.saleDue },
+    { header: "Statut paiement",     value: r => r.paymentStatus },
+    { header: "Statut",              value: r => r.saleStatus },
+    { header: "Créé par",            value: r => r.createdBy },
   ], rows);
 
   sendCsv(res, filename, csv);
