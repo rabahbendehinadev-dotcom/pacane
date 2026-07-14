@@ -143,9 +143,9 @@ function KpiCard({ title, value, sub, icon: Icon, color = "blue", loading = fals
   );
 }
 
-function SortHead({ label, sk, curKey, curDir, onToggle, right = false }: {
+function SortHead({ label, sk, curKey, curDir, onToggle, right = false, tooltip }: {
   label: string; sk: string; curKey: string; curDir: "desc"|"asc";
-  onToggle: (k: string) => void; right?: boolean;
+  onToggle: (k: string) => void; right?: boolean; tooltip?: string;
 }) {
   const active = sk === curKey;
   const Icon = active ? (curDir === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
@@ -155,7 +155,11 @@ function SortHead({ label, sk, curKey, curDir, onToggle, right = false }: {
       onClick={() => onToggle(sk)}
     >
       <div className={`flex items-center gap-1 ${right ? "justify-end" : ""}`}>
-        <span className="text-xs font-semibold">{label}</span>
+        {tooltip ? (
+          <span className="text-xs font-semibold underline decoration-dotted decoration-muted-foreground/50 cursor-help" title={tooltip}>{label}</span>
+        ) : (
+          <span className="text-xs font-semibold">{label}</span>
+        )}
         <Icon className={`h-3 w-3 shrink-0 ${active ? "text-primary" : "text-muted-foreground/40"}`} />
       </div>
     </TableHead>
@@ -270,7 +274,7 @@ export default function AnalyticsSales() {
   // ─── Sort states ────────────────────────────────────────────────────────────
   const [branchSortKey,   setBranchSortKey]   = useState<"branchName"|"revenue"|"saleCount"|"avgBasket"|"unpaidBalance"|"revenuePct">("revenue");
   const [branchSortDir,   setBranchSortDir]   = useState<"desc"|"asc">("desc");
-  const [productSortKey,  setProductSortKey]  = useState<"productName"|"revenue"|"qty"|"orderCount"|"avgUnitPrice"|"totalDiscount"|"revenuePct">("revenue");
+  const [productSortKey,  setProductSortKey]  = useState<"productName"|"revenue"|"qty"|"orderCount"|"avgUnitPrice"|"totalDiscount"|"revenuePct"|"qtyPerTicket">("revenue");
   const [productSortDir,  setProductSortDir]  = useState<"desc"|"asc">("desc");
   const [customerSortKey, setCustomerSortKey] = useState<"customerName"|"revenue"|"saleCount"|"avgBasket"|"paid"|"creditApplied"|"unpaid">("revenue");
   const [customerSortDir, setCustomerSortDir] = useState<"desc"|"asc">("desc");
@@ -683,7 +687,11 @@ export default function AnalyticsSales() {
 
   // ─── Sorted datasets ────────────────────────────────────────────────────────
   const sortedBranches  = useMemo(() => sortArr((branchData as any[] ?? []),   branchSortKey   as any, branchSortDir),   [branchData,   branchSortKey,   branchSortDir]);
-  const sortedProducts  = useMemo(() => sortArr((products   as any[] ?? []),   productSortKey  as any, productSortDir),  [products,     productSortKey,  productSortDir]);
+  const productsWithQpt = useMemo(() => (products as any[] ?? []).map((p: any) => ({
+    ...p,
+    qtyPerTicket: (p.orderCount ?? 0) > 0 ? Math.round((p.qty / p.orderCount) * 100) / 100 : 0,
+  })), [products]);
+  const sortedProducts  = useMemo(() => sortArr(productsWithQpt, productSortKey as any, productSortDir), [productsWithQpt, productSortKey, productSortDir]);
   const sortedCustomers = useMemo(() => sortArr((customers  as any[] ?? []),   customerSortKey as any, customerSortDir), [customers,    customerSortKey, customerSortDir]);
   const sortedSellers   = useMemo(() => sortArr((sellers    as any[] ?? []),   sellerSortKey   as any, sellerSortDir),   [sellers,      sellerSortKey,   sellerSortDir]);
   const sortedDocs      = useMemo(() => sortArr((documents  as any[] ?? []),   docSortKey      as any, docSortDir),      [documents,    docSortKey,      docSortDir]);
@@ -710,6 +718,59 @@ export default function AnalyticsSales() {
 
   // ─── Time distribution typed ─────────────────────────────────────────────
   const td = timeDistribution as any;
+
+  const handleProductExportCsv = useCallback(() => {
+    const rows = filteredProducts;
+    const headers = ["#", "ABC", "Produit", "CA total", "Marge%", "Qté", "Nb de tickets", "Qté moy./ticket", "PU moyen", "Part CA%"];
+    const lines = [headers.join(";")];
+    rows.forEach((p: any, i: number) => {
+      lines.push([
+        i + 1,
+        p.abc ?? "",
+        `"${(p.productName ?? "").replace(/"/g, '""')}"`,
+        p.revenue ?? 0,
+        p.marginPct ?? 0,
+        p.qty ?? 0,
+        p.orderCount ?? 0,
+        (p.qtyPerTicket ?? 0).toFixed(2),
+        Math.round(p.avgUnitPrice ?? 0),
+        p.revenuePct ?? 0,
+      ].join(";"));
+    });
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `PRODUITS_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [filteredProducts]);
+
+  const handleProductExportExcel = useCallback(async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Produits");
+    ws.addRow(["#", "ABC", "Produit", "CA total (DA)", "Marge%", "Qté", "Nb de tickets", "Qté moy./ticket", "PU moyen (DA)", "Part CA%"]);
+    filteredProducts.forEach((p: any, i: number) => {
+      ws.addRow([
+        i + 1, p.abc ?? "", p.productName ?? "",
+        p.revenue ?? 0, p.marginPct ?? 0, p.qty ?? 0,
+        p.orderCount ?? 0, p.qtyPerTicket ?? 0,
+        Math.round(p.avgUnitPrice ?? 0), p.revenuePct ?? 0,
+      ]);
+    });
+    ws.getRow(1).font = { bold: true };
+    ws.columns = [
+      { width: 5 }, { width: 6 }, { width: 36 }, { width: 14 }, { width: 8 },
+      { width: 10 }, { width: 14 }, { width: 18 }, { width: 14 }, { width: 10 },
+    ];
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `PRODUITS_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [filteredProducts]);
 
   const handleExport = async () => {
     const r = await fetch(`/api/export/sales?${kpisQs}`, {
@@ -1680,14 +1741,25 @@ export default function AnalyticsSales() {
                     <Badge variant="outline" className="text-[10px] h-4 ml-1">{(products as any[]).length}</Badge>
                   )}
                 </CardTitle>
-                <div className="relative w-56">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                  <Input
-                    placeholder="Rechercher un produit…"
-                    value={productSearch}
-                    onChange={e => { setProductSearch(e.target.value); setProductPage(1); }}
-                    className="h-7 text-xs pl-6 pr-2"
-                  />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative w-48">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <Input
+                      placeholder="Rechercher un produit…"
+                      value={productSearch}
+                      onChange={e => { setProductSearch(e.target.value); setProductPage(1); }}
+                      className="h-7 text-xs pl-6 pr-2"
+                    />
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={handleProductExportCsv}>
+                    <Download className="h-3.5 w-3.5" />CSV
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={handleProductExportExcel}>
+                    <Download className="h-3.5 w-3.5" />Excel
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => window.print()}>
+                    <FileText className="h-3.5 w-3.5" />PDF
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -1702,9 +1774,10 @@ export default function AnalyticsSales() {
                         <SortHead label="Produit"       sk="productName"   curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} />
                         <SortHead label="CA total"      sk="revenue"       curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
                         <SortHead label="Marge%"        sk="marginPct"     curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
-                        <SortHead label="Qté"           sk="qty"           curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
-                        <SortHead label="Ventes"        sk="orderCount"    curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
-                        <SortHead label="PU moyen"      sk="avgUnitPrice"  curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
+                        <SortHead label="Qté"              sk="qty"           curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right tooltip="Nombre total d'unités vendues." />
+                        <SortHead label="Nb de tickets"    sk="orderCount"    curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right tooltip="Nombre de tickets ou factures distincts contenant ce produit." />
+                        <SortHead label="Qté moy./ticket"  sk="qtyPerTicket"  curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right tooltip="Quantité moyenne du produit vendue par ticket." />
+                        <SortHead label="PU moyen"         sk="avgUnitPrice"  curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
                         <SortHead label="Part CA"       sk="revenuePct"    curKey={productSortKey} curDir={productSortDir} onToggle={k => { toggleSort(k, productSortKey, productSortDir, setProductSortKey, setProductSortDir); setProductPage(1); }} right />
                       </TableRow>
                     </TableHeader>
@@ -1724,6 +1797,7 @@ export default function AnalyticsSales() {
                             <TableCell className={`text-xs text-right font-semibold ${marginCls}`}>{p.marginPct ?? 0}%</TableCell>
                             <TableCell className="text-xs text-right font-mono">{(p.qty ?? 0).toFixed(0)}</TableCell>
                             <TableCell className="text-xs text-right text-muted-foreground">{p.orderCount}</TableCell>
+                            <TableCell className="text-xs text-right font-mono text-muted-foreground">{(p.qtyPerTicket ?? 0).toFixed(2)}</TableCell>
                             <TableCell className="text-xs text-right text-muted-foreground">{fmtDA(p.avgUnitPrice)}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1.5 min-w-[60px]">
@@ -1735,7 +1809,7 @@ export default function AnalyticsSales() {
                         );
                       }) : (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-8">
+                          <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-8">
                             Aucun produit ne correspond à la recherche
                           </TableCell>
                         </TableRow>
