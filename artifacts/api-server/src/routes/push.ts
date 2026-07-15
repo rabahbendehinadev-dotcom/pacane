@@ -15,6 +15,24 @@ router.get("/push/vapid-public-key", (_req, res) => {
   res.json({ publicKey: vapidPublicKey });
 });
 
+// ── GET /push/env-check (public — diagnostic only) ────────────────────────────
+// Returns boolean flags so you can verify env vars reach the running process.
+// Check this URL directly in a browser: /api/push/env-check
+router.get("/push/env-check", (_req, res) => {
+  const pub  = process.env["VAPID_PUBLIC_KEY"]  ?? "";
+  const priv = process.env["VAPID_PRIVATE_KEY"] ?? "";
+  const subj = process.env["VAPID_SUBJECT"]     ?? "";
+  res.json({
+    VAPID_PUBLIC_KEY_SET:    !!pub,
+    VAPID_PRIVATE_KEY_SET:   !!priv,
+    VAPID_SUBJECT_SET:       !!subj,
+    vapidPublicKey_in_module: !!vapidPublicKey,
+    VAPID_PUBLIC_KEY_prefix:  pub  ? pub.slice(0, 8)  + "…" : null,
+    VAPID_SUBJECT_value:      subj || null,
+    node_env: process.env["NODE_ENV"] ?? null,
+  });
+});
+
 // ── POST /push/subscribe ──────────────────────────────────────────────────────
 router.post("/push/subscribe", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
