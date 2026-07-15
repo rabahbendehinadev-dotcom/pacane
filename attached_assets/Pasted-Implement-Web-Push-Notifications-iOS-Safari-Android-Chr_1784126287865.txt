@@ -1,0 +1,61 @@
+Implement Web Push Notifications (iOS Safari + Android Chrome) for this app.
+## What I want:
+Users should receive push notifications on their iPhone (iOS 16.4+ Safari PWA) and Android Chrome when there are new events in the app.
+## Technical requirements:
+### 1. VAPID Keys (server identity)
+- Generate a VAPID key pair (public + private). Store them as environment secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (e.g. mailto:admin@yourdomain.com)
+- Use the `web-push` npm package on the server.
+### 2. Client-side subscription (frontend)
+- Register a Service Worker file at the ROOT of the public directory: `/sw.js`
+- The SW must handle the `push` event and call `self.registration.showNotification(title, options)`
+- Notification options must include: `icon`, `badge`, `data: { url }`, and a `notificationclick` handler that opens the correct URL.
+- To subscribe: call `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) })`
+- Send the subscription object `{ endpoint, keys: { p256dh, auth } }` to your backend via POST /api/push/subscribe
+- **iOS Safari requirement**: push subscription ONLY works inside a PWA installed to the Home Screen (iOS 16.4+). You must show the user a banner instructing them to "Add to Home Screen" before requesting permission. Never call `Notification.requestPermission()` outside of a user gesture (button click).
+- **Check support**: `'PushManager' in window && 'serviceWorker' in navigator` before doing anything. On unsupported browsers show nothing.
+### 3. Backend endpoints
+POST /api/push/subscribe   — save { endpoint, keys, userId } to DB
+DELETE /api/push/subscribe — delete subscription by endpoint
+POST /api/push/send        — admin-only, send a notification to all subscribed users
+### 4. Database
+Add a table `push_subscriptions` with columns: id, user_id (nullable for anonymous), endpoint (unique), p256dh, auth, created_at.
+### 5. Sending notifications (server)
+```js
+import webpush from 'web-push';
+webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+await webpush.sendNotification(subscription, JSON.stringify({ title, body, url }));
+On 404 or 410 response from the push service → delete that subscription from DB (stale).
+On 403 response → the VAPID key changed; client needs to resubscribe.
+6. iOS-specific gotchas (CRITICAL)
+iOS requires the PWA to be installed (added to Home Screen). In-browser Safari does NOT support push.
+Detect iOS PWA: window.navigator.standalone === true
+Show a friendly Arabic banner: "لتفعيل الإشعارات، أضف التطبيق إلى الشاشة الرئيسية أولاً" when user is on iOS Safari but NOT in standalone mode.
+The service worker scope must match the app's base path.
+showNotification options: do NOT use actions on iOS (not supported). Use only: title, body, icon, badge, data.
+7. Permission flow (mandatory UX)
+Never auto-request permission on page load.
+Show a button/card "تفعيل الإشعارات" — only when clicked, call Notification.requestPermission().
+If permission = 'denied': show "الإشعارات محظورة — فعّلها من إعدادات المتصفح" and stop.
+If permission = 'granted': subscribe and save to server.
+Persist the subscription state in localStorage so you don't re-prompt on every visit.
+8. Android specifics
+Android Chrome supports push in browser AND PWA — no special handling needed beyond standard Web Push API.
+Make sure the app has a valid manifest.json with display: "standalone" and correct start_url.
+Files to create/edit:
+public/sw.js — Service Worker
+Frontend component: PushNotificationButton or similar
+Backend route: routes/push.ts
+DB migration for push_subscriptions table
+.env / secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+Do NOT:
+Do not use Firebase/FCM — use raw Web Push (VAPID) only.
+Do not request notification permission without a user gesture.
+Do not show the push UI on unsupported browsers.
+Do not hardcode VAPID keys in source code.
+Test checklist:
+Generate VAPID keys and set as env secrets.
+Service worker registers and activates (check DevTools → Application → Service Workers).
+Clicking the button requests permission.
+After granting: subscription saved to DB (verify in DB).
+Sending a test notification from admin panel → notification appears on device.
+On iOS: only works after "Add to Home Screen" — verify the banner appears.

@@ -45,21 +45,22 @@ async function resolveRecipientUserIds(criteria: any): Promise<{ userId: number;
     // all active users including those without workers
   } else if (mode === "specific") {
     if (!workerIds?.length) return [];
-    // Primary match: users whose worker_id is directly set
-    // Fallback: users whose name matches a selected worker (when worker_id linkage isn't configured)
+    // Match by worker_id linkage (primary) OR by matching worker name to user name (fallback)
     params.push(workerIds);
     const p = params.length;
     query = `
-      SELECT DISTINCT ON (u.id)
-        u.id as user_id, u.name as user_name, u.worker_id,
-        COALESCE(w_direct.name, w_named.name) as worker_name
+      SELECT DISTINCT u.id as user_id, u.name as user_name, u.worker_id,
+        (SELECT w.name FROM workers w WHERE w.id = u.worker_id) as worker_name
       FROM users u
-      LEFT JOIN workers w_direct ON w_direct.id = u.worker_id
-      LEFT JOIN workers w_named
-        ON w_named.id = ANY($${p}::int[])
-        AND lower(trim(w_named.name)) = lower(trim(u.name))
       WHERE u.status = 'active'
-        AND (u.worker_id = ANY($${p}::int[]) OR w_named.id IS NOT NULL)
+        AND (
+          u.worker_id = ANY($${p}::int[])
+          OR EXISTS (
+            SELECT 1 FROM workers w
+            WHERE w.id = ANY($${p}::int[])
+              AND lower(trim(w.name)) = lower(trim(u.name))
+          )
+        )
     `;
   } else if (mode === "branch") {
     params.push(branchId);

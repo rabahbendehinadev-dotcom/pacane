@@ -1,20 +1,18 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Bell, Plus, Eye, Send, RefreshCw, Archive, Users, CheckCheck,
-  AlertTriangle, AlertCircle, Info, Megaphone, ClipboardList, Loader2,
-  ChevronDown, ChevronUp, UserCheck
+  AlertTriangle, AlertCircle, Megaphone, ClipboardList, Loader2, X,
+  UserCheck, Search,
 } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -23,62 +21,64 @@ function authHeader() {
 }
 
 const NOTIF_TYPES = [
-  { value: "normal", label: "Notification", icon: Bell },
-  { value: "important", label: "Alerte importante", icon: AlertCircle },
-  { value: "warning", label: "Avertissement", icon: AlertTriangle },
-  { value: "work_instructions", label: "Instructions de travail", icon: ClipboardList },
-  { value: "admin_announcement", label: "Annonce admin", icon: Megaphone },
+  { value: "normal",             label: "Notification" },
+  { value: "important",          label: "Alerte importante" },
+  { value: "warning",            label: "Avertissement" },
+  { value: "work_instructions",  label: "Instructions de travail" },
+  { value: "admin_announcement", label: "Annonce admin" },
 ];
 
 const PRIORITIES = [
-  { value: "normal", label: "Normal", color: "bg-slate-100 text-slate-700" },
-  { value: "important", label: "Important", color: "bg-blue-100 text-blue-700" },
-  { value: "urgent", label: "Urgent", color: "bg-red-100 text-red-700" },
+  { value: "normal",    label: "Normal" },
+  { value: "important", label: "Important" },
+  { value: "urgent",    label: "Urgent" },
 ];
 
-const RECIPIENT_MODES = [
-  { value: "all_workers", label: "Tous les employés" },
-  { value: "all_users", label: "Tous les utilisateurs" },
-  { value: "specific", label: "Employés spécifiques" },
-  { value: "branch", label: "Par boutique" },
-  { value: "worker_status", label: "Par statut d'employé" },
-  { value: "role", label: "Par rôle" },
-];
+const PRIORITY_COLORS: Record<string, string> = {
+  normal:    "bg-slate-100 text-slate-700",
+  important: "bg-blue-100 text-blue-700",
+  urgent:    "bg-red-100 text-red-700",
+};
 
-function priorityBadge(p: string) {
-  const map: Record<string, string> = {
-    normal: "bg-slate-100 text-slate-700",
-    important: "bg-blue-100 text-blue-700",
-    urgent: "bg-red-100 text-red-700",
-  };
-  const labels: Record<string, string> = { normal: "Normal", important: "Important", urgent: "Urgent" };
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[p] ?? map.normal}`}>{labels[p] ?? p}</span>;
+const TYPE_LABELS: Record<string, string> = {
+  normal:             "Notification",
+  important:          "Important",
+  warning:            "Avertissement",
+  work_instructions:  "Instructions",
+  admin_announcement: "Annonce",
+};
+
+function PriorityBadge({ p }: { p: string }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PRIORITY_COLORS[p] ?? PRIORITY_COLORS.normal}`}>
+      {PRIORITIES.find(x => x.value === p)?.label ?? p}
+    </span>
+  );
 }
 
-function typeBadge(t: string) {
-  const labels: Record<string, string> = {
-    normal: "Notification", important: "Important", warning: "Avertissement",
-    work_instructions: "Instructions", admin_announcement: "Annonce",
-  };
-  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{labels[t] ?? t}</span>;
+function TypeBadge({ t }: { t: string }) {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+      {TYPE_LABELS[t] ?? t}
+    </span>
+  );
 }
+
+const EMPTY_FORM = {
+  title: "", body: "", type: "normal", priority: "normal",
+  recipientMode: "all" as "all" | "specific",
+  selectedWorkerIds: [] as number[],
+};
 
 export default function WorkerNotificationsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [detailId, setDetailId] = useState<number | null>(null);
-  const [previewData, setPreviewData] = useState<any>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    title: "", body: "", type: "normal", priority: "normal",
-    expiresAt: "", imageUrl: "",
-    criteria: { mode: "all_workers", workerIds: [] as number[], branchId: "", workerStatus: "active", roleId: "" },
-  });
+  const [createOpen, setCreateOpen]   = useState(false);
+  const [detailId, setDetailId]       = useState<number | null>(null);
+  const [form, setForm]               = useState(EMPTY_FORM);
   const [workerSearch, setWorkerSearch] = useState("");
-  const [selectedWorkerIds, setSelectedWorkerIds] = useState<number[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["worker-notifications"],
@@ -99,52 +99,44 @@ export default function WorkerNotificationsPage() {
     enabled: !!detailId,
   });
 
-  const { data: workers } = useQuery({
+  const { data: workers = [] } = useQuery<any[]>({
     queryKey: ["workers-list-for-notif"],
     queryFn: async () => {
       const r = await fetch(`${API}/api/workers`, { headers: authHeader() });
       if (!r.ok) return [];
       return r.json();
     },
-    enabled: form.criteria.mode === "specific",
-  });
-
-  const { data: branches } = useQuery({
-    queryKey: ["branches-for-notif"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/branches`, { headers: authHeader() });
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: form.criteria.mode === "branch",
-  });
-
-  const { data: roles } = useQuery({
-    queryKey: ["roles-for-notif"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/roles`, { headers: authHeader() });
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: form.criteria.mode === "role",
+    enabled: createOpen,
   });
 
   const createMutation = useMutation({
-    mutationFn: async (payload: any) => {
+    mutationFn: async () => {
+      const criteria = form.recipientMode === "all"
+        ? { mode: "all_workers" }
+        : { mode: "specific", workerIds: form.selectedWorkerIds };
+
       const r = await fetch(`${API}/api/worker-notifications`, {
-        method: "POST", headers: authHeader(), body: JSON.stringify(payload),
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({
+          title: form.title,
+          body:  form.body,
+          type:  form.type,
+          priority: form.priority,
+          criteria,
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Erreur");
       return d;
     },
     onSuccess: (d) => {
-      toast({ title: "Envoyé", description: `Notification envoyée à ${d.totalRecipients} destinataire(s)` });
+      const pushNote = d.pushOk > 0 ? ` · ${d.pushOk} push envoyé(s)` : "";
+      toast({ title: "Notification envoyée", description: `${d.totalRecipients} destinataire(s)${pushNote}` });
       qc.invalidateQueries({ queryKey: ["worker-notifications"] });
       setCreateOpen(false);
-      setPreviewData(null);
-      setForm({ title: "", body: "", type: "normal", priority: "normal", expiresAt: "", imageUrl: "", criteria: { mode: "all_workers", workerIds: [], branchId: "", workerStatus: "active", roleId: "" } });
-      setSelectedWorkerIds([]);
+      setForm(EMPTY_FORM);
+      setWorkerSearch("");
     },
     onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
@@ -167,110 +159,103 @@ export default function WorkerNotificationsPage() {
     onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
 
-  async function previewRecipients() {
-    setPreviewLoading(true);
-    try {
-      const criteria = buildCriteria();
-      const r = await fetch(`${API}/api/worker-notifications/recipient-preview`, {
-        method: "POST", headers: authHeader(), body: JSON.stringify({ criteria }),
-      });
-      const d = await r.json();
-      setPreviewData(d);
-    } catch { /* ignore */ }
-    setPreviewLoading(false);
-  }
-
-  function buildCriteria() {
-    const c = { ...form.criteria };
-    if (c.mode === "specific") {
-      (c as any).workerIds = selectedWorkerIds;
-    }
-    return c;
-  }
-
   function handleSend() {
     if (!form.title.trim() || !form.body.trim()) {
-      toast({ title: "Veuillez remplir le titre et le contenu", variant: "destructive" });
+      toast({ title: "Remplissez le titre et le contenu", variant: "destructive" });
       return;
     }
-    createMutation.mutate({ ...form, criteria: buildCriteria() });
+    if (form.recipientMode === "specific" && form.selectedWorkerIds.length === 0) {
+      toast({ title: "Sélectionnez au moins un employé", variant: "destructive" });
+      return;
+    }
+    createMutation.mutate();
   }
 
-  const filteredWorkers = (workers || []).filter((w: any) =>
+  function toggleWorker(id: number) {
+    setForm(f => ({
+      ...f,
+      selectedWorkerIds: f.selectedWorkerIds.includes(id)
+        ? f.selectedWorkerIds.filter(x => x !== id)
+        : [...f.selectedWorkerIds, id],
+    }));
+  }
+
+  const filteredWorkers = workers.filter((w: any) =>
     w.name?.toLowerCase().includes(workerSearch.toLowerCase())
   );
+  const selectedWorkers = workers.filter((w: any) => form.selectedWorkerIds.includes(w.id));
 
   if (!user?.adminAccess) {
-    return <DashboardLayout><div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div></DashboardLayout>;
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
   }
 
   const notifications = data?.notifications ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Bell className="h-6 w-6 text-primary" />
+          <Bell className="h-5 w-5 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold">Notifications employés</h1>
-            <p className="text-sm text-muted-foreground">Envoyer et suivre les notifications aux employés</p>
+            <h1 className="text-xl font-bold">Notifications employés</h1>
+            <p className="text-xs text-muted-foreground">Envoyer des messages à votre équipe</p>
           </div>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="flex items-center gap-2">
+        <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1.5">
           <Plus className="h-4 w-4" />
-          Nouvelle notification
+          Nouveau
         </Button>
       </div>
 
+      {/* List */}
       {isLoading ? (
-        <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></div>
       ) : notifications.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-3">
-            <Bell className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">Aucune notification pour l'instant</p>
-            <Button onClick={() => setCreateOpen(true)} variant="outline">Créer la première notification</Button>
+          <CardContent className="flex flex-col items-center justify-center py-14 gap-3">
+            <Bell className="h-10 w-10 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">Aucune notification envoyée</p>
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>Envoyer la première</Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {notifications.map((n: any) => {
             const readPct = n.total_recipients > 0 ? Math.round((n.read_count / n.total_recipients) * 100) : 0;
             return (
-              <Card key={n.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
+              <Card key={n.id} className="hover:shadow-sm transition-shadow">
+                <CardContent className="p-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        {priorityBadge(n.priority)}
-                        {typeBadge(n.type)}
-                        <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString("fr-FR")}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <PriorityBadge p={n.priority} />
+                        <TypeBadge t={n.type} />
+                        <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                       </div>
-                      <h3 className="font-semibold text-sm">{n.title}</h3>
-                      <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><Users className="h-3 w-3" />{n.total_recipients} destinataire{n.total_recipients > 1 ? "s" : ""}</span>
+                      <p className="font-semibold text-sm">{n.title}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{n.body}</p>
+                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" />{n.total_recipients}</span>
                         <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{n.read_count} lu</span>
                         <span className="flex items-center gap-1"><CheckCheck className="h-3 w-3" />{n.ack_count} accusé</span>
-                        <span className="text-primary font-medium">{readPct}% lu</span>
-                        {n.push_failed_count > 0 && (
-                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{n.push_failed_count} échec push</span>
-                        )}
+                        <span className="text-primary font-medium">{readPct}%</span>
+                        {n.push_failed_count > 0 && <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{n.push_failed_count}</span>}
                       </div>
-                      <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${readPct}%` }} />
+                      <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full" style={{ width: `${readPct}%` }} />
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button size="sm" variant="outline" onClick={() => setDetailId(n.id)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDetailId(n.id)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                       {n.push_failed_count > 0 && (
-                        <Button size="sm" variant="outline" onClick={() => { setDetailId(n.id); resendMutation.mutate(n.id); }}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => resendMutation.mutate(n.id)}>
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => {
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => {
                         if (confirm("Archiver cette notification ?")) archiveMutation.mutate(n.id);
                       }}>
                         <Archive className="h-3.5 w-3.5" />
@@ -284,205 +269,238 @@ export default function WorkerNotificationsPage() {
         </div>
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Envoyer une notification aux employés</DialogTitle>
+      {/* ── Create Dialog ── */}
+      <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) { setForm(EMPTY_FORM); setWorkerSearch(""); } }}>
+        <DialogContent className="w-full max-w-md max-h-[92vh] overflow-y-auto p-0">
+          <DialogHeader className="px-4 pt-5 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Send className="h-4 w-4" />
+              Envoyer une notification
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+
+          <div className="px-4 py-4 space-y-4">
+            {/* Title */}
             <div>
-              <Label className="mb-1.5 block">Titre de la notification *</Label>
-              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Titre de la notification..." />
+              <Label className="text-xs font-medium mb-1.5 block">Titre *</Label>
+              <Input
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Titre du message..."
+                className="text-sm"
+              />
             </div>
+
+            {/* Body */}
             <div>
-              <Label className="mb-1.5 block">Contenu du message *</Label>
-              <Textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4} placeholder="Écrivez le message ici..." />
+              <Label className="text-xs font-medium mb-1.5 block">Message *</Label>
+              <Textarea
+                value={form.body}
+                onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+                rows={3}
+                placeholder="Contenu du message..."
+                className="text-sm resize-none"
+              />
             </div>
+
+            {/* Type + Priority */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="mb-1.5 block">Type de notification</Label>
-                <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs font-medium mb-1.5 block">Type</Label>
+                <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+                  <SelectTrigger className="text-xs h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {NOTIF_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    {NOTIF_TYPES.map(t => <SelectItem key={t.value} value={t.value} className="text-xs">{t.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="mb-1.5 block">Priorité</Label>
-                <Select value={form.priority} onValueChange={v => setForm(p => ({ ...p, priority: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs font-medium mb-1.5 block">Priorité</Label>
+                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+                  <SelectTrigger className="text-xs h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                    {PRIORITIES.map(p => <SelectItem key={p.value} value={p.value} className="text-xs">{p.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Date d'expiration (facultatif)</Label>
-              <Input type="datetime-local" value={form.expiresAt} onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))} />
-            </div>
-
-            {/* Recipients */}
-            <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-              <Label className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4" />Destinataires</Label>
-              <div>
-                <Select value={form.criteria.mode} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, mode: v } }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {RECIPIENT_MODES.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              {form.criteria.mode === "specific" && (
-                <div>
-                  <Input placeholder="Rechercher un employé..." value={workerSearch} onChange={e => setWorkerSearch(e.target.value)} className="mb-2" />
-                  <div className="max-h-40 overflow-y-auto border rounded space-y-1 p-2 bg-background">
-                    {filteredWorkers.map((w: any) => (
-                      <label key={w.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-1 rounded text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedWorkerIds.includes(w.id)}
-                          onChange={e => {
-                            setSelectedWorkerIds(prev =>
-                              e.target.checked ? [...prev, w.id] : prev.filter(id => id !== w.id)
-                            );
-                          }}
-                        />
-                        {w.name}
-                      </label>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    <button className="text-xs text-primary underline" onClick={() => setSelectedWorkerIds((filteredWorkers || []).map((w: any) => w.id))}>Tout sélectionner</button>
-                    <button className="text-xs text-muted-foreground underline" onClick={() => setSelectedWorkerIds([])}>Tout désélectionner</button>
-                    <span className="text-xs text-muted-foreground ml-auto">{selectedWorkerIds.length} sélectionné(s)</span>
-                  </div>
-                </div>
-              )}
-              {form.criteria.mode === "branch" && (
-                <Select value={form.criteria.branchId} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, branchId: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="Choisir une boutique" /></SelectTrigger>
-                  <SelectContent>
-                    {(branches || []).map((b: any) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              {form.criteria.mode === "worker_status" && (
-                <Select value={form.criteria.workerStatus} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, workerStatus: v } }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Actif</SelectItem>
-                    <SelectItem value="inactive">Inactif</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              {form.criteria.mode === "role" && (
-                <Select value={form.criteria.roleId} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, roleId: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un rôle" /></SelectTrigger>
-                  <SelectContent>
-                    {(roles || []).map((r: any) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {/* Preview recipients */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button type="button" size="sm" variant="outline" onClick={previewRecipients} disabled={previewLoading}>
-                  {previewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
-                  Aperçu des destinataires
-                </Button>
-                {previewData && (
-                  <div className="text-xs space-x-3 text-muted-foreground">
-                    <span className="text-foreground font-medium">{previewData.total} au total</span>
-                    <span className="text-green-600">{previewData.pushEnabled} avec push</span>
-                    {previewData.noPush > 0 && <span className="text-amber-600">{previewData.noPush} sans push</span>}
-                  </div>
-                )}
-              </div>
-              {previewData?.noPush > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800">
-                  <strong>Attention :</strong> certains destinataires n'ont pas activé les notifications push, mais le message restera visible dans leur compte.
-                  {previewData.noPushNames?.length > 0 && (
-                    <div className="mt-1 text-amber-700">{previewData.noPushNames.slice(0, 5).join(", ")}{previewData.noPushNames.length > 5 ? ` +${previewData.noPushNames.length - 5}` : ""}</div>
-                  )}
-                </div>
-              )}
             </div>
 
             {form.priority !== "normal" && (
-              <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
-                <strong>Note :</strong> les notifications "Important" et "Urgent" affichent une fenêtre d'accusé de réception obligatoire à la connexion de l'employé.
-              </div>
+              <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                Les priorités <strong>Important</strong> et <strong>Urgent</strong> affichent un accusé de réception à la connexion de l'employé.
+              </p>
             )}
+
+            {/* Recipients */}
+            <div>
+              <Label className="text-xs font-medium mb-2 block flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                Destinataires
+              </Label>
+
+              {/* Mode toggle */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {(["all", "specific"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, recipientMode: mode, selectedWorkerIds: [] }))}
+                    className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                      form.recipientMode === mode
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {mode === "all" ? "Tous les employés" : "Employés spécifiques"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Specific worker picker */}
+              {form.recipientMode === "specific" && (
+                <div className="space-y-2">
+                  {/* Selected chips */}
+                  {selectedWorkers.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedWorkers.map((w: any) => (
+                        <span key={w.id} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                          <UserCheck className="h-3 w-3" />
+                          {w.name}
+                          <button onClick={() => toggleWorker(w.id)} className="ml-0.5 hover:text-destructive">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search + list */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-muted/30">
+                      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Rechercher..."
+                        value={workerSearch}
+                        onChange={e => setWorkerSearch(e.target.value)}
+                        className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div className="max-h-44 overflow-y-auto divide-y">
+                      {filteredWorkers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">Aucun employé trouvé</p>
+                      ) : filteredWorkers.map((w: any) => {
+                        const checked = form.selectedWorkerIds.includes(w.id);
+                        return (
+                          <button
+                            key={w.id}
+                            type="button"
+                            onClick={() => toggleWorker(w.id)}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors ${
+                              checked ? "bg-primary/5" : "hover:bg-muted/50"
+                            }`}
+                          >
+                            <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
+                              checked ? "bg-primary border-primary" : "border-input"
+                            }`}>
+                              {checked && <CheckCheck className="h-2.5 w-2.5 text-white" />}
+                            </div>
+                            <span className="font-medium">{w.name}</span>
+                            {w.position && <span className="text-xs text-muted-foreground ml-auto">{w.position}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {workers.length > 0 && (
+                      <div className="flex justify-between items-center px-3 py-1.5 bg-muted/20 border-t text-xs text-muted-foreground">
+                        <button className="text-primary hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: workers.map((w: any) => w.id) }))}>
+                          Tout sélectionner
+                        </button>
+                        <span>{form.selectedWorkerIds.length} sélectionné(s)</span>
+                        <button className="hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: [] }))}>
+                          Effacer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button>
-            <Button onClick={handleSend} disabled={createMutation.isPending} className="flex items-center gap-2">
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Envoyer la notification
+
+          {/* Footer */}
+          <div className="px-4 pb-5 flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setCreateOpen(false)}>
+              Annuler
             </Button>
-          </DialogFooter>
+            <Button className="flex-1 gap-2" onClick={handleSend} disabled={createMutation.isPending}>
+              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Envoyer
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Detail Dialog */}
+      {/* ── Detail Dialog ── */}
       <Dialog open={!!detailId} onOpenChange={o => { if (!o) setDetailId(null); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Détails de la notification</DialogTitle>
+            <DialogTitle className="text-base">Détails de la notification</DialogTitle>
           </DialogHeader>
           {detail ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
-                {priorityBadge(detail.notification.priority)}
-                {typeBadge(detail.notification.type)}
+                <PriorityBadge p={detail.notification.priority} />
+                <TypeBadge t={detail.notification.type} />
               </div>
-              <h3 className="font-bold text-lg">{detail.notification.title}</h3>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detail.notification.body}</p>
-              <div className="text-xs text-muted-foreground">Par : {detail.notification.sender_name} — {new Date(detail.notification.created_at).toLocaleString("fr-FR")}</div>
+              <div>
+                <p className="font-bold">{detail.notification.title}</p>
+                <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{detail.notification.body}</p>
+                <p className="text-xs text-muted-foreground mt-1">Par {detail.notification.sender_name} — {new Date(detail.notification.created_at).toLocaleString("fr-FR")}</p>
+              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   { label: "Destinataires", value: detail.notification.total_recipients, color: "text-primary" },
-                  { label: "Lu", value: detail.notification.read_count, color: "text-green-600" },
-                  { label: "Non lu", value: detail.notification.unread_count, color: "text-red-500" },
-                  { label: "Accusé", value: detail.notification.ack_count, color: "text-blue-600" },
+                  { label: "Lu",            value: detail.notification.read_count,      color: "text-green-600" },
+                  { label: "Non lu",        value: detail.notification.unread_count,    color: "text-red-500" },
+                  { label: "Accusé",        value: detail.notification.ack_count,       color: "text-blue-600" },
                 ].map(s => (
-                  <Card key={s.label} className="text-center p-3">
+                  <div key={s.label} className="border rounded-lg p-3 text-center">
                     <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
-                  </Card>
+                    <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+                  </div>
                 ))}
               </div>
 
-              {/* Recipients table */}
               <div className="border rounded-lg overflow-hidden">
-                <div className="bg-muted/50 px-3 py-2 text-xs font-semibold flex items-center justify-between">
-                  <span>Liste des destinataires</span>
+                <div className="bg-muted/40 px-3 py-2 text-xs font-semibold flex items-center justify-between">
+                  <span>Destinataires</span>
                   {detail.notification.push_failed_count > 0 && (
-                    <Button size="sm" variant="outline" onClick={() => resendMutation.mutate(detailId!)} disabled={resendMutation.isPending}>
+                    <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => resendMutation.mutate(detailId!)} disabled={resendMutation.isPending}>
                       {resendMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      Renvoyer les échecs
+                      Renvoyer push
                     </Button>
                   )}
                 </div>
-                <div className="divide-y max-h-64 overflow-y-auto">
+                <div className="divide-y max-h-52 overflow-y-auto">
                   {detail.recipients.map((r: any) => (
-                    <div key={r.id} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-muted/30">
+                    <div key={r.id} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-muted/20">
                       <div>
-                        <div className="font-medium">{r.user_name}</div>
-                        {r.worker_name && <div className="text-muted-foreground">{r.worker_name}</div>}
+                        <span className="font-medium">{r.user_name}</span>
+                        {r.worker_name && r.worker_name !== r.user_name && (
+                          <span className="text-muted-foreground ml-1">({r.worker_name})</span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-3 text-muted-foreground">
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         {r.push_failed ? (
-                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Push échoué</span>
+                          <span className="text-amber-600 flex items-center gap-0.5"><AlertTriangle className="h-3 w-3" />Push échoué</span>
                         ) : r.push_sent_at ? (
-                          <span className="text-green-600 flex items-center gap-1"><CheckCheck className="h-3 w-3" />Envoyé</span>
-                        ) : <span>Non envoyé</span>}
-                        {r.read_at ? <span className="text-green-700">Lu {new Date(r.read_at).toLocaleTimeString("fr-FR")}</span> : <span className="text-red-500">Non lu</span>}
+                          <span className="text-green-600 flex items-center gap-0.5"><CheckCheck className="h-3 w-3" />Push</span>
+                        ) : null}
+                        {r.read_at
+                          ? <span className="text-green-700">Lu</span>
+                          : <span className="text-red-400">Non lu</span>}
                         {r.acknowledged_at && <span className="text-blue-600">Accusé</span>}
                       </div>
                     </div>
