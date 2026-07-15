@@ -1,9 +1,9 @@
 /**
  * usePushNotifications
  * Manages Web Push subscription lifecycle for the current user.
- * - Requests permission on demand
- * - Subscribes/unsubscribes via /api/push/*
- * - Detects browser & OS for device labelling
+ * - Handles iOS standalone requirement
+ * - Handles Android/Chrome permission flow
+ * - Surfaces real errors instead of silently failing
  */
 import { useState, useEffect, useCallback } from "react";
 
@@ -26,10 +26,22 @@ function detectOS(): string {
   return "Unknown";
 }
 
+export function isIOSDevice(): boolean {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+export function isStandaloneMode(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    !!(window.navigator as any).standalone === true
+  );
+}
+
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("erp_token") ?? ""}` });
 
 async function getVapidPublicKey(): Promise<string> {
   const res = await fetch("/api/push/vapid-public-key", { headers: authHeaders() });
+  if (!res.ok) throw new Error("Impossible de récupérer la clé VAPID");
   const data = await res.json();
   return data.publicKey as string;
 }
@@ -49,6 +61,15 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+async function getServiceWorkerWithTimeout(ms = 10000): Promise<ServiceWorkerRegistration> {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Service worker timeout — rechargez la page")), ms)
+    ),
+  ]);
+}
+
 export type PushPermission = "default" | "granted" | "denied";
 
 export interface UsePushNotificationsReturn {
@@ -56,25 +77,33 @@ export interface UsePushNotificationsReturn {
   isSubscribed: boolean;
   isLoading: boolean;
   isPushSupported: boolean;
+  isIOS: boolean;
+  needsInstall: boolean;
+  subscribeError: string | null;
   subscribe: () => Promise<void>;
   unsubscribe: () => Promise<void>;
 }
 
 export function usePushNotifications(): UsePushNotificationsReturn {
+  const isIOS = typeof window !== "undefined" && isIOSDevice();
+  const standalone = typeof window !== "undefined" && isStandaloneMode();
+
   const isPushSupported =
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&
     "PushManager" in window;
+
+  const needsInstall = isIOS && !standalone;
 
   const [permission, setPermission] = useState<PushPermission>(
     isPushSupported ? (Notification.permission as PushPermission) : "denied",
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading]       = useState(false);
+  const [subscribeError, setSubscribeError] = useState<string | null>(null);
 
-  // Check existing subscription on mount
   useEffect(() => {
-    if (!isPushSupported) return;
+    if (!isPushSupported || needsInstall) return;
     (async () => {
       try {
         const reg = await navigator.serviceWorker.ready;
@@ -84,19 +113,33 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         /* ignore */
       }
     })();
-  }, [isPushSupported]);
+  }, [isPushSupported, needsInstall]);
 
   const subscribe = useCallback(async () => {
     if (!isPushSupported) return;
+    if (needsInstall) {
+      setSubscribeError("Sur iPhone, ajoutez d'abord l'application à l'écran d'accueil (bouton Partager → Sur l'écran d'accueil), puis ouvrez-la depuis l'icône.");
+      return;
+    }
     setIsLoading(true);
+    setSubscribeError(null);
     try {
       const perm = await Notification.requestPermission();
       setPermission(perm as PushPermission);
-      if (perm !== "granted") return;
+
+      if (perm === "denied") {
+        setSubscribeError("Vous avez refusé les notifications. Allez dans les réglages du navigateur pour les réautoriser.");
+        return;
+      }
+      if (perm !== "granted") {
+        setSubscribeError("Permission non accordée. Réessayez et cliquez sur « Autoriser ».");
+        return;
+      }
 
       const publicKey = await getVapidPublicKey();
-      const reg       = await navigator.serviceWorker.ready;
-      const sub       = await reg.pushManager.subscribe({
+      const reg = await getServiceWorkerWithTimeout(10000);
+
+      const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
@@ -106,7 +149,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         keys: { p256dh: string; auth: string };
       };
 
-      await callPushApi("/api/push/subscribe", {
+      const res = await callPushApi("/api/push/subscribe", {
         endpoint:   json.endpoint,
         keys:       json.keys,
         deviceName: `${detectBrowser()} sur ${detectOS()}`,
@@ -114,17 +157,28 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         os:         detectOS(),
       });
 
+      if (!res.ok) throw new Error("Erreur lors de l'enregistrement sur le serveur");
+
       setIsSubscribed(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Push subscribe error:", err);
+      const msg = err?.message ?? String(err);
+      if (msg.includes("timeout")) {
+        setSubscribeError("Rechargez la page et réessayez (service worker non prêt).");
+      } else if (msg.includes("denied") || msg.includes("permission")) {
+        setSubscribeError("Notifications refusées. Autorisez-les dans les réglages de votre navigateur.");
+      } else {
+        setSubscribeError(`Erreur : ${msg}`);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [isPushSupported]);
+  }, [isPushSupported, needsInstall]);
 
   const unsubscribe = useCallback(async () => {
     if (!isPushSupported) return;
     setIsLoading(true);
+    setSubscribeError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -133,12 +187,12 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         await sub.unsubscribe();
       }
       setIsSubscribed(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Push unsubscribe error:", err);
     } finally {
       setIsLoading(false);
     }
   }, [isPushSupported]);
 
-  return { permission, isSubscribed, isLoading, isPushSupported, subscribe, unsubscribe };
+  return { permission, isSubscribed, isLoading, isPushSupported, isIOS, needsInstall, subscribeError, subscribe, unsubscribe };
 }
