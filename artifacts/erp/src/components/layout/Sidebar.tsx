@@ -39,6 +39,10 @@ import {
   MessageCircle,
   Brain,
   Cpu,
+  Bell,
+  AlertCircle,
+  BellRing,
+  Ticket,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -145,6 +149,17 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       title: "Équipe",
       items: [
         { label: "Checklist", href: "/checklist", icon: ClipboardCheck },
+      ],
+    },
+    {
+      title: "Communications",
+      items: [
+        { label: "إشعارات العمال", href: "/worker-notifications", icon: Bell, adminOnly: true },
+        { label: "بلاغات المستخدمين", href: "/admin-tickets", icon: Ticket, adminOnly: true },
+        { label: "حالة الإشعارات", href: "/notification-status", icon: BellRing, adminOnly: true },
+        { label: "إشعاراتي", href: "/my-notifications", icon: Bell },
+        { label: "تبليغ عن مشكلة", href: "/report-problem", icon: AlertCircle },
+        { label: "بلاغاتي", href: "/my-tickets", icon: Ticket },
       ],
     },
     {

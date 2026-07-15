@@ -54,6 +54,12 @@ import IntelligencePage from "@/pages/intelligence";
 import AiControlPage from "@/pages/ai-control";
 import ChecklistPage from "@/pages/checklist";
 import StockRupturesPage from "@/pages/stock-ruptures";
+import WorkerNotificationsPage from "@/pages/worker-notifications";
+import MyNotificationsPage from "@/pages/my-notifications";
+import ReportProblemPage from "@/pages/report-problem";
+import MyTicketsPage from "@/pages/my-tickets";
+import AdminTicketsPage from "@/pages/admin-tickets";
+import NotificationStatusPage from "@/pages/notification-status";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -234,6 +240,24 @@ function AppRoutes() {
       </Route>
       <Route path="/stock/ruptures">
         <DashboardLayout><StockRupturesPage /></DashboardLayout>
+      </Route>
+      <Route path="/worker-notifications">
+        <DashboardLayout><WorkerNotificationsPage /></DashboardLayout>
+      </Route>
+      <Route path="/my-notifications">
+        <DashboardLayout><MyNotificationsPage /></DashboardLayout>
+      </Route>
+      <Route path="/report-problem">
+        <DashboardLayout><ReportProblemPage /></DashboardLayout>
+      </Route>
+      <Route path="/my-tickets">
+        <DashboardLayout><MyTicketsPage /></DashboardLayout>
+      </Route>
+      <Route path="/admin-tickets">
+        <DashboardLayout><AdminTicketsPage /></DashboardLayout>
+      </Route>
+      <Route path="/notification-status">
+        <DashboardLayout><NotificationStatusPage /></DashboardLayout>
       </Route>
 
       <Route component={NotFound} />

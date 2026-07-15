@@ -49,6 +49,8 @@ import checklistRouter from "./checklist";
 import pushRouter from "./push";
 import notificationSettingsRouter from "./notification-settings";
 import recipesImportRouter from "./recipes-import";
+import workerNotificationsRouter from "./worker-notifications";
+import supportTicketsRouter from "./support-tickets";
 
 const router: IRouter = Router();
 
@@ -104,5 +106,7 @@ router.use(checklistRouter);
 router.use(pushRouter);
 router.use(notificationSettingsRouter);
 router.use(recipesImportRouter);
+router.use(workerNotificationsRouter);
+router.use(supportTicketsRouter);
 
 export default router;

@@ -563,6 +563,79 @@ async function runMigrations() {
       ALTER TABLE erp_user_notifications ADD COLUMN IF NOT EXISTS link TEXT;
     `);
 
+    // ── Worker Notifications & Tickets ───────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_worker_notifications (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'normal',
+        priority TEXT NOT NULL DEFAULT 'normal',
+        sender_user_id INTEGER,
+        sender_name TEXT,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        image_url TEXT,
+        is_archived BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_notification_recipients (
+        id SERIAL PRIMARY KEY,
+        notification_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        worker_id INTEGER,
+        worker_name TEXT,
+        user_name TEXT,
+        push_sent_at TIMESTAMP WITH TIME ZONE,
+        push_failed BOOLEAN NOT NULL DEFAULT false,
+        push_failure_reason TEXT,
+        delivered_at TIMESTAMP WITH TIME ZONE,
+        read_at TIMESTAMP WITH TIME ZONE,
+        acknowledged_at TIMESTAMP WITH TIME ZONE,
+        acknowledged_ip TEXT,
+        acknowledged_device TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        UNIQUE(notification_id, user_id)
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_ref TEXT UNIQUE,
+        user_id INTEGER NOT NULL,
+        user_name TEXT,
+        worker_id INTEGER,
+        worker_name TEXT,
+        branch_id INTEGER,
+        branch_name TEXT,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'other',
+        description TEXT NOT NULL,
+        urgency TEXT NOT NULL DEFAULT 'normal',
+        status TEXT NOT NULL DEFAULT 'new',
+        assignee_user_id INTEGER,
+        assignee_name TEXT,
+        file_url TEXT,
+        internal_note TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS ticket_replies (
+        id SERIAL PRIMARY KEY,
+        ticket_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        user_name TEXT,
+        body TEXT NOT NULL,
+        is_internal BOOLEAN NOT NULL DEFAULT false,
+        file_url TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");

@@ -58,7 +58,19 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
     staleTime: 30_000,
   });
 
-  const unreadCount = badge?.count ?? 0;
+  const { data: workerNotifBadge } = useQuery<{ count: number }>({
+    queryKey: ["worker-notifications-unread-count"],
+    queryFn: async () => {
+      const r = await fetch("/api/worker-notifications/unread-count", { headers: { Authorization: `Bearer ${token()}` } });
+      if (!r.ok) return { count: 0 };
+      return r.json();
+    },
+    enabled: !!user,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const unreadCount = (badge?.count ?? 0) + (workerNotifBadge?.count ?? 0);
   const isAdmin = !!(user as any)?.adminAccess;
 
   const performLogout = () => {
