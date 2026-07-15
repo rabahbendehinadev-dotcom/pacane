@@ -301,6 +301,45 @@ router.get("/worker-notifications/push-status", requireAuth, requireAdmin, async
   }
 });
 
+// GET /api/worker-notifications/workers-directory — admin: workers + linked account status
+// Used by the send dialog so the admin sees exactly which workers can receive
+// a notification (linked user account) and which cannot.
+router.get("/worker-notifications/workers-directory", requireAuth, requireAdmin, async (_req: any, res: any): Promise<void> => {
+  try {
+    const rows = await pool.query(`
+      SELECT
+        w.id,
+        w.name,
+        w.position,
+        u.id   as user_id,
+        u.name as user_name,
+        u.status as user_status
+      FROM workers w
+      LEFT JOIN LATERAL (
+        SELECT u.id, u.name, u.status
+        FROM users u
+        WHERE u.worker_id = w.id
+           OR lower(trim(u.name)) = lower(trim(w.name))
+        ORDER BY (u.status = 'active') DESC, (u.worker_id = w.id) DESC NULLS LAST, u.id
+        LIMIT 1
+      ) u ON true
+      ORDER BY w.name
+    `);
+    res.json(rows.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      position: r.position,
+      hasAccount: r.user_id != null && r.user_status === "active",
+      accountInactive: r.user_id != null && r.user_status !== "active",
+      userId: r.user_id,
+      userName: r.user_name,
+    })));
+  } catch (err) {
+    logger.error({ err }, "workers-directory error");
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/worker-notifications/recipient-preview — admin: preview recipients before sending
 router.post("/worker-notifications/recipient-preview", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
   try {
@@ -381,8 +420,40 @@ router.post("/worker-notifications", requireAuth, requireAdmin, async (req: any,
 
   try {
     // 1. Resolve recipients
+    logger.info({ criteria }, "[notif-send] resolving recipients");
     const recipients = await resolveRecipientUserIds(criteria || { mode: "all_workers" });
-    if (!recipients.length) { res.status(400).json({ error: "Aucun destinataire trouvé" }); return; }
+    logger.info(
+      { count: recipients.length, recipients: recipients.map(r => ({ userId: r.userId, userName: r.userName, workerId: r.workerId })) },
+      "[notif-send] recipients resolved",
+    );
+
+    if (!recipients.length) {
+      // Build a precise error: which selected workers have no linked account?
+      if (criteria?.mode === "specific" && criteria.workerIds?.length) {
+        const wr = await pool.query(
+          `SELECT w.id, w.name,
+             EXISTS (
+               SELECT 1 FROM users u
+               WHERE u.status = 'active'
+                 AND (u.worker_id = w.id OR lower(trim(u.name)) = lower(trim(w.name)))
+             ) as has_account
+           FROM workers w WHERE w.id = ANY($1::int[])`,
+          [criteria.workerIds],
+        );
+        const noAccount = wr.rows.filter((r: any) => !r.has_account).map((r: any) => r.name);
+        logger.warn({ workerIds: criteria.workerIds, noAccount }, "[notif-send] no recipients — workers without linked account");
+        if (noAccount.length) {
+          res.status(400).json({
+            error: `Ces employés n'ont pas de compte utilisateur actif : ${noAccount.join(", ")}. Liez chaque ouvrier à un compte via Utilisateurs → Modifier → « Lier à un ouvrier ».`,
+            workersWithoutAccount: noAccount,
+          });
+          return;
+        }
+      }
+      logger.warn({ criteria }, "[notif-send] no recipients found");
+      res.status(400).json({ error: "Aucun destinataire trouvé" });
+      return;
+    }
 
     // 2. Insert notification
     const notifResult = await pool.query(`

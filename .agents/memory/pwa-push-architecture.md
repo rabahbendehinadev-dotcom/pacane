@@ -60,3 +60,8 @@ description: Full PWA + Web Push system built across 5 phases; VAPID keys, DB ta
 - **Lesson — SW notification URLs must be scope-aware:** resolve link/icon/badge via `new URL(path.replace(/^\//,""), self.registration.scope)`, never against `self.location.origin`, or subpath deployments break notification clicks.
 - **Lesson — "subscribed" status must require `Notification.permission === "granted"` AND a live `pushManager.getSubscription()`**, or the UI lies ("Activées" without any permission prompt ever shown).
 - Real end-to-end verification: `POST /api/push/test` → `sendRawPushToUser()` (bypasses prefs, returns per-device sent/failures, deactivates 404/410 subs); test button in NotificationPrefsTab.
+
+## Worker notification recipients — key rule
+- A worker can receive admin notifications only if an ACTIVE user account is linked (users.worker_id = workers.id) or user name matches worker name (trimmed, lowercase).
+- `GET /api/worker-notifications/workers-directory` returns per-worker hasAccount/accountInactive flags; the send dialog disables workers without accounts.
+- When zero recipients in specific mode, POST returns a named French error listing unlinked workers (`workersWithoutAccount`), plus `[notif-send]` step logs.

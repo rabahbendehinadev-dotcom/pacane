@@ -100,9 +100,9 @@ export default function WorkerNotificationsPage() {
   });
 
   const { data: workers = [] } = useQuery<any[]>({
-    queryKey: ["workers-list-for-notif"],
+    queryKey: ["workers-directory-for-notif"],
     queryFn: async () => {
-      const r = await fetch(`${API}/api/workers`, { headers: authHeader() });
+      const r = await fetch(`${API}/api/worker-notifications/workers-directory`, { headers: authHeader() });
       if (!r.ok) return [];
       return r.json();
     },
@@ -391,13 +391,15 @@ export default function WorkerNotificationsPage() {
                         <p className="text-xs text-muted-foreground text-center py-4">Aucun employé trouvé</p>
                       ) : filteredWorkers.map((w: any) => {
                         const checked = form.selectedWorkerIds.includes(w.id);
+                        const noAccount = w.hasAccount === false;
                         return (
                           <button
                             key={w.id}
                             type="button"
+                            disabled={noAccount}
                             onClick={() => toggleWorker(w.id)}
                             className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors ${
-                              checked ? "bg-primary/5" : "hover:bg-muted/50"
+                              noAccount ? "opacity-50 cursor-not-allowed" : checked ? "bg-primary/5" : "hover:bg-muted/50"
                             }`}
                           >
                             <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
@@ -406,14 +408,20 @@ export default function WorkerNotificationsPage() {
                               {checked && <CheckCheck className="h-2.5 w-2.5 text-white" />}
                             </div>
                             <span className="font-medium">{w.name}</span>
-                            {w.position && <span className="text-xs text-muted-foreground ml-auto">{w.position}</span>}
+                            {noAccount ? (
+                              <span className="text-[10px] font-medium ml-auto px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
+                                {w.accountInactive ? "Compte inactif" : "Sans compte"}
+                              </span>
+                            ) : (
+                              w.position && <span className="text-xs text-muted-foreground ml-auto">{w.position}</span>
+                            )}
                           </button>
                         );
                       })}
                     </div>
                     {workers.length > 0 && (
                       <div className="flex justify-between items-center px-3 py-1.5 bg-muted/20 border-t text-xs text-muted-foreground">
-                        <button className="text-primary hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: workers.map((w: any) => w.id) }))}>
+                        <button className="text-primary hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: workers.filter((w: any) => w.hasAccount !== false).map((w: any) => w.id) }))}>
                           Tout sélectionner
                         </button>
                         <span>{form.selectedWorkerIds.length} sélectionné(s)</span>
