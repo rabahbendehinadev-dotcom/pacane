@@ -17,20 +17,20 @@ function authHeader() {
 }
 
 const PROBLEM_TYPES = [
-  { value: "technical", label: "تقنية" },
-  { value: "account", label: "حساب" },
-  { value: "requests", label: "طلبات" },
-  { value: "preparation", label: "تحضير" },
-  { value: "stock", label: "مخزون" },
-  { value: "cash", label: "صندوق" },
-  { value: "other", label: "أخرى" },
+  { value: "technical", label: "Technique" },
+  { value: "account", label: "Compte" },
+  { value: "requests", label: "Demandes" },
+  { value: "preparation", label: "Préparation" },
+  { value: "stock", label: "Stock" },
+  { value: "cash", label: "Caisse" },
+  { value: "other", label: "Autre" },
 ];
 
 const URGENCY_LEVELS = [
-  { value: "low", label: "منخفض", color: "text-slate-600" },
-  { value: "normal", label: "عادي", color: "text-blue-600" },
-  { value: "high", label: "مرتفع", color: "text-amber-600" },
-  { value: "critical", label: "حرج", color: "text-red-600" },
+  { value: "low", label: "Faible", color: "text-slate-600" },
+  { value: "normal", label: "Normal", color: "text-blue-600" },
+  { value: "high", label: "Élevé", color: "text-amber-600" },
+  { value: "critical", label: "Critique", color: "text-red-600" },
 ];
 
 export default function ReportProblemPage() {
@@ -58,15 +58,15 @@ export default function ReportProblemPage() {
     },
     onSuccess: (d) => {
       setSubmitted(d);
-      toast({ title: "تم إرسال البلاغ", description: `رقمك المرجعي: ${d.ticket_ref}` });
+      toast({ title: "Ticket envoyé", description: `Votre référence : ${d.ticket_ref}` });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim() || !form.description.trim()) {
-      toast({ title: "الرجاء ملء جميع الحقول المطلوبة", variant: "destructive" });
+      toast({ title: "Veuillez remplir tous les champs obligatoires", variant: "destructive" });
       return;
     }
     mutation.mutate(form);
@@ -74,20 +74,20 @@ export default function ReportProblemPage() {
 
   if (submitted) {
     return (
-      <div dir="rtl" className="max-w-lg mx-auto py-8">
+      <div className="max-w-lg mx-auto py-8">
         <Card className="border-green-200 bg-green-50">
           <CardContent className="flex flex-col items-center py-10 gap-4 text-center">
             <CheckCircle2 className="h-16 w-16 text-green-600" />
-            <h2 className="text-xl font-bold text-green-800">تم إرسال البلاغ بنجاح</h2>
-            <p className="text-muted-foreground">رقمك المرجعي:</p>
+            <h2 className="text-xl font-bold text-green-800">Ticket envoyé avec succès</h2>
+            <p className="text-muted-foreground">Votre numéro de référence :</p>
             <div className="bg-white border border-green-300 rounded-lg px-6 py-3 text-2xl font-mono font-bold text-green-700">
               {submitted.ticket_ref}
             </div>
-            <p className="text-sm text-muted-foreground">احتفظ بهذا الرقم لمتابعة بلاغك. ستصلك إشعارات عند الرد.</p>
+            <p className="text-sm text-muted-foreground">Conservez ce numéro pour suivre votre ticket. Vous serez notifié à chaque réponse.</p>
             <div className="flex gap-3 flex-wrap justify-center">
-              <Button onClick={() => navigate("/my-tickets")}>متابعة بلاغاتي</Button>
+              <Button onClick={() => navigate("/my-tickets")}>Suivre mes tickets</Button>
               <Button variant="outline" onClick={() => { setSubmitted(null); setForm({ title: "", type: "other", description: "", urgency: "normal", fileUrl: "" }); }}>
-                بلاغ جديد
+                Nouveau ticket
               </Button>
             </div>
           </CardContent>
@@ -97,41 +97,38 @@ export default function ReportProblemPage() {
   }
 
   return (
-    <div dir="rtl" className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <AlertCircle className="h-6 w-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">تبليغ عن مشكلة</h1>
-          <p className="text-sm text-muted-foreground">أرسل بلاغاً وستتابعه الإدارة وترد عليك</p>
+          <h1 className="text-2xl font-bold">Signaler un problème</h1>
+          <p className="text-sm text-muted-foreground">Envoyez un ticket et l'administration vous répondra</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
         <Card>
-          <CardHeader><CardTitle className="text-base">تفاصيل المشكلة</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Détails du problème</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {/* User info (auto-filled) */}
             <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-24">المستخدم:</span>
+                <span className="text-muted-foreground w-28">Utilisateur :</span>
                 <span className="font-medium">{(user as any)?.name}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-24">الحساب:</span>
+                <span className="text-muted-foreground w-28">Compte :</span>
                 <span className="font-medium">{(user as any)?.email || (user as any)?.username}</span>
               </div>
             </div>
 
-            {/* Title */}
             <div>
-              <Label className="mb-1.5 block">عنوان المشكلة *</Label>
-              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="وصف مختصر للمشكلة..." required />
+              <Label className="mb-1.5 block">Titre du problème *</Label>
+              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Description courte du problème..." required />
             </div>
 
-            {/* Type + Urgency */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="mb-1.5 block">نوع المشكلة</Label>
+                <Label className="mb-1.5 block">Type de problème</Label>
                 <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -140,7 +137,7 @@ export default function ReportProblemPage() {
                 </Select>
               </div>
               <div>
-                <Label className="mb-1.5 block">درجة الاستعجال</Label>
+                <Label className="mb-1.5 block">Niveau d'urgence</Label>
                 <Select value={form.urgency} onValueChange={v => setForm(p => ({ ...p, urgency: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -154,21 +151,20 @@ export default function ReportProblemPage() {
               </div>
             </div>
 
-            {/* Description */}
             <div>
-              <Label className="mb-1.5 block">وصف مفصل للمشكلة *</Label>
+              <Label className="mb-1.5 block">Description détaillée *</Label>
               <Textarea
                 value={form.description}
                 onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                 rows={5}
-                placeholder="اشرح المشكلة بالتفصيل، متى حدثت، وماذا كنت تحاول أن تفعل..."
+                placeholder="Décrivez le problème en détail : quand est-il survenu, que faisiez-vous..."
                 required
               />
             </div>
 
             <Button type="submit" disabled={mutation.isPending} className="w-full flex items-center gap-2 py-3">
               {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              إرسال البلاغ
+              Envoyer le ticket
             </Button>
           </CardContent>
         </Card>

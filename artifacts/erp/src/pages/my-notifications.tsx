@@ -35,10 +35,10 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "bg-red-100 text-red-700",
 };
 
-const PRIORITY_LABELS: Record<string, string> = { normal: "عادي", important: "مهم", urgent: "عاجل" };
+const PRIORITY_LABELS: Record<string, string> = { normal: "Normal", important: "Important", urgent: "Urgent" };
 const TYPE_LABELS: Record<string, string> = {
-  normal: "إشعار عادي", important: "تنبيه مهم", warning: "تحذير",
-  work_instructions: "تعليمات عمل", admin_announcement: "إعلان إداري",
+  normal: "Notification", important: "Alerte importante", warning: "Avertissement",
+  work_instructions: "Instructions de travail", admin_announcement: "Annonce admin",
 };
 
 export default function MyNotificationsPage() {
@@ -118,21 +118,21 @@ export default function MyNotificationsPage() {
   const currentAck = pendingAck[ackIdx];
 
   return (
-    <div dir="rtl" className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto">
       {/* Urgent acknowledgment modal */}
       {currentAck && (
         <Dialog open={true}>
-          <DialogContent dir="rtl" className={`border-2 ${currentAck.priority === "urgent" ? "border-red-400" : "border-blue-400"}`}>
+          <DialogContent className={`border-2 ${currentAck.priority === "urgent" ? "border-red-400" : "border-blue-400"}`}>
             <DialogHeader>
               <DialogTitle className={`flex items-center gap-2 ${currentAck.priority === "urgent" ? "text-red-700" : "text-blue-700"}`}>
                 <AlertTriangle className="h-5 w-5" />
-                {currentAck.priority === "urgent" ? "إشعار عاجل يستوجب الاطلاع" : "إشعار مهم يستوجب الاطلاع"}
+                {currentAck.priority === "urgent" ? "Notification urgente — accusé de réception requis" : "Notification importante — accusé de réception requis"}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <h3 className="font-bold text-base">{currentAck.title}</h3>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{currentAck.body}</p>
-              <div className="text-xs text-muted-foreground">بواسطة: {currentAck.sender_name} — {new Date(currentAck.created_at).toLocaleString("ar-DZ")}</div>
+              <div className="text-xs text-muted-foreground">Par : {currentAck.sender_name} — {new Date(currentAck.created_at).toLocaleString("fr-FR")}</div>
             </div>
             <DialogFooter>
               <Button
@@ -140,8 +140,8 @@ export default function MyNotificationsPage() {
                 disabled={acking}
                 className={`w-full text-base py-3 ${currentAck.priority === "urgent" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}
               >
-                {acking ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4 ml-2" />}
-                قرأت واطلعت
+                {acking ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-2" />}
+                J'ai lu et pris connaissance
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -160,8 +160,8 @@ export default function MyNotificationsPage() {
             )}
           </div>
           <div>
-            <h1 className="text-2xl font-bold">إشعاراتي</h1>
-            <p className="text-sm text-muted-foreground">{unread > 0 ? `${unread} إشعار غير مقروء` : "جميع الإشعارات مقروءة"}</p>
+            <h1 className="text-2xl font-bold">Mes notifications</h1>
+            <p className="text-sm text-muted-foreground">{unread > 0 ? `${unread} notification${unread > 1 ? "s" : ""} non lue${unread > 1 ? "s" : ""}` : "Toutes les notifications sont lues"}</p>
           </div>
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function MyNotificationsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 gap-3">
             <Bell className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">لا توجد إشعارات</p>
+            <p className="text-muted-foreground">Aucune notification</p>
           </CardContent>
         </Card>
       ) : (
@@ -184,7 +184,7 @@ export default function MyNotificationsPage() {
               <button
                 key={n.recipient_id}
                 onClick={() => openNotif(n)}
-                className={`w-full text-right border rounded-lg p-3 transition-all hover:shadow-md ${TYPE_COLORS[n.type] ?? TYPE_COLORS.normal} ${isUnread ? "ring-2 ring-primary/30" : "opacity-80"}`}
+                className={`w-full text-left border rounded-lg p-3 transition-all hover:shadow-md ${TYPE_COLORS[n.type] ?? TYPE_COLORS.normal} ${isUnread ? "ring-2 ring-primary/30" : "opacity-80"}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`mt-0.5 p-2 rounded-full shrink-0 ${n.priority === "urgent" ? "bg-red-100" : n.priority === "important" ? "bg-blue-100" : "bg-slate-100"}`}>
@@ -193,15 +193,15 @@ export default function MyNotificationsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
                       <span className={`text-xs px-2 py-0.5 rounded font-medium ${PRIORITY_COLORS[n.priority] ?? PRIORITY_COLORS.normal}`}>{PRIORITY_LABELS[n.priority] ?? n.priority}</span>
-                      {isUnread && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">جديد</span>}
-                      {n.acknowledged_at && <span className="text-xs text-green-700">✓ اطلعت</span>}
+                      {isUnread && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Nouveau</span>}
+                      {n.acknowledged_at && <span className="text-xs text-green-700">✓ Accusé</span>}
                     </div>
                     <h3 className={`text-sm font-semibold ${isUnread ? "text-foreground" : "text-muted-foreground"}`}>{n.title}</h3>
                     <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</p>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                       <span>{n.sender_name}</span>
                       <span>·</span>
-                      <span>{new Date(n.created_at).toLocaleString("ar-DZ")}</span>
+                      <span>{new Date(n.created_at).toLocaleString("fr-FR")}</span>
                     </div>
                   </div>
                 </div>
@@ -213,7 +213,7 @@ export default function MyNotificationsPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!selected} onOpenChange={o => { if (!o) setSelected(null); }}>
-        <DialogContent dir="rtl" className="max-w-lg">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selected && (() => { const I = TYPE_ICONS[selected.type] ?? Info; return <I className="h-5 w-5" />; })()}
@@ -225,14 +225,14 @@ export default function MyNotificationsPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded font-medium ${PRIORITY_COLORS[selected.priority] ?? PRIORITY_COLORS.normal}`}>{PRIORITY_LABELS[selected.priority] ?? selected.priority}</span>
                 <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{TYPE_LABELS[selected.type] ?? selected.type}</span>
-                {selected.acknowledged_at && <span className="text-xs text-green-700">✓ تأكيد الاطلاع: {new Date(selected.acknowledged_at).toLocaleString("ar-DZ")}</span>}
+                {selected.acknowledged_at && <span className="text-xs text-green-700">✓ Accusé le {new Date(selected.acknowledged_at).toLocaleString("fr-FR")}</span>}
               </div>
               {selected.image_url && <img src={selected.image_url} alt="" className="rounded-lg max-h-48 w-full object-cover" />}
               <p className="text-sm whitespace-pre-wrap leading-relaxed">{selected.body}</p>
               <div className="text-xs text-muted-foreground pt-2 border-t">
-                <div>المرسل: {selected.sender_name}</div>
-                <div>التاريخ: {new Date(selected.created_at).toLocaleString("ar-DZ")}</div>
-                {selected.read_at && <div>قُرئ: {new Date(selected.read_at).toLocaleString("ar-DZ")}</div>}
+                <div>Expéditeur : {selected.sender_name}</div>
+                <div>Date : {new Date(selected.created_at).toLocaleString("fr-FR")}</div>
+                {selected.read_at && <div>Lu le : {new Date(selected.read_at).toLocaleString("fr-FR")}</div>}
               </div>
               {!selected.acknowledged_at && ["urgent", "important"].includes(selected.priority) && (
                 <Button
@@ -240,8 +240,8 @@ export default function MyNotificationsPage() {
                   disabled={acking}
                   className="w-full"
                 >
-                  <CheckCheck className="h-4 w-4 ml-2" />
-                  قرأت واطلعت
+                  <CheckCheck className="h-4 w-4 mr-2" />
+                  J'ai lu et pris connaissance
                 </Button>
               )}
             </div>

@@ -13,8 +13,8 @@ function authHeader() {
 }
 
 function pushStatusLabel(subs: number): { label: string; color: string } {
-  if (subs > 0) return { label: "مفعلة", color: "bg-green-100 text-green-700" };
-  return { label: "غير مفعلة", color: "bg-slate-100 text-slate-500" };
+  if (subs > 0) return { label: "Activé", color: "bg-green-100 text-green-700" };
+  return { label: "Non activé", color: "bg-slate-100 text-slate-500" };
 }
 
 export default function NotificationStatusPage() {
@@ -33,7 +33,7 @@ export default function NotificationStatusPage() {
   });
 
   if (!user?.adminAccess) {
-    return <div className="flex items-center justify-center h-64 text-muted-foreground">غير مصرح</div>;
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
   }
 
   const allUsers: any[] = users ?? [];
@@ -51,22 +51,22 @@ export default function NotificationStatusPage() {
   const pct = allUsers.length > 0 ? Math.round((withPush / allUsers.length) * 100) : 0;
 
   return (
-    <div dir="rtl" className="space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Bell className="h-6 w-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">حالة إشعارات المستخدمين</h1>
-          <p className="text-sm text-muted-foreground">من فعّل Push Notifications ومن لم يفعّلها</p>
+          <h1 className="text-2xl font-bold">Statut des notifications</h1>
+          <p className="text-sm text-muted-foreground">Qui a activé les notifications push et qui ne l'a pas fait</p>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "إجمالي المستخدمين", value: allUsers.length, color: "text-foreground", icon: Users },
-          { label: "فعّلوا الإشعارات", value: withPush, color: "text-green-600", icon: Bell },
-          { label: "لم يفعّلوا", value: withoutPush, color: "text-slate-500", icon: BellOff },
-          { label: "نسبة التفعيل", value: `${pct}%`, color: "text-primary", icon: Bell },
+          { label: "Total utilisateurs", value: allUsers.length, color: "text-foreground", icon: Users },
+          { label: "Push activé", value: withPush, color: "text-green-600", icon: Bell },
+          { label: "Non activé", value: withoutPush, color: "text-slate-500", icon: BellOff },
+          { label: "Taux d'activation", value: `${pct}%`, color: "text-primary", icon: Bell },
         ].map(s => (
           <Card key={s.label} className="text-center">
             <CardContent className="py-4">
@@ -86,20 +86,20 @@ export default function NotificationStatusPage() {
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو العامل..."
-            className="pr-9"
+            placeholder="Rechercher par nom ou employé..."
+            className="pl-9"
           />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">جميع المستخدمين</SelectItem>
-            <SelectItem value="active">مفعّلة فقط</SelectItem>
-            <SelectItem value="inactive">غير مفعّلة</SelectItem>
+            <SelectItem value="all">Tous les utilisateurs</SelectItem>
+            <SelectItem value="active">Push activé seulement</SelectItem>
+            <SelectItem value="inactive">Non activé seulement</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -113,13 +113,13 @@ export default function NotificationStatusPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-right">المستخدم</th>
-                  <th className="px-3 py-2 text-right">العامل</th>
-                  <th className="px-3 py-2 text-right">الفرع</th>
-                  <th className="px-3 py-2 text-right">حالة الإشعارات</th>
-                  <th className="px-3 py-2 text-right">الأجهزة</th>
-                  <th className="px-3 py-2 text-right">المتصفح / النظام</th>
-                  <th className="px-3 py-2 text-right">آخر نشاط</th>
+                  <th className="px-3 py-2 text-left">Utilisateur</th>
+                  <th className="px-3 py-2 text-left">Employé</th>
+                  <th className="px-3 py-2 text-left">Boutique</th>
+                  <th className="px-3 py-2 text-left">Statut push</th>
+                  <th className="px-3 py-2 text-left">Appareils</th>
+                  <th className="px-3 py-2 text-left">Navigateur / OS</th>
+                  <th className="px-3 py-2 text-left">Dernière activité</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -156,14 +156,14 @@ export default function NotificationStatusPage() {
                         {u.browser || u.os ? `${u.browser ?? ""} ${u.os ?? ""}`.trim() : "—"}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {u.last_login ? new Date(u.last_login).toLocaleDateString("ar-DZ") : "—"}
+                        {u.last_login ? new Date(u.last_login).toLocaleDateString("fr-FR") : "—"}
                       </td>
                     </tr>
                   );
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">لا توجد نتائج</td>
+                    <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">Aucun résultat</td>
                   </tr>
                 )}
               </tbody>

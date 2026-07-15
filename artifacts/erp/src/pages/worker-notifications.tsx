@@ -23,26 +23,26 @@ function authHeader() {
 }
 
 const NOTIF_TYPES = [
-  { value: "normal", label: "إشعار عادي", icon: Bell },
-  { value: "important", label: "تنبيه مهم", icon: AlertCircle },
-  { value: "warning", label: "تحذير", icon: AlertTriangle },
-  { value: "work_instructions", label: "تعليمات عمل", icon: ClipboardList },
-  { value: "admin_announcement", label: "إعلان إداري", icon: Megaphone },
+  { value: "normal", label: "Notification", icon: Bell },
+  { value: "important", label: "Alerte importante", icon: AlertCircle },
+  { value: "warning", label: "Avertissement", icon: AlertTriangle },
+  { value: "work_instructions", label: "Instructions de travail", icon: ClipboardList },
+  { value: "admin_announcement", label: "Annonce admin", icon: Megaphone },
 ];
 
 const PRIORITIES = [
-  { value: "normal", label: "عادي", color: "bg-slate-100 text-slate-700" },
-  { value: "important", label: "مهم", color: "bg-blue-100 text-blue-700" },
-  { value: "urgent", label: "عاجل", color: "bg-red-100 text-red-700" },
+  { value: "normal", label: "Normal", color: "bg-slate-100 text-slate-700" },
+  { value: "important", label: "Important", color: "bg-blue-100 text-blue-700" },
+  { value: "urgent", label: "Urgent", color: "bg-red-100 text-red-700" },
 ];
 
 const RECIPIENT_MODES = [
-  { value: "all_workers", label: "جميع العمال" },
-  { value: "all_users", label: "جميع المستخدمين" },
-  { value: "specific", label: "عمال محددون" },
-  { value: "branch", label: "حسب الفرع" },
-  { value: "worker_status", label: "حسب حالة العامل" },
-  { value: "role", label: "حسب الدور" },
+  { value: "all_workers", label: "Tous les employés" },
+  { value: "all_users", label: "Tous les utilisateurs" },
+  { value: "specific", label: "Employés spécifiques" },
+  { value: "branch", label: "Par boutique" },
+  { value: "worker_status", label: "Par statut d'employé" },
+  { value: "role", label: "Par rôle" },
 ];
 
 function priorityBadge(p: string) {
@@ -51,14 +51,14 @@ function priorityBadge(p: string) {
     important: "bg-blue-100 text-blue-700",
     urgent: "bg-red-100 text-red-700",
   };
-  const labels: Record<string, string> = { normal: "عادي", important: "مهم", urgent: "عاجل" };
+  const labels: Record<string, string> = { normal: "Normal", important: "Important", urgent: "Urgent" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[p] ?? map.normal}`}>{labels[p] ?? p}</span>;
 }
 
 function typeBadge(t: string) {
   const labels: Record<string, string> = {
-    normal: "عادي", important: "مهم", warning: "تحذير",
-    work_instructions: "تعليمات", admin_announcement: "إعلان",
+    normal: "Notification", important: "Important", warning: "Avertissement",
+    work_instructions: "Instructions", admin_announcement: "Annonce",
   };
   return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{labels[t] ?? t}</span>;
 }
@@ -139,21 +139,21 @@ export default function WorkerNotificationsPage() {
       return d;
     },
     onSuccess: (d) => {
-      toast({ title: "تم الإرسال", description: `تم الإرسال إلى ${d.totalRecipients} مستلم` });
+      toast({ title: "Envoyé", description: `Notification envoyée à ${d.totalRecipients} destinataire(s)` });
       qc.invalidateQueries({ queryKey: ["worker-notifications"] });
       setCreateOpen(false);
       setPreviewData(null);
       setForm({ title: "", body: "", type: "normal", priority: "normal", expiresAt: "", imageUrl: "", criteria: { mode: "all_workers", workerIds: [], branchId: "", workerStatus: "active", roleId: "" } });
       setSelectedWorkerIds([]);
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
 
   const archiveMutation = useMutation({
     mutationFn: async (id: number) => {
       await fetch(`${API}/api/worker-notifications/${id}`, { method: "DELETE", headers: authHeader() });
     },
-    onSuccess: () => { toast({ title: "تمت الأرشفة" }); qc.invalidateQueries({ queryKey: ["worker-notifications"] }); },
+    onSuccess: () => { toast({ title: "Archivé" }); qc.invalidateQueries({ queryKey: ["worker-notifications"] }); },
   });
 
   const resendMutation = useMutation({
@@ -163,8 +163,8 @@ export default function WorkerNotificationsPage() {
       if (!r.ok) throw new Error(d.error ?? "Erreur");
       return d;
     },
-    onSuccess: (d) => { toast({ title: "تمت إعادة الإرسال", description: `${d.resent} / ${d.total}` }); qc.invalidateQueries({ queryKey: ["worker-notification-detail", detailId] }); },
-    onError: (e: any) => toast({ title: "خطأ", description: e.message, variant: "destructive" }),
+    onSuccess: (d) => { toast({ title: "Renvoyé", description: `${d.resent} / ${d.total}` }); qc.invalidateQueries({ queryKey: ["worker-notification-detail", detailId] }); },
+    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
 
   async function previewRecipients() {
@@ -190,7 +190,7 @@ export default function WorkerNotificationsPage() {
 
   function handleSend() {
     if (!form.title.trim() || !form.body.trim()) {
-      toast({ title: "الرجاء ملء العنوان والمحتوى", variant: "destructive" });
+      toast({ title: "Veuillez remplir le titre et le contenu", variant: "destructive" });
       return;
     }
     createMutation.mutate({ ...form, criteria: buildCriteria() });
@@ -201,24 +201,24 @@ export default function WorkerNotificationsPage() {
   );
 
   if (!user?.adminAccess) {
-    return <DashboardLayout><div className="flex items-center justify-center h-64 text-muted-foreground">غير مصرح</div></DashboardLayout>;
+    return <DashboardLayout><div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div></DashboardLayout>;
   }
 
   const notifications = data?.notifications ?? [];
 
   return (
-    <div dir="rtl" className="space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Bell className="h-6 w-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold">إشعارات وتنبيهات العمال</h1>
-            <p className="text-sm text-muted-foreground">إرسال ومتابعة الإشعارات للعمال</p>
+            <h1 className="text-2xl font-bold">Notifications employés</h1>
+            <p className="text-sm text-muted-foreground">Envoyer et suivre les notifications aux employés</p>
           </div>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="flex items-center gap-2">
           <Plus className="h-4 w-4" />
-          إشعار جديد
+          Nouvelle notification
         </Button>
       </div>
 
@@ -228,8 +228,8 @@ export default function WorkerNotificationsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 gap-3">
             <Bell className="h-12 w-12 text-muted-foreground/30" />
-            <p className="text-muted-foreground">لا توجد إشعارات بعد</p>
-            <Button onClick={() => setCreateOpen(true)} variant="outline">إنشاء أول إشعار</Button>
+            <p className="text-muted-foreground">Aucune notification pour l'instant</p>
+            <Button onClick={() => setCreateOpen(true)} variant="outline">Créer la première notification</Button>
           </CardContent>
         </Card>
       ) : (
@@ -244,20 +244,19 @@ export default function WorkerNotificationsPage() {
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         {priorityBadge(n.priority)}
                         {typeBadge(n.type)}
-                        <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString("ar-DZ")}</span>
+                        <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString("fr-FR")}</span>
                       </div>
                       <h3 className="font-semibold text-sm">{n.title}</h3>
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</p>
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><Users className="h-3 w-3" />{n.total_recipients} مستلم</span>
-                        <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{n.read_count} قرأ</span>
-                        <span className="flex items-center gap-1"><CheckCheck className="h-3 w-3" />{n.ack_count} أكّد</span>
-                        <span className="text-primary font-medium">{readPct}% قراءة</span>
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" />{n.total_recipients} destinataire{n.total_recipients > 1 ? "s" : ""}</span>
+                        <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{n.read_count} lu</span>
+                        <span className="flex items-center gap-1"><CheckCheck className="h-3 w-3" />{n.ack_count} accusé</span>
+                        <span className="text-primary font-medium">{readPct}% lu</span>
                         {n.push_failed_count > 0 && (
-                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{n.push_failed_count} فشل الإرسال</span>
+                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{n.push_failed_count} échec push</span>
                         )}
                       </div>
-                      {/* Progress bar */}
                       <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${readPct}%` }} />
                       </div>
@@ -272,7 +271,7 @@ export default function WorkerNotificationsPage() {
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => {
-                        if (confirm("أرشفة هذا الإشعار؟")) archiveMutation.mutate(n.id);
+                        if (confirm("Archiver cette notification ?")) archiveMutation.mutate(n.id);
                       }}>
                         <Archive className="h-3.5 w-3.5" />
                       </Button>
@@ -287,25 +286,22 @@ export default function WorkerNotificationsPage() {
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" />إرسال إشعار للعمال</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Envoyer une notification aux employés</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Title */}
             <div>
-              <Label className="mb-1.5 block">عنوان الإشعار *</Label>
-              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="عنوان الإشعار..." />
+              <Label className="mb-1.5 block">Titre de la notification *</Label>
+              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Titre de la notification..." />
             </div>
-            {/* Body */}
             <div>
-              <Label className="mb-1.5 block">محتوى الرسالة *</Label>
-              <Textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4} placeholder="اكتب الرسالة هنا..." />
+              <Label className="mb-1.5 block">Contenu du message *</Label>
+              <Textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4} placeholder="Écrivez le message ici..." />
             </div>
-            {/* Type + Priority */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="mb-1.5 block">نوع الإشعار</Label>
+                <Label className="mb-1.5 block">Type de notification</Label>
                 <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -314,7 +310,7 @@ export default function WorkerNotificationsPage() {
                 </Select>
               </div>
               <div>
-                <Label className="mb-1.5 block">درجة الأولوية</Label>
+                <Label className="mb-1.5 block">Priorité</Label>
                 <Select value={form.priority} onValueChange={v => setForm(p => ({ ...p, priority: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -323,14 +319,14 @@ export default function WorkerNotificationsPage() {
                 </Select>
               </div>
             </div>
-            {/* Expires */}
             <div>
-              <Label className="mb-1.5 block">تاريخ انتهاء الظهور (اختياري)</Label>
+              <Label className="mb-1.5 block">Date d'expiration (facultatif)</Label>
               <Input type="datetime-local" value={form.expiresAt} onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))} />
             </div>
+
             {/* Recipients */}
             <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-              <Label className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4" />اختيار المستلمين</Label>
+              <Label className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4" />Destinataires</Label>
               <div>
                 <Select value={form.criteria.mode} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, mode: v } }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -341,7 +337,7 @@ export default function WorkerNotificationsPage() {
               </div>
               {form.criteria.mode === "specific" && (
                 <div>
-                  <Input placeholder="بحث عن عامل..." value={workerSearch} onChange={e => setWorkerSearch(e.target.value)} className="mb-2" />
+                  <Input placeholder="Rechercher un employé..." value={workerSearch} onChange={e => setWorkerSearch(e.target.value)} className="mb-2" />
                   <div className="max-h-40 overflow-y-auto border rounded space-y-1 p-2 bg-background">
                     {filteredWorkers.map((w: any) => (
                       <label key={w.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-1 rounded text-sm">
@@ -359,15 +355,15 @@ export default function WorkerNotificationsPage() {
                     ))}
                   </div>
                   <div className="flex gap-2 mt-1">
-                    <button className="text-xs text-primary underline" onClick={() => setSelectedWorkerIds((filteredWorkers || []).map((w: any) => w.id))}>تحديد الكل</button>
-                    <button className="text-xs text-muted-foreground underline" onClick={() => setSelectedWorkerIds([])}>إلغاء التحديد</button>
-                    <span className="text-xs text-muted-foreground mr-auto">{selectedWorkerIds.length} محدد</span>
+                    <button className="text-xs text-primary underline" onClick={() => setSelectedWorkerIds((filteredWorkers || []).map((w: any) => w.id))}>Tout sélectionner</button>
+                    <button className="text-xs text-muted-foreground underline" onClick={() => setSelectedWorkerIds([])}>Tout désélectionner</button>
+                    <span className="text-xs text-muted-foreground ml-auto">{selectedWorkerIds.length} sélectionné(s)</span>
                   </div>
                 </div>
               )}
               {form.criteria.mode === "branch" && (
                 <Select value={form.criteria.branchId} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, branchId: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Choisir une boutique" /></SelectTrigger>
                   <SelectContent>
                     {(branches || []).map((b: any) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
                   </SelectContent>
@@ -377,14 +373,14 @@ export default function WorkerNotificationsPage() {
                 <Select value={form.criteria.workerStatus} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, workerStatus: v } }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">نشط</SelectItem>
-                    <SelectItem value="inactive">غير نشط</SelectItem>
+                    <SelectItem value="active">Actif</SelectItem>
+                    <SelectItem value="inactive">Inactif</SelectItem>
                   </SelectContent>
                 </Select>
               )}
               {form.criteria.mode === "role" && (
                 <Select value={form.criteria.roleId} onValueChange={v => setForm(p => ({ ...p, criteria: { ...p.criteria, roleId: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="اختر الدور" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Choisir un rôle" /></SelectTrigger>
                   <SelectContent>
                     {(roles || []).map((r: any) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}
                   </SelectContent>
@@ -395,21 +391,21 @@ export default function WorkerNotificationsPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Button type="button" size="sm" variant="outline" onClick={previewRecipients} disabled={previewLoading}>
                   {previewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
-                  معاينة المستلمين
+                  Aperçu des destinataires
                 </Button>
                 {previewData && (
-                  <div className="text-xs space-x-3 rtl:space-x-reverse text-muted-foreground">
-                    <span className="text-foreground font-medium">{previewData.total} إجمالي</span>
-                    <span className="text-green-600">{previewData.pushEnabled} لديهم push</span>
-                    {previewData.noPush > 0 && <span className="text-amber-600">{previewData.noPush} بدون push</span>}
+                  <div className="text-xs space-x-3 text-muted-foreground">
+                    <span className="text-foreground font-medium">{previewData.total} au total</span>
+                    <span className="text-green-600">{previewData.pushEnabled} avec push</span>
+                    {previewData.noPush > 0 && <span className="text-amber-600">{previewData.noPush} sans push</span>}
                   </div>
                 )}
               </div>
               {previewData?.noPush > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800">
-                  <strong>تحذير:</strong> بعض المستلمين لم يفعّلوا إشعارات الجهاز، لكن الرسالة ستبقى ظاهرة داخل حساباتهم.
+                  <strong>Attention :</strong> certains destinataires n'ont pas activé les notifications push, mais le message restera visible dans leur compte.
                   {previewData.noPushNames?.length > 0 && (
-                    <div className="mt-1 text-amber-700">{previewData.noPushNames.slice(0, 5).join("، ")}{previewData.noPushNames.length > 5 ? ` +${previewData.noPushNames.length - 5}` : ""}</div>
+                    <div className="mt-1 text-amber-700">{previewData.noPushNames.slice(0, 5).join(", ")}{previewData.noPushNames.length > 5 ? ` +${previewData.noPushNames.length - 5}` : ""}</div>
                   )}
                 </div>
               )}
@@ -417,25 +413,25 @@ export default function WorkerNotificationsPage() {
 
             {form.priority !== "normal" && (
               <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
-                <strong>ملاحظة:</strong> الإشعارات المصنفة "مهم" أو "عاجل" ستظهر في نافذة تأكيد عند دخول العامل.
+                <strong>Note :</strong> les notifications "Important" et "Urgent" affichent une fenêtre d'accusé de réception obligatoire à la connexion de l'employé.
               </div>
             )}
           </div>
-          <DialogFooter className="flex-row-reverse gap-2">
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button>
             <Button onClick={handleSend} disabled={createMutation.isPending} className="flex items-center gap-2">
               {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              إرسال الإشعار
+              Envoyer la notification
             </Button>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>إلغاء</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Detail Dialog */}
       <Dialog open={!!detailId} onOpenChange={o => { if (!o) setDetailId(null); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>تفاصيل الإشعار</DialogTitle>
+            <DialogTitle>Détails de la notification</DialogTitle>
           </DialogHeader>
           {detail ? (
             <div className="space-y-4">
@@ -445,15 +441,15 @@ export default function WorkerNotificationsPage() {
               </div>
               <h3 className="font-bold text-lg">{detail.notification.title}</h3>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detail.notification.body}</p>
-              <div className="text-xs text-muted-foreground">بواسطة: {detail.notification.sender_name} — {new Date(detail.notification.created_at).toLocaleString("ar-DZ")}</div>
+              <div className="text-xs text-muted-foreground">Par : {detail.notification.sender_name} — {new Date(detail.notification.created_at).toLocaleString("fr-FR")}</div>
 
               {/* Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: "المستلمون", value: detail.notification.total_recipients, color: "text-primary" },
-                  { label: "قرأ", value: detail.notification.read_count, color: "text-green-600" },
-                  { label: "لم يقرأ", value: detail.notification.unread_count, color: "text-red-500" },
-                  { label: "أكّد الاطلاع", value: detail.notification.ack_count, color: "text-blue-600" },
+                  { label: "Destinataires", value: detail.notification.total_recipients, color: "text-primary" },
+                  { label: "Lu", value: detail.notification.read_count, color: "text-green-600" },
+                  { label: "Non lu", value: detail.notification.unread_count, color: "text-red-500" },
+                  { label: "Accusé", value: detail.notification.ack_count, color: "text-blue-600" },
                 ].map(s => (
                   <Card key={s.label} className="text-center p-3">
                     <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
@@ -465,11 +461,11 @@ export default function WorkerNotificationsPage() {
               {/* Recipients table */}
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-muted/50 px-3 py-2 text-xs font-semibold flex items-center justify-between">
-                  <span>قائمة المستلمين</span>
+                  <span>Liste des destinataires</span>
                   {detail.notification.push_failed_count > 0 && (
                     <Button size="sm" variant="outline" onClick={() => resendMutation.mutate(detailId!)} disabled={resendMutation.isPending}>
                       {resendMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      إعادة إرسال الفاشلة
+                      Renvoyer les échecs
                     </Button>
                   )}
                 </div>
@@ -482,12 +478,12 @@ export default function WorkerNotificationsPage() {
                       </div>
                       <div className="flex items-center gap-3 text-muted-foreground">
                         {r.push_failed ? (
-                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Push فشل</span>
+                          <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Push échoué</span>
                         ) : r.push_sent_at ? (
-                          <span className="text-green-600 flex items-center gap-1"><CheckCheck className="h-3 w-3" />أُرسل</span>
-                        ) : <span>لم يُرسل</span>}
-                        {r.read_at ? <span className="text-green-700">قرأ {new Date(r.read_at).toLocaleTimeString("ar-DZ")}</span> : <span className="text-red-500">لم يقرأ</span>}
-                        {r.acknowledged_at && <span className="text-blue-600">أكّد</span>}
+                          <span className="text-green-600 flex items-center gap-1"><CheckCheck className="h-3 w-3" />Envoyé</span>
+                        ) : <span>Non envoyé</span>}
+                        {r.read_at ? <span className="text-green-700">Lu {new Date(r.read_at).toLocaleTimeString("fr-FR")}</span> : <span className="text-red-500">Non lu</span>}
+                        {r.acknowledged_at && <span className="text-blue-600">Accusé</span>}
                       </div>
                     </div>
                   ))}
