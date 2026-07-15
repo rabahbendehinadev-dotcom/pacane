@@ -671,6 +671,23 @@ runMigrations().then(() => {
 
     logger.info({ port }, "Server listening");
 
+    // ── VAPID keys diagnostic (visible in Dokploy / any deployment logs) ──────
+    const vapidPublic  = process.env["VAPID_PUBLIC_KEY"]  ?? "";
+    const vapidPrivate = process.env["VAPID_PRIVATE_KEY"] ?? "";
+    const vapidSubject = process.env["VAPID_SUBJECT"]     ?? "";
+    if (vapidPublic && vapidPrivate) {
+      logger.info({
+        VAPID_PUBLIC_KEY:  vapidPublic.slice(0, 12) + "…",
+        VAPID_SUBJECT:     vapidSubject || "(default: mailto:admin@pacane.dz)",
+      }, "[VAPID] ✓ Clés VAPID chargées — push notifications activées");
+    } else {
+      logger.error({
+        VAPID_PUBLIC_KEY_SET:  !!vapidPublic,
+        VAPID_PRIVATE_KEY_SET: !!vapidPrivate,
+        VAPID_SUBJECT_SET:     !!vapidSubject,
+      }, "[VAPID] ✗ Clés VAPID MANQUANTES — ajoutez VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT dans les variables d'environnement Dokploy");
+    }
+
     // ── Daily analytics alerts → user notifications ──────────────────────────
     // Run 2 minutes after startup (let the DB settle), then every 24 hours.
     const runDailyAnalytics = () =>
