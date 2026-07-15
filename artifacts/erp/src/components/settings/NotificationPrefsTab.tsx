@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, BellOff, Smartphone, Save, AlertTriangle, Info } from "lucide-react";
+import { Bell, BellOff, Smartphone, Save, AlertTriangle, Info, Send, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useState, useEffect } from "react";
@@ -87,7 +87,17 @@ const TYPE_SECTIONS: { label: string; items: { key: PrefKey; label: string; desc
 
 export function NotificationPrefsTab() {
   const qc = useQueryClient();
-  const { isPushSupported, isSubscribed, isLoading: pushLoading, isIOS, needsInstall, subscribeError, subscribe, unsubscribe } = usePushNotifications();
+  const { isPushSupported, isSubscribed, isLoading: pushLoading, isIOS, needsInstall, permission, subscribeError, subscribe, unsubscribe, sendTest } = usePushNotifications();
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const r = await sendTest();
+    setTestResult(r);
+    setTesting(false);
+  };
 
   const { data: serverPrefs, isLoading } = useQuery<Prefs>({
     queryKey: ["notification-settings"],
@@ -169,6 +179,8 @@ export function NotificationPrefsTab() {
                       ? "Requiert l'installation de l'app"
                       : !isPushSupported
                       ? "Non supporté par ce navigateur"
+                      : permission === "denied"
+                      ? "✗ Bloquées par le navigateur"
                       : isSubscribed
                       ? "✓ Activées sur cet appareil"
                       : "Désactivées sur cet appareil"}
@@ -204,6 +216,47 @@ export function NotificationPrefsTab() {
                 )}
               </div>
             </div>
+
+            {/* Test notification */}
+            {isSubscribed && (
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  disabled={testing}
+                  onClick={runTest}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {testing ? "Envoi en cours…" : "Envoyer une notification de test"}
+                </Button>
+                {testResult && (
+                  <div className={`rounded-lg p-3 text-xs flex items-start gap-2 border ${
+                    testResult.ok
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}>
+                    {testResult.ok
+                      ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      : <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+                    <span>{testResult.message}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Browser-level permission denied */}
+            {permission === "denied" && !needsInstall && isPushSupported && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Notifications bloquées par le navigateur
+                </div>
+                <p>
+                  Vous avez refusé la permission. Pour réactiver : ouvrez les <strong>réglages du navigateur ou du téléphone</strong> → <strong>Notifications</strong> → autorisez ce site/cette app, puis rechargez la page.
+                </p>
+              </div>
+            )}
 
             {/* iOS install instructions */}
             {needsInstall && (

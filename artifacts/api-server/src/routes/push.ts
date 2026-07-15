@@ -87,6 +87,30 @@ router.post("/push/unsubscribe", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── POST /push/test ───────────────────────────────────────────────────────────
+// Sends a REAL push notification to all active subscriptions of the current
+// user, bypassing preferences. Returns per-device results so the client can
+// display the true delivery status.
+router.post("/push/test", requireAuth, async (req, res) => {
+  const userId = (req as any).user.id as number;
+
+  const { sendRawPushToUser } = await import("../lib/push-service");
+  const result = await sendRawPushToUser(userId, {
+    title: "Test de notification ✓",
+    body: "Si vous voyez ceci, les notifications push fonctionnent sur cet appareil.",
+    tag: "push-test",
+    data: { link: "/settings" },
+  });
+
+  if (!result.configured) {
+    return res.status(503).json({ error: "Clés VAPID non configurées sur le serveur", sent: 0 });
+  }
+  if (result.total === 0) {
+    return res.json({ sent: 0, total: 0, detail: "Aucun abonnement push actif pour ce compte. Activez d'abord les notifications." });
+  }
+  res.json({ sent: result.sent, total: result.total, failures: result.failures });
+});
+
 // ── GET /push/devices ─────────────────────────────────────────────────────────
 router.get("/push/devices", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;

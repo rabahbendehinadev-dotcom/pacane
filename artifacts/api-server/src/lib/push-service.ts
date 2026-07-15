@@ -169,4 +169,69 @@ export async function sendPushToUsers(
   await Promise.allSettled(userIds.map((uid) => sendPushToUser(uid, payload)));
 }
 
+/**
+ * Send a raw push directly to a user's active subscriptions, bypassing
+ * notification preferences and without creating an in-app notification.
+ * Returns real per-device delivery results (used by the test endpoint).
+ */
+export async function sendRawPushToUser(
+  userId: number,
+  payload: { title: string; body: string; tag?: string; data?: Record<string, unknown> },
+): Promise<{ configured: boolean; total: number; sent: number; failures: string[] }> {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    return { configured: false, total: 0, sent: 0, failures: [] };
+  }
+
+  const subs = await db
+    .select()
+    .from(pushSubscriptionsTable)
+    .where(and(
+      eq(pushSubscriptionsTable.userId, userId),
+      eq(pushSubscriptionsTable.isActive, true),
+    ));
+
+  const pushData = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-96.png",
+    tag: payload.tag ?? "test",
+    data: payload.data ?? {},
+  });
+
+  let sent = 0;
+  const failures: string[] = [];
+
+  await Promise.allSettled(
+    subs.map(async (sub) => {
+      try {
+        await webPush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          pushData,
+          { TTL: 300 },
+        );
+        sent++;
+        await db
+          .update(pushSubscriptionsTable)
+          .set({ lastActive: new Date() })
+          .where(eq(pushSubscriptionsTable.id, sub.id));
+      } catch (err: any) {
+        const code = err?.statusCode;
+        if (code === 404 || code === 410) {
+          await db
+            .update(pushSubscriptionsTable)
+            .set({ isActive: false })
+            .where(eq(pushSubscriptionsTable.id, sub.id));
+          failures.push(`${sub.deviceName ?? "Appareil"}: abonnement expiré (réactivez les notifications)`);
+        } else {
+          failures.push(`${sub.deviceName ?? "Appareil"}: erreur ${code ?? "inconnue"}`);
+        }
+        logger.warn({ err, subId: sub.id }, "Test push failed");
+      }
+    }),
+  );
+
+  return { configured: true, total: subs.length, sent, failures };
+}
+
 export const vapidPublicKey = VAPID_PUBLIC;

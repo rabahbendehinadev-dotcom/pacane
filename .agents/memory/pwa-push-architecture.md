@@ -53,3 +53,10 @@ description: Full PWA + Web Push system built across 5 phases; VAPID keys, DB ta
 - Migration off a stuck "prompt" SW: skipWaiting is a directive inside the NEW sw.js, so it activates regardless of the old SW's config — but the user must fully close and reopen the PWA twice (1st launch installs new SW, 2nd serves new bundle).
 - **Lesson — never fetch the VAPID public key over the network.** It's public by design; embed it in the client (hardcoded constant in `usePushNotifications.ts`, optionally overridden by `VITE_VAPID_PUBLIC_KEY` at build time). Runtime fetch adds a failure mode ("Impossible de récupérer la clé VAPID") for zero benefit.
 - Follow-up (deliberate, not urgent): `VAPID_PRIVATE_KEY` sits in plaintext in `.replit` (shared env section) in a GitHub-pushed repo — should move to Secrets + rotate keys someday; rotation invalidates all existing push subscriptions, so plan it.
+
+## Phase 8 — Custom SW with real push handler (July 2026)
+- **Lesson — Workbox `generateSW` has NO `push` event handler.** A push subscription can be valid and the server can send successfully, yet nothing ever displays on the device. Any PWA that needs Web Push MUST use `strategies: "injectManifest"` with a custom `src/sw.ts` containing `push` + `notificationclick` listeners.
+- injectManifest migration: `workbox:{...}` options move — glob/size limits go under `injectManifest:{}`; navigateFallback/runtimeCaching/skipWaiting/clientsClaim must be re-implemented in sw.ts code (workbox-precaching/routing/strategies/core packages).
+- **Lesson — SW notification URLs must be scope-aware:** resolve link/icon/badge via `new URL(path.replace(/^\//,""), self.registration.scope)`, never against `self.location.origin`, or subpath deployments break notification clicks.
+- **Lesson — "subscribed" status must require `Notification.permission === "granted"` AND a live `pushManager.getSubscription()`**, or the UI lies ("Activées" without any permission prompt ever shown).
+- Real end-to-end verification: `POST /api/push/test` → `sendRawPushToUser()` (bypasses prefs, returns per-device sent/failures, deactivates 404/410 subs); test button in NotificationPrefsTab.

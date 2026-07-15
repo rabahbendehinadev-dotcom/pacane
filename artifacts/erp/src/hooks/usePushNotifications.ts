@@ -85,6 +85,7 @@ export interface UsePushNotificationsReturn {
   subscribeError: string | null;
   subscribe: () => Promise<void>;
   unsubscribe: () => Promise<void>;
+  sendTest: () => Promise<{ ok: boolean; message: string }>;
 }
 
 export function usePushNotifications(): UsePushNotificationsReturn {
@@ -113,11 +114,16 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     }
     (async () => {
       try {
+        // Real status = browser permission granted AND a live push subscription exists
+        if (Notification.permission !== "granted") {
+          setIsSubscribed(false);
+          return;
+        }
         const reg = await getServiceWorkerWithTimeout(5000);
         const sub = await reg.pushManager.getSubscription();
         setIsSubscribed(!!sub);
       } catch {
-        /* ignore */
+        setIsSubscribed(false);
       } finally {
         setIsReady(true);
       }
@@ -203,5 +209,21 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     }
   }, [isPushSupported]);
 
-  return { permission, isSubscribed, isLoading, isReady, isPushSupported, isIOS, needsInstall, subscribeError, subscribe, unsubscribe };
+  const sendTest = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const r = await callPushApi("/api/push/test", {});
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        return { ok: false, message: data?.error ?? "Erreur serveur lors de l'envoi du test" };
+      }
+      if (data.sent > 0) {
+        return { ok: true, message: `Notification test envoyée à ${data.sent} appareil(s). Elle devrait apparaître dans quelques secondes.` };
+      }
+      return { ok: false, message: data?.detail ?? "Aucun appareil actif n'a reçu la notification. Réactivez les notifications puis réessayez." };
+    } catch (err: any) {
+      return { ok: false, message: `Erreur réseau : ${err?.message ?? String(err)}` };
+    }
+  }, []);
+
+  return { permission, isSubscribed, isLoading, isReady, isPushSupported, isIOS, needsInstall, subscribeError, subscribe, unsubscribe, sendTest };
 }
