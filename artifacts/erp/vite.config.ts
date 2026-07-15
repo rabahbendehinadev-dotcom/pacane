@@ -35,7 +35,7 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       injectRegister: "script",
       includeAssets: ["favicon.svg", "logo.png", "icons/*.png"],
       manifest: {
@@ -93,8 +93,8 @@ export default defineConfig({
           },
         ],
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
-        clientsClaim: false,
+        skipWaiting: true,
+        clientsClaim: true,
       },
       devOptions: {
         enabled: false,
