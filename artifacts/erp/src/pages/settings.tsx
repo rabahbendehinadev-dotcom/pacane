@@ -23,6 +23,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { NotificationPrefsTab } from "@/components/settings/NotificationPrefsTab";
 import { DevicesTab } from "@/components/settings/DevicesTab";
+import { useAuth } from "@/lib/auth";
 
 interface CompanySettings {
   id: number;
@@ -95,6 +96,8 @@ const EMPTY_FORM: CompanySettings = {
 
 export default function Settings() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = !!user?.adminAccess;
   const { language, setLanguage } = useI18n();
   const { data: rawSettings, isLoading } = useGetCompanySettings();
   const [form, setForm] = useState<CompanySettings>(EMPTY_FORM);
@@ -261,15 +264,15 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-0.5">Configuration de l'ERP Pacane</p>
       </div>
 
-      <Tabs defaultValue="company" className="space-y-6">
+      <Tabs defaultValue={isAdmin ? "company" : "notifications"} className="space-y-6">
         <div className="overflow-x-auto -mx-1 px-1">
           <TabsList className="inline-flex w-max min-w-full h-10">
-            <TabsTrigger value="company" className="text-xs whitespace-nowrap">Entreprise</TabsTrigger>
-            <TabsTrigger value="numbering" className="text-xs whitespace-nowrap">Numérotation</TabsTrigger>
-            <TabsTrigger value="tax" className="text-xs whitespace-nowrap">TVA</TabsTrigger>
-            <TabsTrigger value="payments" className="text-xs whitespace-nowrap">Paiements</TabsTrigger>
-            <TabsTrigger value="discounts" className="text-xs whitespace-nowrap">Remises</TabsTrigger>
-            <TabsTrigger value="system" className="text-xs whitespace-nowrap">Système</TabsTrigger>
+            {isAdmin && <TabsTrigger value="company" className="text-xs whitespace-nowrap">Entreprise</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="numbering" className="text-xs whitespace-nowrap">Numérotation</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="tax" className="text-xs whitespace-nowrap">TVA</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="payments" className="text-xs whitespace-nowrap">Paiements</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="discounts" className="text-xs whitespace-nowrap">Remises</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="system" className="text-xs whitespace-nowrap">Système</TabsTrigger>}
             <TabsTrigger value="notifications" className="text-xs whitespace-nowrap">Notifs</TabsTrigger>
             <TabsTrigger value="devices" className="text-xs whitespace-nowrap">Appareils</TabsTrigger>
           </TabsList>

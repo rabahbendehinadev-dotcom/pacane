@@ -165,7 +165,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
     {
       title: "Système",
       items: [
-        { label: t("settings"), href: "/settings", icon: Settings, adminOnly: true },
+        { label: t("settings"), href: "/settings", icon: Settings },
       ],
     },
   ];
