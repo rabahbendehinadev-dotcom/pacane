@@ -67,7 +67,7 @@ function TypeBadge({ t }: { t: string }) {
 const EMPTY_FORM = {
   title: "", body: "", type: "normal", priority: "normal",
   recipientMode: "all" as "all" | "specific",
-  selectedWorkerIds: [] as number[],
+  selectedUserIds: [] as number[],
 };
 
 export default function WorkerNotificationsPage() {
@@ -99,10 +99,10 @@ export default function WorkerNotificationsPage() {
     enabled: !!detailId,
   });
 
-  const { data: workers = [] } = useQuery<any[]>({
-    queryKey: ["workers-directory-for-notif"],
+  const { data: recipients = [] } = useQuery<any[]>({
+    queryKey: ["notif-recipients"],
     queryFn: async () => {
-      const r = await fetch(`${API}/api/worker-notifications/workers-directory`, { headers: authHeader() });
+      const r = await fetch(`${API}/api/worker-notifications/recipients`, { headers: authHeader() });
       if (!r.ok) return [];
       return r.json();
     },
@@ -112,8 +112,8 @@ export default function WorkerNotificationsPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const criteria = form.recipientMode === "all"
-        ? { mode: "all_workers" }
-        : { mode: "specific", workerIds: form.selectedWorkerIds };
+        ? { mode: "all_users" }
+        : { mode: "specific", userIds: form.selectedUserIds };
 
       const r = await fetch(`${API}/api/worker-notifications`, {
         method: "POST",
@@ -164,26 +164,31 @@ export default function WorkerNotificationsPage() {
       toast({ title: "Remplissez le titre et le contenu", variant: "destructive" });
       return;
     }
-    if (form.recipientMode === "specific" && form.selectedWorkerIds.length === 0) {
-      toast({ title: "Sélectionnez au moins un employé", variant: "destructive" });
+    if (form.recipientMode === "specific" && form.selectedUserIds.length === 0) {
+      toast({ title: "Sélectionnez au moins un destinataire", variant: "destructive" });
       return;
     }
     createMutation.mutate();
   }
 
-  function toggleWorker(id: number) {
+  function toggleUser(id: number) {
     setForm(f => ({
       ...f,
-      selectedWorkerIds: f.selectedWorkerIds.includes(id)
-        ? f.selectedWorkerIds.filter(x => x !== id)
-        : [...f.selectedWorkerIds, id],
+      selectedUserIds: f.selectedUserIds.includes(id)
+        ? f.selectedUserIds.filter(x => x !== id)
+        : [...f.selectedUserIds, id],
     }));
   }
 
-  const filteredWorkers = workers.filter((w: any) =>
-    w.name?.toLowerCase().includes(workerSearch.toLowerCase())
+  const q = workerSearch.trim().toLowerCase();
+  const filteredRecipients = recipients.filter((u: any) =>
+    !q ||
+    u.name?.toLowerCase().includes(q) ||
+    u.username?.toLowerCase().includes(q) ||
+    u.roleName?.toLowerCase().includes(q) ||
+    u.workerName?.toLowerCase().includes(q)
   );
-  const selectedWorkers = workers.filter((w: any) => form.selectedWorkerIds.includes(w.id));
+  const selectedRecipients = recipients.filter((u: any) => form.selectedUserIds.includes(u.id));
 
   if (!user?.adminAccess) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
@@ -344,14 +349,14 @@ export default function WorkerNotificationsPage() {
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => setForm(f => ({ ...f, recipientMode: mode, selectedWorkerIds: [] }))}
+                    onClick={() => setForm(f => ({ ...f, recipientMode: mode, selectedUserIds: [] }))}
                     className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
                       form.recipientMode === mode
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border text-muted-foreground hover:border-primary/40"
                     }`}
                   >
-                    {mode === "all" ? "Tous les employés" : "Employés spécifiques"}
+                    {mode === "all" ? "Tous les utilisateurs" : "Utilisateurs spécifiques"}
                   </button>
                 ))}
               </div>
@@ -360,13 +365,13 @@ export default function WorkerNotificationsPage() {
               {form.recipientMode === "specific" && (
                 <div className="space-y-2">
                   {/* Selected chips */}
-                  {selectedWorkers.length > 0 && (
+                  {selectedRecipients.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedWorkers.map((w: any) => (
-                        <span key={w.id} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                      {selectedRecipients.map((u: any) => (
+                        <span key={u.id} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
                           <UserCheck className="h-3 w-3" />
-                          {w.name}
-                          <button onClick={() => toggleWorker(w.id)} className="ml-0.5 hover:text-destructive">
+                          {u.name}
+                          <button onClick={() => toggleUser(u.id)} className="ml-0.5 hover:text-destructive">
                             <X className="h-3 w-3" />
                           </button>
                         </span>
@@ -380,26 +385,26 @@ export default function WorkerNotificationsPage() {
                       <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <input
                         type="text"
-                        placeholder="Rechercher..."
+                        placeholder="Rechercher par nom, identifiant ou rôle..."
                         value={workerSearch}
                         onChange={e => setWorkerSearch(e.target.value)}
                         className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
                       />
                     </div>
                     <div className="max-h-44 overflow-y-auto divide-y">
-                      {filteredWorkers.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-4">Aucun employé trouvé</p>
-                      ) : filteredWorkers.map((w: any) => {
-                        const checked = form.selectedWorkerIds.includes(w.id);
-                        const noAccount = w.hasAccount === false;
+                      {filteredRecipients.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">Aucun utilisateur trouvé</p>
+                      ) : filteredRecipients.map((u: any) => {
+                        const checked = form.selectedUserIds.includes(u.id);
+                        const inactive = u.active === false;
                         return (
                           <button
-                            key={w.id}
+                            key={u.id}
                             type="button"
-                            disabled={noAccount}
-                            onClick={() => toggleWorker(w.id)}
+                            disabled={inactive}
+                            onClick={() => toggleUser(u.id)}
                             className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors ${
-                              noAccount ? "opacity-50 cursor-not-allowed" : checked ? "bg-primary/5" : "hover:bg-muted/50"
+                              inactive ? "opacity-50 cursor-not-allowed" : checked ? "bg-primary/5" : "hover:bg-muted/50"
                             }`}
                           >
                             <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
@@ -407,25 +412,30 @@ export default function WorkerNotificationsPage() {
                             }`}>
                               {checked && <CheckCheck className="h-2.5 w-2.5 text-white" />}
                             </div>
-                            <span className="font-medium">{w.name}</span>
-                            {noAccount ? (
+                            <div className="min-w-0">
+                              <span className="font-medium block truncate">{u.name}</span>
+                              {u.workerName && u.workerName !== u.name && (
+                                <span className="text-[10px] text-muted-foreground block truncate">Ouvrier : {u.workerName}</span>
+                              )}
+                            </div>
+                            {inactive ? (
                               <span className="text-[10px] font-medium ml-auto px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
-                                {w.accountInactive ? "Compte inactif" : "Sans compte"}
+                                Compte inactif
                               </span>
                             ) : (
-                              w.position && <span className="text-xs text-muted-foreground ml-auto">{w.position}</span>
+                              u.roleName && <span className="text-xs text-muted-foreground ml-auto shrink-0">{u.roleName}</span>
                             )}
                           </button>
                         );
                       })}
                     </div>
-                    {workers.length > 0 && (
+                    {recipients.length > 0 && (
                       <div className="flex justify-between items-center px-3 py-1.5 bg-muted/20 border-t text-xs text-muted-foreground">
-                        <button className="text-primary hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: workers.filter((w: any) => w.hasAccount !== false).map((w: any) => w.id) }))}>
+                        <button className="text-primary hover:underline" onClick={() => setForm(f => ({ ...f, selectedUserIds: recipients.filter((u: any) => u.active !== false).map((u: any) => u.id) }))}>
                           Tout sélectionner
                         </button>
-                        <span>{form.selectedWorkerIds.length} sélectionné(s)</span>
-                        <button className="hover:underline" onClick={() => setForm(f => ({ ...f, selectedWorkerIds: [] }))}>
+                        <span>{form.selectedUserIds.length} sélectionné(s)</span>
+                        <button className="hover:underline" onClick={() => setForm(f => ({ ...f, selectedUserIds: [] }))}>
                           Effacer
                         </button>
                       </div>

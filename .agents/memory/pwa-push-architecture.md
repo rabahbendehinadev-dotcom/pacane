@@ -61,7 +61,8 @@ description: Full PWA + Web Push system built across 5 phases; VAPID keys, DB ta
 - **Lesson — "subscribed" status must require `Notification.permission === "granted"` AND a live `pushManager.getSubscription()`**, or the UI lies ("Activées" without any permission prompt ever shown).
 - Real end-to-end verification: `POST /api/push/test` → `sendRawPushToUser()` (bypasses prefs, returns per-device sent/failures, deactivates 404/410 subs); test button in NotificationPrefsTab.
 
-## Worker notification recipients — key rule
-- A worker can receive admin notifications only if an ACTIVE user account is linked (users.worker_id = workers.id) or user name matches worker name (trimmed, lowercase).
-- `GET /api/worker-notifications/workers-directory` returns per-worker hasAccount/accountInactive flags; the send dialog disables workers without accounts.
-- When zero recipients in specific mode, POST returns a named French error listing unlinked workers (`workersWithoutAccount`), plus `[notif-send]` step logs.
+## Notification recipients — key rule (user-based, July 2026)
+- Recipients are USER ACCOUNTS, not workers: any active user from Utilisateurs can receive notifications regardless of role or worker linkage.
+- `GET /api/worker-notifications/recipients` returns all users (name/username/roleName/workerName/active); worker linkage is display-only.
+- Send with criteria `{mode:"specific", userIds}` (primary) or `{mode:"all_users"}`; `workerIds` kept only as legacy fallback.
+- Inactive selected accounts produce a named French error; `[notif-send]` step logs trace resolution.

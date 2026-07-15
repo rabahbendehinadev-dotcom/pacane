@@ -44,24 +44,36 @@ async function resolveRecipientUserIds(criteria: any): Promise<{ userId: number;
   } else if (mode === "all_users") {
     // all active users including those without workers
   } else if (mode === "specific") {
-    if (!workerIds?.length) return [];
-    // Match by worker_id linkage (primary) OR by matching worker name to user name (fallback)
-    params.push(workerIds);
-    const p = params.length;
-    query = `
-      SELECT DISTINCT u.id as user_id, u.name as user_name, u.worker_id,
-        (SELECT w.name FROM workers w WHERE w.id = u.worker_id) as worker_name
-      FROM users u
-      WHERE u.status = 'active'
-        AND (
-          u.worker_id = ANY($${p}::int[])
-          OR EXISTS (
-            SELECT 1 FROM workers w
-            WHERE w.id = ANY($${p}::int[])
-              AND lower(trim(w.name)) = lower(trim(u.name))
+    // Preferred: direct user IDs — send straight to selected user accounts.
+    if (criteria.userIds?.length) {
+      params.push(criteria.userIds);
+      query = `
+        SELECT u.id as user_id, u.name as user_name, u.worker_id, w.name as worker_name
+        FROM users u
+        LEFT JOIN workers w ON w.id = u.worker_id
+        WHERE u.status = 'active' AND u.id = ANY($${params.length}::int[])
+      `;
+    } else if (workerIds?.length) {
+      // Legacy: worker IDs — match by linkage or name.
+      params.push(workerIds);
+      const p = params.length;
+      query = `
+        SELECT DISTINCT u.id as user_id, u.name as user_name, u.worker_id,
+          (SELECT w.name FROM workers w WHERE w.id = u.worker_id) as worker_name
+        FROM users u
+        WHERE u.status = 'active'
+          AND (
+            u.worker_id = ANY($${p}::int[])
+            OR EXISTS (
+              SELECT 1 FROM workers w
+              WHERE w.id = ANY($${p}::int[])
+                AND lower(trim(w.name)) = lower(trim(u.name))
+            )
           )
-        )
-    `;
+      `;
+    } else {
+      return [];
+    }
   } else if (mode === "branch") {
     params.push(branchId);
     query += ` AND ($${params.length} = ANY(u.branch_ids) OR u.default_branch_id = $${params.length})`;
@@ -301,41 +313,31 @@ router.get("/worker-notifications/push-status", requireAuth, requireAdmin, async
   }
 });
 
-// GET /api/worker-notifications/workers-directory — admin: workers + linked account status
-// Used by the send dialog so the admin sees exactly which workers can receive
-// a notification (linked user account) and which cannot.
-router.get("/worker-notifications/workers-directory", requireAuth, requireAdmin, async (_req: any, res: any): Promise<void> => {
+// GET /api/worker-notifications/recipients — admin: ALL user accounts as potential recipients.
+// Every user from the Utilisateurs page can receive a notification, whatever their role.
+// Worker linkage is informational only (shows the worker name next to the account).
+router.get("/worker-notifications/recipients", requireAuth, requireAdmin, async (_req: any, res: any): Promise<void> => {
   try {
     const rows = await pool.query(`
       SELECT
-        w.id,
-        w.name,
-        w.position,
-        u.id   as user_id,
-        u.name as user_name,
-        u.status as user_status
-      FROM workers w
-      LEFT JOIN LATERAL (
-        SELECT u.id, u.name, u.status
-        FROM users u
-        WHERE u.worker_id = w.id
-           OR lower(trim(u.name)) = lower(trim(w.name))
-        ORDER BY (u.status = 'active') DESC, (u.worker_id = w.id) DESC NULLS LAST, u.id
-        LIMIT 1
-      ) u ON true
-      ORDER BY w.name
+        u.id, u.name, u.username, u.status,
+        r.name as role_name,
+        w.name as worker_name
+      FROM users u
+      LEFT JOIN roles r ON r.id = u.role_id
+      LEFT JOIN workers w ON w.id = u.worker_id
+      ORDER BY u.name
     `);
     res.json(rows.rows.map((r: any) => ({
       id: r.id,
       name: r.name,
-      position: r.position,
-      hasAccount: r.user_id != null && r.user_status === "active",
-      accountInactive: r.user_id != null && r.user_status !== "active",
-      userId: r.user_id,
-      userName: r.user_name,
+      username: r.username,
+      roleName: r.role_name,
+      workerName: r.worker_name,
+      active: r.status === "active",
     })));
   } catch (err) {
-    logger.error({ err }, "workers-directory error");
+    logger.error({ err }, "recipients directory error");
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
@@ -428,6 +430,21 @@ router.post("/worker-notifications", requireAuth, requireAdmin, async (req: any,
     );
 
     if (!recipients.length) {
+      // Direct user selection: name the inactive accounts explicitly.
+      if (criteria?.mode === "specific" && criteria.userIds?.length) {
+        const ur = await pool.query(
+          `SELECT name, status FROM users WHERE id = ANY($1::int[])`,
+          [criteria.userIds],
+        );
+        const inactive = ur.rows.filter((r: any) => r.status !== "active").map((r: any) => r.name);
+        logger.warn({ userIds: criteria.userIds, inactive }, "[notif-send] no recipients — selected users inactive");
+        res.status(400).json({
+          error: inactive.length
+            ? `Ces comptes sont inactifs : ${inactive.join(", ")}. Activez-les dans Utilisateurs pour leur envoyer des notifications.`
+            : "Aucun destinataire trouvé",
+        });
+        return;
+      }
       // Build a precise error: which selected workers have no linked account?
       if (criteria?.mode === "specific" && criteria.workerIds?.length) {
         const wr = await pool.query(
