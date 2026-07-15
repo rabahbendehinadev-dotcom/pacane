@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { PageErrorBoundary } from "@/components/ErrorBoundary";
+import { PushActivationGate } from "@/components/notifications/PushActivationGate";
 import { ReactNode } from "react";
 import { useLocation } from "wouter";
 
@@ -32,6 +33,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </PageErrorBoundary>
         </main>
       </div>
+      <PushActivationGate />
     </div>
   );
 }

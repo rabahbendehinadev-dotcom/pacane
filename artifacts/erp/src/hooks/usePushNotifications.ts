@@ -76,6 +76,7 @@ export interface UsePushNotificationsReturn {
   permission: PushPermission;
   isSubscribed: boolean;
   isLoading: boolean;
+  isReady: boolean;
   isPushSupported: boolean;
   isIOS: boolean;
   needsInstall: boolean;
@@ -100,17 +101,23 @@ export function usePushNotifications(): UsePushNotificationsReturn {
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading]       = useState(false);
+  const [isReady, setIsReady]           = useState(false);
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isPushSupported || needsInstall) return;
+    if (!isPushSupported || needsInstall) {
+      setIsReady(true);
+      return;
+    }
     (async () => {
       try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await getServiceWorkerWithTimeout(5000);
         const sub = await reg.pushManager.getSubscription();
         setIsSubscribed(!!sub);
       } catch {
         /* ignore */
+      } finally {
+        setIsReady(true);
       }
     })();
   }, [isPushSupported, needsInstall]);
@@ -194,5 +201,5 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     }
   }, [isPushSupported]);
 
-  return { permission, isSubscribed, isLoading, isPushSupported, isIOS, needsInstall, subscribeError, subscribe, unsubscribe };
+  return { permission, isSubscribed, isLoading, isReady, isPushSupported, isIOS, needsInstall, subscribeError, subscribe, unsubscribe };
 }

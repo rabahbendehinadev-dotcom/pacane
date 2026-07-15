@@ -40,3 +40,10 @@ description: Full PWA + Web Push system built across 5 phases; VAPID keys, DB ta
 **Why:** Using `sendPushToUser()` instead of raw `db.insert(userNotificationsTable)` ensures both in-app and push are created atomically from one call, and user preferences are respected automatically.
 
 **How to apply:** For any new event that should notify users, call `sendPushToUser(userId, { title, body, type, link? })`. Use dynamic `await import("../lib/push-service")` to avoid circular dep issues.
+
+## Phase 6 — Forced activation gate (July 2026)
+- `PushActivationGate.tsx` (components/notifications) — blocking modal on login until push is enabled; mounted in DashboardLayout.
+- iOS: Web Push only works in installed PWA (standalone, iOS 16.4+); gate shows install-to-home-screen steps there. Detection: `matchMedia("(display-mode: standalone)")` + `navigator.standalone`.
+- **Lesson — never hard-lock a forced gate:** always render an escape hatch ("continuer sans notifications", sessionStorage flag) whenever activation is impossible (iOS non-installed, permission denied) OR a subscribe attempt errored. Otherwise users get stuck in an error→retry loop.
+- **Lesson — dev has no service worker:** VitePWA `devOptions.enabled: false` means no SW in dev, so any push subscribe hangs/times out. The gate is bypassed with `!import.meta.env.DEV`; push can only be tested on the deployed app.
+- `serviceWorker.ready` never rejects — always wrap in a Promise.race timeout.
