@@ -40,6 +40,11 @@ export function isStandaloneMode(): boolean {
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("erp_token") ?? ""}` });
 
 async function getVapidPublicKey(): Promise<string> {
+  // Prefer the key embedded at build time (no network round-trip, works in all deployment topologies)
+  const buildTimeKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+  if (buildTimeKey) return buildTimeKey;
+
+  // Fallback: fetch from the API (dev mode without the env var set)
   const res = await fetch("/api/push/vapid-public-key", { headers: authHeaders() });
   if (!res.ok) throw new Error("Impossible de récupérer la clé VAPID");
   const data = await res.json();
