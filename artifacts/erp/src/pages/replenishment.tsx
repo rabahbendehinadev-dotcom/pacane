@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetBranches, useGetCategories } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useAuth } from "@/lib/auth";
 
 const AUTH_HEADER = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("erp_token")}` });
 
@@ -78,6 +79,9 @@ function fmtNum(n: number) {
 
 export default function ReplenishmentPage() {
   const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return format(d, "yyyy-MM-dd"); })();
+  const { user } = useAuth();
+  const loggedWorkerId = (user as any)?.workerId as number | null;
+
   const [branchIds, setBranchIds] = useState<number[]>([]);
   const [date, setDate] = useState<string>(tomorrow);
   const [categoryId, setCategoryId] = useState<string>("all");
@@ -95,6 +99,10 @@ export default function ReplenishmentPage() {
   const { data: branches = [] } = useGetBranches();
   const { data: categories = [] } = useGetCategories();
   const { data: workers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchWorkers });
+
+  useEffect(() => {
+    if (loggedWorkerId) setWorkerId(String(loggedWorkerId));
+  }, [loggedWorkerId]);
 
   const fetchKey = ["replenishment-calculate", branchIds.join(","), date, categoryId, workerId, triggered];
   const { data: results, isLoading, isFetching, refetch } = useQuery<ReplenishmentResult[]>({
@@ -499,16 +507,23 @@ export default function ReplenishmentPage() {
 
             <div className="flex flex-col gap-1.5 min-w-[160px]">
               <Label className="text-xs font-medium">Responsable</Label>
-              <Select value={workerId} onValueChange={setWorkerId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Tous" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="none">Non affecté</SelectItem>
-                  {workers.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {loggedWorkerId ? (
+                <div className="h-9 px-3 flex items-center gap-2 rounded-md border bg-muted/40 text-sm">
+                  <HardHat className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="font-medium">{workers.find(w => w.id === loggedWorkerId)?.name ?? "—"}</span>
+                </div>
+              ) : (
+                <Select value={workerId} onValueChange={setWorkerId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Tous" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="none">Non affecté</SelectItem>
+                    {workers.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
@@ -520,10 +535,12 @@ export default function ReplenishmentPage() {
                 <Checkbox checked={groupBySupplier} onCheckedChange={v => { setGroupBySupplier(!!v); if (v) setGroupByWorker(false); }} />
                 Grouper par fournisseur
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <Checkbox checked={groupByWorker} onCheckedChange={v => { setGroupByWorker(!!v); if (v) setGroupBySupplier(false); }} />
-                Grouper par responsable
-              </label>
+              {!loggedWorkerId && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <Checkbox checked={groupByWorker} onCheckedChange={v => { setGroupByWorker(!!v); if (v) setGroupBySupplier(false); }} />
+                  Grouper par responsable
+                </label>
+              )}
               {branchIds.length > 1 && (
                 <label className="flex items-center gap-2 text-sm cursor-pointer select-none font-medium text-primary">
                   <Checkbox checked={aggregateByProduct} onCheckedChange={v => setAggregateByProduct(!!v)} />
