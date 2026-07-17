@@ -14,6 +14,8 @@ export * from "./sales";
 export * from "./pos";
 export * from "./transfers";
 export * from "./adjustments";
+export * from "./adjustment-items";
+export * from "./adjustment-audit-logs";
 export * from "./expenses";
 export * from "./attachments";
 export * from "./settings";

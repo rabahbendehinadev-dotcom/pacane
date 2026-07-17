@@ -136,6 +136,54 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15,2) NOT NULL DEFAULT 0;`);
     await db.execute(sql`ALTER TABLE internal_consumption_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();`);
     await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS photo_data TEXT;`);
+    // Confirmation workflow columns — allow nullable product_id / quantity_change for multi-item adjustments
+    await db.execute(sql`ALTER TABLE adjustments ALTER COLUMN product_id DROP NOT NULL;`);
+    await db.execute(sql`ALTER TABLE adjustments ALTER COLUMN quantity_change DROP NOT NULL;`);
+    await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS overall_status TEXT;`);
+    await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS worker_one_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS confirmed_by_user_id INTEGER;`);
+    await db.execute(sql`ALTER TABLE adjustments ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE;`);
+    // adjustment_items table (per-item confirmation)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS adjustment_items (
+        id SERIAL PRIMARY KEY,
+        adjustment_id INTEGER NOT NULL REFERENCES adjustments(id) ON DELETE CASCADE,
+        product_id INTEGER NOT NULL,
+        product_name_snapshot TEXT NOT NULL,
+        sku_snapshot TEXT,
+        quantity_change NUMERIC(15,3) NOT NULL,
+        item_status TEXT NOT NULL DEFAULT 'en_attente',
+        rejection_reason TEXT,
+        rejection_photo_data TEXT,
+        confirmed_by_user_id INTEGER REFERENCES users(id),
+        confirmed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_adj_items_adjustment_id ON adjustment_items(adjustment_id);`);
+    // adjustment_audit_logs table (immutable)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS adjustment_audit_logs (
+        id SERIAL PRIMARY KEY,
+        adjustment_id INTEGER NOT NULL REFERENCES adjustments(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id),
+        user_name TEXT,
+        action TEXT NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_adj_audit_adjustment_id ON adjustment_audit_logs(adjustment_id);`);
+    // Add audit_log notes column (added in v2 of audit log schema)
+    await db.execute(sql`ALTER TABLE adjustment_audit_logs ADD COLUMN IF NOT EXISTS notes TEXT;`);
+    // Grant adjustments.confirm to roles that have adjustments.* or existing adjustments perms
+    await db.execute(sql`
+      UPDATE roles
+      SET permissions = array_append(permissions, 'adjustments.confirm')
+      WHERE permissions IS NOT NULL
+        AND 'adjustments.confirm' != ALL(permissions)
+        AND (permissions && ARRAY['adjustments.*','adjustments.view','adjustments.create']::text[]);
+    `);
     // Rename legacy reason value
     await db.execute(sql`UPDATE adjustments SET reason = 'DLC' WHERE reason = 'Perte / Casse';`);
     // Vendeurs feature
