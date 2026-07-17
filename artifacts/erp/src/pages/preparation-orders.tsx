@@ -114,11 +114,14 @@ export default function PreparationOrdersPage() {
   if (filterFrom) params.set("dateFrom", filterFrom);
   if (filterTo) params.set("dateTo", filterTo);
 
-  const { data: orders = [], isLoading, refetch } = useQuery<PreparationOrder[]>({
+  const { data: orders = [], isLoading, isError, error, refetch } = useQuery<PreparationOrder[]>({
     queryKey: ["preparation-orders", filterBranch, filterWorker, filterStatus, filterFrom, filterTo],
     queryFn: async () => {
       const r = await fetch(`/api/preparation-orders?${params}`, { headers: AUTH() });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? "Erreur de chargement");
+      }
       return r.json();
     },
   });
@@ -254,6 +257,13 @@ export default function PreparationOrdersPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Chargement…</span>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="h-14 w-14 rounded-2xl bg-red-50 flex items-center justify-center mb-3">
+              <Ban className="h-7 w-7 text-red-500" />
+            </div>
+            <p className="text-sm font-medium text-red-700">{(error as Error)?.message ?? "Accès refusé"}</p>
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

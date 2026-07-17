@@ -26,6 +26,11 @@ function orderWithDetails(order: typeof preparationOrdersTable.$inferSelect & { 
 // GET /preparation-orders — manager list
 router.get("/preparation-orders", requireAuth, requirePermission(P.preparationOrders.view), async (req, res): Promise<void> => {
   const user = req.user!;
+  // Un compte lié à un ouvrier ne peut pas accéder à la vue manager — utiliser /my-preparations
+  if (user.workerId) {
+    res.status(403).json({ error: "Accès refusé. Votre compte est lié à un ouvrier. Utilisez 'Mes préparations' pour consulter vos ordres.", code: "WORKER_USE_MY_PREPARATIONS" });
+    return;
+  }
   const { branchId: branchIdStr, workerId: workerIdStr, status, dateFrom, dateTo } = req.query as Record<string, string>;
 
   const rows = await db.select({
@@ -73,6 +78,11 @@ router.get("/preparation-orders/:id", requireAuth, requirePermission(P.preparati
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID invalide" }); return; }
   const user = req.user!;
+  // Un compte lié à un ouvrier doit utiliser /my-preparations/:id
+  if (user.workerId) {
+    res.status(403).json({ error: "Accès refusé. Utilisez 'Mes préparations' pour consulter vos ordres.", code: "WORKER_USE_MY_PREPARATIONS" });
+    return;
+  }
 
   const [order] = await db.select({
     id: preparationOrdersTable.id,
@@ -233,7 +243,10 @@ router.patch("/preparation-orders/:id/cancel", requireAuth, requirePermission(P.
 // GET /my-preparations — worker view (orders assigned to current user's worker)
 router.get("/my-preparations", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  if (!user.workerId) { res.json([]); return; }
+  if (!user.workerId) {
+    res.status(403).json({ error: "Votre compte n'est lié à aucun ouvrier.", code: "NO_WORKER_LINKED" });
+    return;
+  }
 
   const rows = await db.select({
     id: preparationOrdersTable.id,

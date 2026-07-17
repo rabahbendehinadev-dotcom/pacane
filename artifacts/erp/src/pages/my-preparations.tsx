@@ -244,15 +244,20 @@ function CameraDialog({
 export default function MyPreparationsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const hasWorkerId = !!(user as any)?.workerId;
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [updating, setUpdating] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
 
-  const { data: orders = [], isLoading, refetch } = useQuery<MyOrder[]>({
+  const { data: orders = [], isLoading, isError, refetch } = useQuery<MyOrder[]>({
     queryKey: ["my-preparations"],
+    enabled: hasWorkerId,
     queryFn: async () => {
       const r = await fetch("/api/my-preparations", { headers: AUTH_JSON() });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? "Erreur de chargement");
+      }
       return r.json();
     },
   });
@@ -327,8 +332,6 @@ export default function MyPreparationsPage() {
     if (!popup) doc.save(filename);
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-
-  const hasWorkerId = !!(user as any)?.workerId;
 
   const grouped = {
     active: orders.filter(o => ["new", "viewed", "in_progress"].includes(o.status)),
