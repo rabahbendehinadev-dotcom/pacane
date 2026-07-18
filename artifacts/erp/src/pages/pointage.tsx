@@ -70,10 +70,10 @@ function TodayTab({ branches }: { branches: any[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <Select value={branchId} onValueChange={setBranchId}>
+        <Select value={branchId || "all"} onValueChange={v => setBranchId(v === "all" ? "" : v)}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Toutes les boutiques" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Toutes les boutiques</SelectItem>
+            <SelectItem value="all">Toutes les boutiques</SelectItem>
             {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -201,20 +201,20 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
       <div className="flex flex-wrap gap-2 items-end">
         <div>
           <Label className="text-xs mb-1 block">Employé</Label>
-          <Select value={f.userId} onValueChange={v => setFilters(p => ({ ...p, userId: v }))}>
+          <Select value={f.userId || "all"} onValueChange={v => setFilters(p => ({ ...p, userId: v === "all" ? "" : v }))}>
             <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tous</SelectItem>
+              <SelectItem value="all">Tous</SelectItem>
               {users.filter(u => u.pointageEnabled).map(u => <SelectItem key={u.userId} value={String(u.userId)}>{u.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         <div>
           <Label className="text-xs mb-1 block">Boutique</Label>
-          <Select value={f.branchId} onValueChange={v => setFilters(p => ({ ...p, branchId: v }))}>
+          <Select value={f.branchId || "all"} onValueChange={v => setFilters(p => ({ ...p, branchId: v === "all" ? "" : v }))}>
             <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Toutes" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Toutes</SelectItem>
+              <SelectItem value="all">Toutes</SelectItem>
               {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -229,10 +229,10 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
         </div>
         <div>
           <Label className="text-xs mb-1 block">Statut</Label>
-          <Select value={f.status} onValueChange={v => setFilters(p => ({ ...p, status: v }))}>
+          <Select value={f.status || "all"} onValueChange={v => setFilters(p => ({ ...p, status: v === "all" ? "" : v }))}>
             <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tous</SelectItem>
+              <SelectItem value="all">Tous</SelectItem>
               {["present","late","early_leave","overtime","suspicious","corrected"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -492,10 +492,10 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
               </div>
               <div>
                 <Label>Boutique</Label>
-                <Select value={form.branchId ? String(form.branchId) : ""} onValueChange={v => setForm((f: any) => ({ ...f, branchId: v ? parseInt(v) : null }))}>
+                <Select value={form.branchId ? String(form.branchId) : "none"} onValueChange={v => setForm((f: any) => ({ ...f, branchId: v === "none" ? null : parseInt(v) }))}>
                   <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Aucune</SelectItem>
+                    <SelectItem value="none">Aucune</SelectItem>
                     {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
