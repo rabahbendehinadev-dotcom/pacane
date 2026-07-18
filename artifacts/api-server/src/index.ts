@@ -915,6 +915,8 @@ async function runMigrations() {
       )
       AND u.status = 'active';
     `);
+    // Multi-branch support for pointage (allowed_branch_ids column)
+    await db.execute(sql`ALTER TABLE user_attendance_settings ADD COLUMN IF NOT EXISTS allowed_branch_ids integer[];`);
     // ─────────────────────────────────────────────────────────────────────────
     logger.info("DB migrations applied");
   } catch (err) {
