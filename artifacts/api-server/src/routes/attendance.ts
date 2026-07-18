@@ -573,6 +573,12 @@ router.get("/attendance/devices/desktop", requireAuth, requirePermission("pointa
     branchName: branchesTable.name,
     deviceName: branchDesktopDevicesTable.deviceName,
     isActive: branchDesktopDevicesTable.isActive,
+    kioskSlug: branchDesktopDevicesTable.kioskSlug,
+    boundDeviceOs: branchDesktopDevicesTable.boundDeviceOs,
+    boundDeviceBrowser: branchDesktopDevicesTable.boundDeviceBrowser,
+    boundDeviceIp: branchDesktopDevicesTable.boundDeviceIp,
+    boundAt: branchDesktopDevicesTable.boundAt,
+    isBound: sql<boolean>`(${branchDesktopDevicesTable.boundDeviceToken} IS NOT NULL)`,
     lastSeenAt: branchDesktopDevicesTable.lastSeenAt,
     createdAt: branchDesktopDevicesTable.createdAt,
   })
@@ -585,24 +591,38 @@ router.get("/attendance/devices/desktop", requireAuth, requirePermission("pointa
 // ── POST /api/attendance/devices/desktop ──────────────────────────────────────
 router.post("/attendance/devices/desktop", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
   const me = (req as any).user;
-  const { branchId, deviceName } = req.body;
+  const { branchId, deviceName, kioskSlug } = req.body;
   if (!branchId) return res.status(400).json({ error: "branchId requis" });
+  if (!kioskSlug) return res.status(400).json({ error: "kioskSlug requis" });
+
+  // Validate slug format
+  if (!/^[a-zA-Z0-9-]{2,50}$/.test(kioskSlug)) {
+    return res.status(400).json({ error: "Slug invalide (lettres, chiffres et tirets uniquement, 2-50 caractères)" });
+  }
+  const normalizedSlug = kioskSlug.toUpperCase();
+
+  // Check uniqueness
+  const [existing] = await db.select({ id: branchDesktopDevicesTable.id })
+    .from(branchDesktopDevicesTable)
+    .where(eq(branchDesktopDevicesTable.kioskSlug, normalizedSlug));
+  if (existing) return res.status(409).json({ error: "Ce slug est déjà utilisé" });
 
   const deviceToken = crypto.randomBytes(32).toString("hex");
   const [device] = await db.insert(branchDesktopDevicesTable).values({
     branchId: parseInt(branchId),
     deviceName: deviceName ?? "Kiosk",
     deviceToken,
+    kioskSlug: normalizedSlug,
     isActive: true,
     activatedByAdminId: me.id,
   }).returning();
 
   await writeAuditLog({
     userId: me.id, branchId: parseInt(branchId), action: "desktop_device_created",
-    newValue: { deviceName }, adminId: me.id, ipAddress: req.ip,
+    newValue: { deviceName, kioskSlug: normalizedSlug }, adminId: me.id, ipAddress: req.ip,
   });
 
-  res.status(201).json({ ...device, deviceToken });
+  res.status(201).json({ ...device, kioskSlug: normalizedSlug });
 });
 
 // ── PATCH /api/attendance/devices/desktop/:id ─────────────────────────────────
@@ -625,6 +645,62 @@ router.patch("/attendance/devices/desktop/:id", requireAuth, requirePermission("
     adminId: me.id, ipAddress: req.ip,
   });
   res.json(updated);
+});
+
+// ── POST /api/attendance/devices/desktop/:id/reset-device ────────────────────
+router.post("/attendance/devices/desktop/:id/reset-device", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+  const me = (req as any).user;
+  const id = parseInt(req.params.id);
+  const { reason } = req.body;
+
+  const [device] = await db.select().from(branchDesktopDevicesTable)
+    .where(eq(branchDesktopDevicesTable.id, id));
+  if (!device) return res.status(404).json({ error: "Appareil introuvable" });
+
+  await db.update(branchDesktopDevicesTable).set({
+    boundDeviceToken: null,
+    boundDeviceUa: null,
+    boundDeviceOs: null,
+    boundDeviceBrowser: null,
+    boundDeviceIp: null,
+    boundAt: null,
+  }).where(eq(branchDesktopDevicesTable.id, id));
+
+  await writeAuditLog({
+    userId: me.id, action: "kiosk_device_reset",
+    branchId: device.branchId, adminId: me.id, reason: reason ?? "Reset by admin", ipAddress: req.ip,
+    notes: `Slug: ${device.kioskSlug}`,
+  });
+
+  res.json({ success: true });
+});
+
+// ── POST /api/attendance/devices/desktop/:id/regenerate-slug ─────────────────
+router.post("/attendance/devices/desktop/:id/regenerate-slug", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+  const me = (req as any).user;
+  const id = parseInt(req.params.id);
+  const { newSlug } = req.body;
+  if (!newSlug) return res.status(400).json({ error: "newSlug requis" });
+  if (!/^[a-zA-Z0-9-]{2,50}$/.test(newSlug)) {
+    return res.status(400).json({ error: "Slug invalide" });
+  }
+  const normalized = newSlug.toUpperCase();
+
+  const [conflict] = await db.select({ id: branchDesktopDevicesTable.id })
+    .from(branchDesktopDevicesTable)
+    .where(eq(branchDesktopDevicesTable.kioskSlug, normalized));
+  if (conflict && conflict.id !== id) return res.status(409).json({ error: "Ce slug est déjà utilisé" });
+
+  const [updated] = await db.update(branchDesktopDevicesTable)
+    .set({ kioskSlug: normalized, boundDeviceToken: null, boundDeviceUa: null, boundDeviceOs: null, boundDeviceBrowser: null, boundDeviceIp: null, boundAt: null })
+    .where(eq(branchDesktopDevicesTable.id, id)).returning();
+
+  await writeAuditLog({
+    userId: me.id, action: "kiosk_slug_regenerated", adminId: me.id, ipAddress: req.ip,
+    notes: `New slug: ${normalized}`,
+  });
+
+  res.json({ success: true, kioskSlug: normalized, device: updated });
 });
 
 // ── GET /api/attendance/devices/mobile ───────────────────────────────────────

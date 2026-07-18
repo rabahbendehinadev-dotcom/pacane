@@ -62,6 +62,7 @@ import AdminTicketsPage from "@/pages/admin-tickets";
 import NotificationStatusPage from "@/pages/notification-status";
 import PointagePage from "@/pages/pointage";
 import PointageKioskPage from "@/pages/pointage-kiosk";
+import KioskSlugPage from "@/pages/kiosk-slug";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -265,6 +266,7 @@ function AppRoutes() {
         <DashboardLayout><PointagePage /></DashboardLayout>
       </Route>
       <Route path="/pointage-kiosk" component={PointageKioskPage} />
+      <Route path="/kiosk/:slug" component={KioskSlugPage} />
 
       <Route component={NotFound} />
     </Switch>

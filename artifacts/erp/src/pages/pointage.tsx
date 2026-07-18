@@ -13,7 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import {
   Users, UserCheck, UserX, Clock, Plus, Edit2, Trash2,
-  Monitor, Smartphone, QrCode, AlertTriangle, RefreshCw, Download
+  Monitor, Smartphone, QrCode, AlertTriangle, RefreshCw, Download,
+  Copy, ExternalLink, RotateCcw
 } from "lucide-react";
 
 const API = (path: string, opts?: RequestInit) =>
@@ -617,12 +618,18 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
 function DevicesTab({ branches }: { branches: any[] }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
-  const [newDevice, setNewDevice] = useState({ branchId: "", deviceName: "" });
-  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [createdKiosk, setCreatedKiosk] = useState<{ slug: string; deviceName: string } | null>(null);
+  const [newDevice, setNewDevice] = useState({ branchId: "", deviceName: "", kioskSlug: "" });
+  const [regenSlugId, setRegenSlugId] = useState<number | null>(null);
+  const [regenSlugVal, setRegenSlugVal] = useState("");
+
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const kioskUrl = (slug: string) => `${window.location.origin}${BASE}/kiosk/${slug}`;
 
   const { data: desktops = [], refetch: refetchDesktops } = useQuery({
     queryKey: ["desktop-devices"],
     queryFn: async () => { const r = await API("/attendance/devices/desktop"); return r.json(); },
+    refetchInterval: 30_000,
   });
 
   const { data: mobiles = [] } = useQuery({
@@ -630,78 +637,175 @@ function DevicesTab({ branches }: { branches: any[] }) {
     queryFn: async () => { const r = await API("/attendance/devices/mobile"); return r.json(); },
   });
 
-  const createDesktopMutation = useMutation({
-    mutationFn: async (d: any) => { const r = await API("/attendance/devices/desktop", { method: "POST", body: JSON.stringify(d) }); if (!r.ok) { const e = await r.json(); throw new Error(e.error); } return r.json(); },
-    onSuccess: (data) => { refetchDesktops(); setCreatedToken(data.deviceToken); toast({ title: "Appareil créé" }); },
+  const createMutation = useMutation({
+    mutationFn: async (d: any) => {
+      const r = await API("/attendance/devices/desktop", { method: "POST", body: JSON.stringify(d) });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+      return r.json();
+    },
+    onSuccess: (data) => {
+      refetchDesktops();
+      setCreatedKiosk({ slug: data.kioskSlug, deviceName: data.deviceName });
+    },
     onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
-  const toggleDesktopMutation = useMutation({
-    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => { await API(`/attendance/devices/desktop/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }); },
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      await API(`/attendance/devices/desktop/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) });
+    },
     onSuccess: () => refetchDesktops(),
+    onError: (e: any) => toast({ title: (e as any).message, variant: "destructive" }),
+  });
+
+  const resetDeviceMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await API(`/attendance/devices/desktop/${id}/reset-device`, { method: "POST", body: JSON.stringify({ reason: "Reset by admin" }) });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+    },
+    onSuccess: () => { refetchDesktops(); toast({ title: "Appareil réinitialisé — prêt pour un nouveau PC" }); },
+    onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const regenSlugMutation = useMutation({
+    mutationFn: async ({ id, newSlug }: { id: number; newSlug: string }) => {
+      const r = await API(`/attendance/devices/desktop/${id}/regenerate-slug`, { method: "POST", body: JSON.stringify({ newSlug }) });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+      return r.json();
+    },
+    onSuccess: () => { refetchDesktops(); setRegenSlugId(null); setRegenSlugVal(""); toast({ title: "Slug régénéré — l'ancien lien ne fonctionnera plus" }); },
+    onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
   const approveMobileMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => { await API(`/attendance/devices/mobile/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); },
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      await API(`/attendance/devices/mobile/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["mobile-devices"] }),
   });
 
-  const lastSeenBadge = (ts: string | null) => {
-    if (!ts) return <span className="text-xs text-muted-foreground">Jamais</span>;
+  const onlineStatus = (ts: string | null, isBound: boolean) => {
+    if (!isBound) return <span className="text-xs text-muted-foreground italic">Non activé</span>;
+    if (!ts) return <span className="text-xs text-muted-foreground">Jamais vu</span>;
     const diff = Date.now() - new Date(ts).getTime();
-    const isOnline = diff < 2 * 60 * 1000;
-    return <span className={`text-xs font-medium ${isOnline ? "text-green-600" : "text-muted-foreground"}`}>{isOnline ? "En ligne" : fmtTime(ts)}</span>;
+    if (diff < 2 * 60_000) return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />En ligne
+      </span>
+    );
+    if (diff < 30 * 60_000) return <span className="text-xs text-yellow-600">Récent · {fmtTime(ts)}</span>;
+    return <span className="text-xs text-muted-foreground">{fmtTime(ts)}</span>;
   };
 
   return (
     <div className="space-y-6">
-      {/* Desktop devices */}
+      {/* Desktop Kiosks */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold flex items-center gap-2"><Monitor className="h-4 w-4" /> Kiosks de boutique</h3>
-          <Button size="sm" onClick={() => { setCreatedToken(null); setAddOpen(true); }} className="gap-1"><Plus className="h-3.5 w-3.5" /> Ajouter un kiosk</Button>
+          <h3 className="font-semibold flex items-center gap-2"><Monitor className="h-4 w-4" /> Kiosks QR de boutique</h3>
+          <Button size="sm" onClick={() => { setCreatedKiosk(null); setNewDevice({ branchId: "", deviceName: "", kioskSlug: "" }); setAddOpen(true); }} className="gap-1">
+            <Plus className="h-3.5 w-3.5" /> Nouveau kiosk
+          </Button>
         </div>
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Boutique</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead>Dernière activité</TableHead>
-                  <TableHead className="w-20"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(desktops as any[]).length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Aucun kiosk</TableCell></TableRow>
-                ) : (desktops as any[]).map((d: any) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-medium text-sm">{d.deviceName}</TableCell>
-                    <TableCell className="text-sm">{d.branchName ?? "—"}</TableCell>
-                    <TableCell>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${d.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {d.isActive ? "Actif" : "Inactif"}
-                      </span>
-                    </TableCell>
-                    <TableCell>{lastSeenBadge(d.lastSeenAt)}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => toggleDesktopMutation.mutate({ id: d.id, isActive: !d.isActive })}>
+
+        <div className="space-y-3">
+          {(desktops as any[]).length === 0 ? (
+            <Card><CardContent className="py-10 text-center text-muted-foreground text-sm">Aucun kiosk créé</CardContent></Card>
+          ) : (desktops as any[]).map((d: any) => {
+            const url = d.kioskSlug ? kioskUrl(d.kioskSlug) : null;
+            const diff = d.lastSeenAt ? Date.now() - new Date(d.lastSeenAt).getTime() : Infinity;
+            const isOnline = d.isBound && diff < 2 * 60_000;
+
+            return (
+              <Card key={d.id} className={`${!d.isActive ? "opacity-60" : ""}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Left — identity */}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{d.deviceName}</span>
+                        <span className="text-xs text-muted-foreground">{d.branchName ?? "—"}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          !d.isActive ? "bg-gray-100 text-gray-500" :
+                          isOnline ? "bg-green-100 text-green-700" :
+                          d.isBound ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                        }`}>
+                          {!d.isActive ? "Désactivé" : isOnline ? "En ligne" : d.isBound ? "Activé" : "Non activé"}
+                        </span>
+                      </div>
+
+                      {/* Slug URL */}
+                      {url && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <code className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded truncate max-w-xs">{url}</code>
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1"
+                            onClick={() => { navigator.clipboard.writeText(url); toast({ title: "Lien copié !" }); }}>
+                            <Copy className="h-3 w-3" /> Copier
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1"
+                            onClick={() => window.open(url, "_blank")}>
+                            <ExternalLink className="h-3 w-3" /> Ouvrir
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Device info */}
+                      {d.isBound && (
+                        <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
+                          {d.boundDeviceOs && <span>💻 {d.boundDeviceOs}</span>}
+                          {d.boundDeviceBrowser && <span>🌐 {d.boundDeviceBrowser}</span>}
+                          {d.boundDeviceIp && <span>📡 {d.boundDeviceIp}</span>}
+                          <span>🕒 {onlineStatus(d.lastSeenAt, d.isBound)}</span>
+                        </div>
+                      )}
+
+                      {regenSlugId === d.id && (
+                        <div className="flex gap-2 items-center mt-2">
+                          <Input
+                            className="h-7 text-xs w-48 font-mono uppercase"
+                            placeholder="NOUVEAU-SLUG"
+                            value={regenSlugVal}
+                            onChange={e => setRegenSlugVal(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
+                          />
+                          <Button size="sm" className="h-7 text-xs" disabled={!regenSlugVal || regenSlugMutation.isPending}
+                            onClick={() => regenSlugMutation.mutate({ id: d.id, newSlug: regenSlugVal })}>
+                            Confirmer
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setRegenSlugId(null); setRegenSlugVal(""); }}>
+                            Annuler
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right — actions */}
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      {d.isBound && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
+                          onClick={() => { if (confirm("Réinitialiser l'appareil lié ? L'ancien PC devra scanner le QR manuellement.")) resetDeviceMutation.mutate(d.id); }}>
+                          <RotateCcw className="h-3 w-3" /> Reset
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                        onClick={() => { setRegenSlugId(d.id); setRegenSlugVal(d.kioskSlug ?? ""); }}>
+                        <RefreshCw className="h-3 w-3" /> Nouveau slug
+                      </Button>
+                      <Button size="sm" variant="outline" className={`h-7 text-xs ${d.isActive ? "text-red-600 border-red-200 hover:bg-red-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
+                        onClick={() => toggleMutation.mutate({ id: d.id, isActive: !d.isActive })}>
                         {d.isActive ? "Désactiver" : "Activer"}
                       </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {/* Mobile devices */}
       <div>
-        <h3 className="font-semibold flex items-center gap-2 mb-3"><Smartphone className="h-4 w-4" /> Appareils mobiles</h3>
+        <h3 className="font-semibold flex items-center gap-2 mb-3"><Smartphone className="h-4 w-4" /> Appareils mobiles employés</h3>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -711,7 +815,7 @@ function DevicesTab({ branches }: { branches: any[] }) {
                   <TableHead>Appareil</TableHead>
                   <TableHead>Statut</TableHead>
                   <TableHead>Vu le</TableHead>
-                  <TableHead className="w-24"></TableHead>
+                  <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -724,8 +828,7 @@ function DevicesTab({ branches }: { branches: any[] }) {
                     <TableCell>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         m.status === "approved" ? "bg-green-100 text-green-700" :
-                        m.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
+                        m.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
                       }`}>{m.status}</span>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{fmtTime(m.lastSeenAt)}</TableCell>
@@ -750,42 +853,85 @@ function DevicesTab({ branches }: { branches: any[] }) {
         </Card>
       </div>
 
-      {/* Add kiosk dialog */}
-      <Dialog open={addOpen} onOpenChange={o => { setAddOpen(o); if (!o) setCreatedToken(null); }}>
+      {/* Create kiosk dialog */}
+      <Dialog open={addOpen} onOpenChange={o => { setAddOpen(o); if (!o) { setCreatedKiosk(null); } }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nouveau kiosk QR</DialogTitle></DialogHeader>
-          {createdToken ? (
-            <div className="space-y-3">
+          <DialogHeader><DialogTitle>{createdKiosk ? "✅ Kiosk créé" : "Nouveau kiosk QR"}</DialogTitle></DialogHeader>
+
+          {createdKiosk ? (
+            <div className="space-y-4">
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm font-medium text-green-800 mb-1">Appareil créé avec succès !</p>
-                <p className="text-xs text-green-700">Copiez ce token et collez-le dans la page Kiosk de la boutique :</p>
+                <p className="text-sm font-medium text-green-800">Kiosk créé avec succès !</p>
+                <p className="text-xs text-green-700 mt-0.5">Ouvrez ce lien sur le PC de la boutique pour l'activer automatiquement.</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Lien du kiosk</Label>
+                <div className="flex gap-2">
+                  <Input value={kioskUrl(createdKiosk.slug)} readOnly className="text-xs font-mono" />
+                  <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(kioskUrl(createdKiosk.slug)); toast({ title: "Lien copié !" }); }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
               <div className="flex gap-2">
-                <Input value={createdToken} readOnly className="font-mono text-xs" />
-                <Button size="sm" onClick={() => { navigator.clipboard.writeText(createdToken); toast({ title: "Copié !" }); }}>Copier</Button>
+                <Button className="flex-1 gap-2" onClick={() => window.open(kioskUrl(createdKiosk.slug), "_blank")}>
+                  <ExternalLink className="h-4 w-4" /> Ouvrir le kiosk
+                </Button>
+                <Button variant="outline" onClick={() => { setAddOpen(false); setCreatedKiosk(null); }}>Fermer</Button>
               </div>
-              <p className="text-xs text-muted-foreground">Ouvrez <code>/pointage-kiosk</code> sur le PC du kiosk et entrez ce token.</p>
+              <p className="text-xs text-muted-foreground text-center">
+                À la première ouverture, le navigateur sera automatiquement lié à ce kiosk.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
                 <Label>Boutique *</Label>
-                <Select value={newDevice.branchId} onValueChange={v => setNewDevice(f => ({ ...f, branchId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                  <SelectContent>{branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
+                <Select value={newDevice.branchId || "none"} onValueChange={v => {
+                  const b = branches.find(x => String(x.id) === v);
+                  const slugSugg = b ? b.name.toUpperCase().replace(/\s+/g, "-").replace(/[^A-Z0-9-]/g, "").slice(0, 30) : "";
+                  setNewDevice(f => ({ ...f, branchId: v === "none" ? "" : v, kioskSlug: f.kioskSlug || slugSugg }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Choisir une boutique..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Choisir —</SelectItem>
+                    {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
-              <div><Label>Nom de l'appareil</Label><Input placeholder="PC Entrée, Kiosk Reception..." value={newDevice.deviceName} onChange={e => setNewDevice(f => ({ ...f, deviceName: e.target.value }))} /></div>
+              <div>
+                <Label>Nom de l'appareil</Label>
+                <Input placeholder="PC Entrée, Kiosk Reception..." value={newDevice.deviceName} onChange={e => setNewDevice(f => ({ ...f, deviceName: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Slug du kiosk *</Label>
+                <Input
+                  placeholder="BAB-EZZOUAR"
+                  className="font-mono uppercase"
+                  value={newDevice.kioskSlug}
+                  onChange={e => setNewDevice(f => ({ ...f, kioskSlug: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "") }))}
+                />
+                {newDevice.kioskSlug && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Lien : <code className="text-blue-600">{kioskUrl(newDevice.kioskSlug)}</code>
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">Lettres, chiffres et tirets uniquement. Unique dans le système.</p>
+              </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddOpen(false); setCreatedToken(null); }}>Fermer</Button>
-            {!createdToken && (
-              <Button onClick={() => createDesktopMutation.mutate(newDevice)} disabled={!newDevice.branchId || createDesktopMutation.isPending}>
-                Créer le kiosk
+
+          {!createdKiosk && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Annuler</Button>
+              <Button
+                onClick={() => createMutation.mutate(newDevice)}
+                disabled={!newDevice.branchId || !newDevice.kioskSlug || createMutation.isPending}
+              >
+                {createMutation.isPending ? "Création..." : "Créer le kiosk"}
               </Button>
-            )}
-          </DialogFooter>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>

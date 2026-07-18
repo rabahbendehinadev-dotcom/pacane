@@ -52,6 +52,7 @@ import recipesImportRouter from "./recipes-import";
 import workerNotificationsRouter from "./worker-notifications";
 import supportTicketsRouter from "./support-tickets";
 import attendanceRouter from "./attendance";
+import kioskRouter from "./kiosk";
 
 const router: IRouter = Router();
 
@@ -110,5 +111,6 @@ router.use(recipesImportRouter);
 router.use(workerNotificationsRouter);
 router.use(supportTicketsRouter);
 router.use(attendanceRouter);
+router.use(kioskRouter);
 
 export default router;
