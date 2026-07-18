@@ -24,9 +24,14 @@ function fmtDate(ts: string | null | undefined) {
 
 type ScanState = "idle" | "scanning" | "processing" | "success" | "error";
 
+function isMobileDevice(): boolean {
+  return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export default function MonPointagePage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const isMobile = isMobileDevice();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -201,7 +206,7 @@ export default function MonPointagePage() {
         </CardContent>
       </Card>
 
-      {/* QR Scanner */}
+      {/* QR Scanner — mobile only */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -209,86 +214,101 @@ export default function MonPointagePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {scanState === "idle" && (
-            <div className="space-y-3">
-              {settings?.pointageEnabled === false && (
-                <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-                  <span className="text-base leading-none mt-0.5">⚠️</span>
-                  <div>
-                    <p className="font-medium">Pointage non activé</p>
-                    <p className="mt-0.5 text-amber-600">Demandez à votre administrateur d'activer votre compte dans la page "Pointage Employés" → onglet Employés → Modifier.</p>
-                  </div>
-                </div>
-              )}
-              {cameraError && (
-                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{cameraError}</p>
-              )}
-              <Button
-                onClick={startCamera}
-                className="w-full gap-2"
-                size="lg"
-                disabled={settings?.pointageEnabled === false}
-              >
-                <span>📷</span> Ouvrir la caméra et scanner
-              </Button>
-              <p className="text-xs text-center text-muted-foreground">
-                Pointez la caméra vers le QR code affiché sur le kiosk de la boutique
-              </p>
+          {!isMobile ? (
+            /* ── Desktop: scan disabled ───────────────────────────────────── */
+            <div className="py-6 flex flex-col items-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-2xl">📵</div>
+              <div>
+                <p className="font-semibold text-sm text-foreground">Scan non disponible sur ordinateur</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
+                  Le pointage par QR est réservé à votre téléphone enregistré.<br />
+                  Utilisez l'application depuis votre mobile pour scanner.
+                </p>
+              </div>
             </div>
-          )}
-
-          {scanState === "scanning" && (
-            <div className="space-y-3">
-              <div className="relative rounded-xl overflow-hidden bg-gray-950" style={{ aspectRatio: "4/3" }}>
-                <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
-                {/* Scan reticle */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-56 h-56 relative">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-lg" />
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-lg" />
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-lg" />
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-lg" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-full h-0.5 bg-green-400/70 animate-pulse" />
+          ) : (
+            <>
+              {scanState === "idle" && (
+                <div className="space-y-3">
+                  {settings?.pointageEnabled === false && (
+                    <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                      <span className="text-base leading-none mt-0.5">⚠️</span>
+                      <div>
+                        <p className="font-medium">Pointage non activé</p>
+                        <p className="mt-0.5 text-amber-600">Demandez à votre administrateur d'activer votre compte dans la page "Pointage Employés" → onglet Employés → Modifier.</p>
+                      </div>
                     </div>
+                  )}
+                  {cameraError && (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{cameraError}</p>
+                  )}
+                  <Button
+                    onClick={startCamera}
+                    className="w-full gap-2"
+                    size="lg"
+                    disabled={settings?.pointageEnabled === false}
+                  >
+                    <span>📷</span> Ouvrir la caméra et scanner
+                  </Button>
+                  <p className="text-xs text-center text-muted-foreground">
+                    Pointez la caméra vers le QR code affiché sur le kiosk de la boutique
+                  </p>
+                </div>
+              )}
+
+              {scanState === "scanning" && (
+                <div className="space-y-3">
+                  <div className="relative rounded-xl overflow-hidden bg-gray-950" style={{ aspectRatio: "4/3" }}>
+                    <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-56 h-56 relative">
+                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-lg" />
+                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-lg" />
+                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-lg" />
+                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-lg" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-full h-0.5 bg-green-400/70 animate-pulse" />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="absolute bottom-3 left-0 right-0 text-center text-white/70 text-xs">Pointez vers le QR code...</p>
+                  </div>
+                  <canvas ref={canvasRef} className="hidden" />
+                  <Button variant="outline" onClick={() => { stopCamera(); setScanState("idle"); }} className="w-full">
+                    Annuler
+                  </Button>
+                </div>
+              )}
+
+              {scanState === "processing" && (
+                <div className="py-8 flex flex-col items-center gap-3">
+                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-muted-foreground">Enregistrement du pointage...</p>
+                </div>
+              )}
+
+              {scanState === "success" && (
+                <div className="py-6 flex flex-col items-center gap-3 text-center">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl ${scanType === "IN" ? "bg-green-100" : "bg-blue-100"}`}>
+                    {scanType === "IN" ? "✅" : "👋"}
+                  </div>
+                  <div>
+                    <p className={`font-semibold text-lg ${scanType === "IN" ? "text-green-700" : "text-blue-700"}`}>{scanMsg}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{new Date().toLocaleTimeString("fr-DZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
                   </div>
                 </div>
-                <p className="absolute bottom-3 left-0 right-0 text-center text-white/70 text-xs">Pointez vers le QR code...</p>
-              </div>
-              <canvas ref={canvasRef} className="hidden" />
-              <Button variant="outline" onClick={() => { stopCamera(); setScanState("idle"); }} className="w-full">
-                Annuler
-              </Button>
-            </div>
-          )}
+              )}
 
-          {scanState === "processing" && (
-            <div className="py-8 flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">Enregistrement du pointage...</p>
-            </div>
-          )}
-
-          {scanState === "success" && (
-            <div className="py-6 flex flex-col items-center gap-3 text-center">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl ${scanType === "IN" ? "bg-green-100" : "bg-blue-100"}`}>
-                {scanType === "IN" ? "✅" : "👋"}
-              </div>
-              <div>
-                <p className={`font-semibold text-lg ${scanType === "IN" ? "text-green-700" : "text-blue-700"}`}>{scanMsg}</p>
-                <p className="text-sm text-muted-foreground mt-0.5">{new Date().toLocaleTimeString("fr-DZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
-              </div>
-            </div>
-          )}
-
-          {scanState === "error" && (
-            <div className="py-6 flex flex-col items-center gap-3 text-center">
-              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center text-3xl">❌</div>
-              <div>
-                <p className="font-semibold text-red-700">Échec du pointage</p>
-                <p className="text-sm text-muted-foreground mt-0.5">{scanMsg}</p>
-              </div>
-            </div>
+              {scanState === "error" && (
+                <div className="py-6 flex flex-col items-center gap-3 text-center">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center text-3xl">❌</div>
+                  <div>
+                    <p className="font-semibold text-red-700">Échec du pointage</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{scanMsg}</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

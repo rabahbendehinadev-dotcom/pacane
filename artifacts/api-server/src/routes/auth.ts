@@ -22,35 +22,43 @@ async function buildUserResponse(user: typeof import("@workspace/db").usersTable
   return { ...safeUser, roleName, permissions };
 }
 
-// ── Helper: revoke all other approved/unknown devices of same type ────────────
-async function revokeOtherDevicesOfType(userId: number, deviceType: string, keepFingerprint: string): Promise<boolean> {
+// ── Check if user is an admin (exempt from device enforcement) ───────────────
+async function isAdminUser(user: typeof usersTable.$inferSelect): Promise<boolean> {
+  if (user.adminAccess) return true;
+  if (user.roleId) {
+    const [role] = await db.select({ name: rolesTable.name })
+      .from(rolesTable).where(eq(rolesTable.id, user.roleId));
+    const name = role?.name?.toLowerCase() ?? "";
+    if (name === "admin" || name === "administrateur") return true;
+  }
+  return false;
+}
+
+// ── Revoke all OTHER approved/unknown mobiles for this user ──────────────────
+async function revokeOtherMobiles(userId: number, keepFingerprint: string): Promise<boolean> {
   const others = await db.select({ fingerprint: userDevicesTable.fingerprint })
     .from(userDevicesTable)
     .where(and(
       eq(userDevicesTable.userId, userId),
-      eq(userDevicesTable.deviceType, deviceType),
+      eq(userDevicesTable.deviceType, "mobile"),
       ne(userDevicesTable.fingerprint, keepFingerprint),
       or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
     ));
-
   if (others.length === 0) return false;
-
   await db.update(userDevicesTable).set({
-    status: "revoked",
-    revokedAt: new Date(),
-    revokedReason: "Session exclusive — connexion depuis un autre appareil approuvé",
+    status: "revoked", revokedAt: new Date(),
+    revokedReason: "Session exclusive — connexion depuis un autre mobile approuvé",
   }).where(and(
     eq(userDevicesTable.userId, userId),
-    eq(userDevicesTable.deviceType, deviceType),
+    eq(userDevicesTable.deviceType, "mobile"),
     ne(userDevicesTable.fingerprint, keepFingerprint),
     or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
   ));
-
   for (const d of others) {
     await db.insert(deviceEventsTable).values({
-      userId, fingerprint: d.fingerprint, deviceType,
+      userId, fingerprint: d.fingerprint, deviceType: "mobile",
       action: "revoked",
-      reason: "Session exclusive — connexion depuis un autre appareil approuvé",
+      reason: "Session exclusive — connexion depuis un autre mobile approuvé",
     }).catch(() => {});
   }
   return true;
@@ -76,119 +84,118 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip ?? "";
   const deviceInfo = parseUserAgent(ua);
 
-  // ── Use client-provided deviceId (localStorage UUID) as fingerprint ─────────
-  // This is more stable than UA fingerprinting: persists across browser restarts,
-  // different per browser install (Chrome ≠ Firefox), and can't be changed by UA spoofing.
+  // ── Client-provided UUID as fingerprint (stable per browser install) ────────
   const fp = (typeof deviceId === "string" && deviceId.length >= 8)
     ? deviceId.slice(0, 64)
-    : fingerprintUA(ua); // fallback for old clients
+    : fingerprintUA(ua);
 
-  // ── Look up existing device record ──────────────────────────────────────────
-  const [existingDevice] = await db.select().from(userDevicesTable)
-    .where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
+  // ── Admin/Administrateur: bypass all device enforcement ──────────────────────
+  const isAdmin = await isAdminUser(user);
 
-  // ── ENFORCEMENT: block pending / revoked / rejected devices ─────────────────
-  if (existingDevice) {
-    if (existingDevice.status === "pending") {
-      res.status(403).json({
-        error: "Ce compte est déjà lié à un autre appareil. Veuillez contacter l'administration.",
-        code: "DEVICE_PENDING_APPROVAL",
-        deviceType: existingDevice.deviceType,
-        isPending: true,
-      });
-      return;
+  if (!isAdmin) {
+    // ── MOBILE enforcement: 1 mobile per account, strict ──────────────────────
+    if (deviceInfo.deviceType === "mobile") {
+      const [existingDevice] = await db.select().from(userDevicesTable)
+        .where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
+
+      if (existingDevice) {
+        if (existingDevice.status === "pending") {
+          res.status(403).json({
+            error: "Ce compte est déjà lié à un autre appareil. Veuillez contacter l'administration.",
+            code: "DEVICE_PENDING_APPROVAL",
+            deviceType: "mobile",
+            isPending: true,
+          });
+          return;
+        }
+        if (existingDevice.status === "rejected" || existingDevice.status === "revoked") {
+          await db.insert(deviceEventsTable).values({
+            userId: user.id, fingerprint: fp, deviceType: "mobile",
+            action: "failed_login", ip, userAgent: ua.slice(0, 500),
+            meta: `Accès bloqué — appareil ${existingDevice.status}`,
+          }).catch(() => {});
+          res.status(403).json({
+            error: "Accès refusé : cet appareil a été bloqué par l'administration.",
+            code: "DEVICE_BLOCKED",
+          });
+          return;
+        }
+        // approved/unknown → cleanup any duplicate approved mobiles
+        const hadDuplicates = await revokeOtherMobiles(user.id, fp);
+        if (hadDuplicates) {
+          await db.update(usersTable)
+            .set({ tokenVersion: (user.tokenVersion ?? 0) + 1 })
+            .where(eq(usersTable.id, user.id));
+        }
+      } else {
+        // New mobile: check if a mobile is already registered
+        const [activeMobile] = await db.select({ fingerprint: userDevicesTable.fingerprint })
+          .from(userDevicesTable)
+          .where(and(
+            eq(userDevicesTable.userId, user.id),
+            eq(userDevicesTable.deviceType, "mobile"),
+            or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
+          ));
+
+        if (activeMobile) {
+          // Block — insert as pending and notify admin
+          await db.insert(userDevicesTable).values({
+            userId: user.id, fingerprint: fp, ...deviceInfo, ip,
+            userAgent: ua.slice(0, 500), loginCount: 1, status: "pending",
+          }).catch(() => {});
+          await db.insert(deviceEventsTable).values({
+            userId: user.id, fingerprint: fp, deviceType: "mobile",
+            action: "pending_approval", ip, userAgent: ua.slice(0, 500),
+            meta: "Nouveau mobile — en attente d'approbation administrative",
+          }).catch(() => {});
+
+          // Notify admins
+          db.select({ id: usersTable.id }).from(usersTable)
+            .where(and(eq(usersTable.adminAccess, true), eq(usersTable.status, "active")))
+            .then(admins => {
+              for (const admin of admins) {
+                if (admin.id !== user.id) {
+                  sendPushToUser(admin.id, {
+                    title: `📱 Nouveau mobile — Approbation requise`,
+                    body: `${user.name} · ${deviceInfo.deviceName} | IP: ${ip}`,
+                    type: "security", link: "/users",
+                  }).catch(() => {});
+                }
+              }
+            }).catch(() => {});
+
+          res.status(403).json({
+            error: "Ce compte est déjà lié à un autre téléphone. Veuillez contacter l'administration.",
+            code: "DEVICE_PENDING_APPROVAL",
+            deviceType: "mobile",
+            deviceName: deviceInfo.deviceName,
+            isPending: false,
+          });
+          return;
+        }
+      }
     }
-    if (existingDevice.status === "rejected" || existingDevice.status === "revoked") {
-      await db.insert(deviceEventsTable).values({
-        userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
-        action: "failed_login", ip, userAgent: ua.slice(0, 500),
-        meta: `Accès bloqué — appareil ${existingDevice.status}`,
-      }).catch(() => {});
-      res.status(403).json({
-        error: "Accès refusé : cet appareil a été bloqué par l'administration.",
-        code: "DEVICE_BLOCKED",
-      });
-      return;
-    }
-    // ── approved / unknown: login allowed — but enforce 1-per-type ────────────
-    // If there are OTHER approved devices of same type (pre-existing duplicates),
-    // revoke them to enforce the single-device rule going forward.
-    const hadDuplicates = await revokeOtherDevicesOfType(user.id, existingDevice.deviceType, fp);
-    if (hadDuplicates) {
-      // Bump tokenVersion so old sessions on revoked devices are invalidated
-      await db.update(usersTable)
-        .set({ tokenVersion: (user.tokenVersion ?? 0) + 1 })
-        .where(eq(usersTable.id, user.id));
-    }
-  }
-
-  // ── New device: check if user already has an active device of this type ──────
-  if (!existingDevice) {
-    const [activeDevice] = await db.select({ fingerprint: userDevicesTable.fingerprint })
-      .from(userDevicesTable)
-      .where(and(
-        eq(userDevicesTable.userId, user.id),
-        eq(userDevicesTable.deviceType, deviceInfo.deviceType),
-        or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
-      ));
-
-    if (activeDevice) {
-      // Block — insert as pending and notify admin
-      await db.insert(userDevicesTable).values({
-        userId: user.id, fingerprint: fp, ...deviceInfo, ip,
-        userAgent: ua.slice(0, 500), loginCount: 1, status: "pending",
-      }).catch(() => {});
-      await db.insert(deviceEventsTable).values({
-        userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
-        action: "pending_approval", ip, userAgent: ua.slice(0, 500),
-        meta: "Nouvel appareil — en attente d'approbation administrative",
-      }).catch(() => {});
-
-      // Notify admins (fire-and-forget)
-      const label = deviceInfo.deviceType === "mobile" ? "📱 Nouveau mobile" : "💻 Nouveau desktop";
-      db.select({ id: usersTable.id }).from(usersTable)
-        .where(and(eq(usersTable.adminAccess, true), eq(usersTable.status, "active")))
-        .then(admins => {
-          for (const admin of admins) {
-            if (admin.id !== user.id) {
-              sendPushToUser(admin.id, {
-                title: `${label} — Approbation requise`,
-                body: `${user.name} · ${deviceInfo.deviceName} | IP: ${ip}`,
-                type: "security", link: "/users",
-              }).catch(() => {});
-            }
-          }
-        }).catch(() => {});
-
-      const typeLabel = deviceInfo.deviceType === "mobile" ? "mobile" : "ordinateur";
-      res.status(403).json({
-        error: `Ce compte est déjà lié à un autre ${typeLabel}. Veuillez contacter l'administration.`,
-        code: "DEVICE_PENDING_APPROVAL",
-        deviceType: deviceInfo.deviceType,
-        deviceName: deviceInfo.deviceName,
-        isPending: false,
-      });
-      return;
-    }
+    // ── DESKTOP: no enforcement — free login from any computer ───────────────
+    // (no check needed for desktop devices)
   }
 
   // ── Login allowed ────────────────────────────────────────────────────────────
   await db.update(usersTable).set({ lastLogin: new Date() }).where(eq(usersTable.id, user.id));
 
-  // ── Device tracking ──────────────────────────────────────────────────────────
-  const isNewDevice = !existingDevice;
-  let isSuspicious = false;
-  let suspiciousReason: string | null = null;
-
+  // ── Device tracking (non-fatal) ──────────────────────────────────────────────
   try {
-    // Cross-account suspicious detection for new mobile devices
+    const [existingDevice] = await db.select().from(userDevicesTable)
+      .where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
+
+    const isNewDevice = !existingDevice;
+    let isSuspicious = false;
+    let suspiciousReason: string | null = null;
+
+    // Cross-account detection for new mobile devices
     if (deviceInfo.deviceType === "mobile" && isNewDevice) {
       const [crossAccount] = await db.select({ userId: userDevicesTable.userId })
         .from(userDevicesTable)
-        .where(and(
-          eq(userDevicesTable.fingerprint, fp),
-          ne(userDevicesTable.userId, user.id),
-        ));
+        .where(and(eq(userDevicesTable.fingerprint, fp), ne(userDevicesTable.userId, user.id)));
       if (crossAccount) {
         isSuspicious = true;
         suspiciousReason = "Appareil déjà utilisé par un autre compte";
@@ -233,7 +240,9 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       db.select({ id: usersTable.id }).from(usersTable)
         .where(and(eq(usersTable.adminAccess, true), eq(usersTable.status, "active")))
         .then(admins => {
-          const title = isSuspicious ? `🚨 Tentative suspecte — ${user.name}` : `📱 Nouvel appareil — ${user.name}`;
+          const title = isSuspicious
+            ? `🚨 Tentative suspecte — ${user.name}`
+            : `📱 Nouvel appareil — ${user.name}`;
           const body = `${deviceInfo.deviceName} | IP: ${ip}`;
           for (const admin of admins) {
             if (admin.id !== user.id) {
@@ -246,7 +255,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     // Tracking is non-fatal
   }
 
-  // ── Issue token with the LATEST tokenVersion (may have changed during cleanup) ─
+  // ── Issue token with the LATEST tokenVersion ─────────────────────────────────
   const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
   const tv = freshUser?.tokenVersion ?? 0;
   const token = generateToken(user.id, tv);
