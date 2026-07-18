@@ -98,9 +98,16 @@ router.put("/attendance/settings/:userId", requireAuth, requirePermission("point
   const existing = await db.select().from(userAttendanceSettingsTable)
     .where(eq(userAttendanceSettingsTable.userId, targetId));
 
+  // allowedBranchIds is the primary multi-branch array; keep branchId in sync with the first element
+  const allowedBranchIds: number[] | null = Array.isArray(body.allowedBranchIds) && body.allowedBranchIds.length > 0
+    ? body.allowedBranchIds.map(Number).filter(n => !isNaN(n))
+    : null;
+  const primaryBranchId: number | null = allowedBranchIds?.[0] ?? (body.branchId ? Number(body.branchId) : null);
+
   const data = {
     userId: targetId,
-    branchId: body.branchId ?? null,
+    branchId: primaryBranchId,
+    allowedBranchIds: allowedBranchIds,
     pointageEnabled: body.pointageEnabled ?? false,
     workStartTime: body.workStartTime ?? "08:00",
     workEndTime: body.workEndTime ?? "17:00",
@@ -501,13 +508,19 @@ router.post("/attendance/scan", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Pointage désactivé pour ce compte", code: "POINTAGE_DISABLED" });
   }
 
-  // 6. Branch match: if settings.branchId is set it must match; null = no restriction
-  if (settings.branchId !== null && settings.branchId !== qrPayload.branchId) {
+  // 6. Branch match: check against allowedBranchIds array; empty / null = no restriction
+  const allowedBranches: number[] = settings.allowedBranchIds?.length
+    ? settings.allowedBranchIds
+    : (settings.branchId != null ? [settings.branchId] : []);
+  if (allowedBranches.length > 0 && !allowedBranches.includes(qrPayload.branchId)) {
     await writeAuditLog({
       userId: me.id, branchId: qrPayload.branchId, action: "qr_wrong_branch",
-      notes: `User branch: ${settings.branchId}, QR branch: ${qrPayload.branchId}`, ipAddress: req.ip,
+      notes: `Allowed: [${allowedBranches.join(",")}], QR branch: ${qrPayload.branchId}`, ipAddress: req.ip,
     });
-    return res.status(403).json({ error: "Ce QR appartient à une autre boutique", code: "WRONG_BRANCH" });
+    return res.status(403).json({
+      error: "Vous n'êtes pas autorisé à pointer dans cette boutique. Contactez l'administration.",
+      code: "WRONG_BRANCH",
+    });
   }
 
   // 7. Anti-duplicate: no scan in last 60 seconds
@@ -1003,12 +1016,21 @@ router.get("/attendance/users", requireAuth, requirePermission("pointage.view"),
     status: usersTable.status,
     settingsId: userAttendanceSettingsTable.id,
     branchId: userAttendanceSettingsTable.branchId,
+    allowedBranchIds: userAttendanceSettingsTable.allowedBranchIds,
     branchName: branchesTable.name,
     pointageEnabled: userAttendanceSettingsTable.pointageEnabled,
     workStartTime: userAttendanceSettingsTable.workStartTime,
     workEndTime: userAttendanceSettingsTable.workEndTime,
     baseSalary: userAttendanceSettingsTable.baseSalary,
     salaryType: userAttendanceSettingsTable.salaryType,
+    gracePeriodMinutes: userAttendanceSettingsTable.gracePeriodMinutes,
+    lateDeductionType: userAttendanceSettingsTable.lateDeductionType,
+    lateDeductionValue: userAttendanceSettingsTable.lateDeductionValue,
+    absenceDeductionValue: userAttendanceSettingsTable.absenceDeductionValue,
+    earlyLeaveDeductionValue: userAttendanceSettingsTable.earlyLeaveDeductionValue,
+    overtimeRateMultiplier: userAttendanceSettingsTable.overtimeRateMultiplier,
+    autoDeductions: userAttendanceSettingsTable.autoDeductions,
+    adminNotes: userAttendanceSettingsTable.adminNotes,
     mobileDeviceStatus: userAttendanceSettingsTable.mobileDeviceStatus,
   })
   .from(usersTable)

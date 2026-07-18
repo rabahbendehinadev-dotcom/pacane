@@ -407,8 +407,12 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
 
   function openSettings(u: any) {
     setSettingsUser(u);
+    // allowedBranchIds: prefer new multi-branch array, fallback to legacy branchId
+    const allowedBranchIds: number[] = Array.isArray(u.allowedBranchIds) && u.allowedBranchIds.length > 0
+      ? u.allowedBranchIds
+      : (u.branchId ? [u.branchId] : []);
     setForm({
-      branchId: u.branchId ?? "",
+      allowedBranchIds,
       pointageEnabled: u.pointageEnabled ?? false,
       workStartTime: u.workStartTime ?? "08:00",
       workEndTime: u.workEndTime ?? "17:00",
@@ -461,7 +465,22 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
                         <p className="text-xs text-muted-foreground">@{u.username}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{u.branchName ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-sm">
+                      {(() => {
+                        const ids: number[] = Array.isArray(u.allowedBranchIds) && u.allowedBranchIds.length > 0
+                          ? u.allowedBranchIds
+                          : (u.branchId ? [u.branchId] : []);
+                        if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+                        const names = ids.map((id: number) => branches.find((b: any) => b.id === id)?.name ?? `#${id}`);
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {names.map((n: string) => (
+                              <span key={n} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted">{n}</span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${u.pointageEnabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {u.pointageEnabled ? "Activé" : "Désactivé"}
@@ -492,24 +511,51 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
             <DialogTitle>Paramètres de pointage — {settingsUser?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Activation + Branch */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Pointage activé</Label>
-                <Select value={form.pointageEnabled ? "true" : "false"} onValueChange={v => setForm((f: any) => ({ ...f, pointageEnabled: v === "true" }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="true">Oui</SelectItem><SelectItem value="false">Non</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Boutique</Label>
-                <Select value={form.branchId ? String(form.branchId) : "none"} onValueChange={v => setForm((f: any) => ({ ...f, branchId: v === "none" ? null : parseInt(v) }))}>
-                  <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucune</SelectItem>
-                    {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {/* Activation */}
+            <div>
+              <Label>Pointage activé</Label>
+              <Select value={form.pointageEnabled ? "true" : "false"} onValueChange={v => setForm((f: any) => ({ ...f, pointageEnabled: v === "true" }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="true">Oui</SelectItem><SelectItem value="false">Non</SelectItem></SelectContent>
+              </Select>
+            </div>
+
+            {/* Boutiques autorisées — multi-select */}
+            <div>
+              <Label className="mb-2 block">
+                Boutiques autorisées
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {form.allowedBranchIds?.length > 0
+                    ? `${form.allowedBranchIds.length} sélectionnée${form.allowedBranchIds.length > 1 ? "s" : ""}`
+                    : "Aucune restriction"}
+                </span>
+              </Label>
+              <div className="border rounded-lg p-3 space-y-2 max-h-44 overflow-y-auto bg-muted/20">
+                <label className="flex items-center gap-2.5 cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                  <input
+                    type="checkbox"
+                    className="accent-primary w-4 h-4"
+                    checked={!form.allowedBranchIds || form.allowedBranchIds.length === 0}
+                    onChange={() => setForm((f: any) => ({ ...f, allowedBranchIds: [] }))}
+                  />
+                  <span className="italic">Aucune restriction (tous les kiosks)</span>
+                </label>
+                <div className="border-t my-1" />
+                {branches.map((b: any) => (
+                  <label key={b.id} className="flex items-center gap-2.5 cursor-pointer text-sm hover:text-foreground">
+                    <input
+                      type="checkbox"
+                      className="accent-primary w-4 h-4"
+                      checked={form.allowedBranchIds?.includes(b.id) ?? false}
+                      onChange={() => {
+                        const cur: number[] = form.allowedBranchIds ?? [];
+                        const next = cur.includes(b.id) ? cur.filter((x: number) => x !== b.id) : [...cur, b.id];
+                        setForm((f: any) => ({ ...f, allowedBranchIds: next }));
+                      }}
+                    />
+                    <span>{b.name}</span>
+                  </label>
+                ))}
               </div>
             </div>
 

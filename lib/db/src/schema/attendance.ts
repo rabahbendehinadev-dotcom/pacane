@@ -5,6 +5,7 @@ export const userAttendanceSettingsTable = pgTable("user_attendance_settings", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().unique(),
   branchId: integer("branch_id"),
+  allowedBranchIds: integer("allowed_branch_ids").array(),
   pointageEnabled: boolean("pointage_enabled").notNull().default(false),
   workStartTime: text("work_start_time").notNull().default("08:00"),
   workEndTime: text("work_end_time").notNull().default("17:00"),
