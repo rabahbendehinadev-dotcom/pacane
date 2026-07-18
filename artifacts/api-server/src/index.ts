@@ -823,6 +823,16 @@ async function runMigrations() {
       WHERE permissions IS NOT NULL AND 'pointage.admin' != ALL(permissions)
         AND (permissions && ARRAY['*','pointage.*']::text[]);
     `);
+    // Kiosk slug + password system (added after initial deployment)
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS kiosk_slug TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS kiosk_password_hash TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_token TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_ua TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_os TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_browser TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_ip TEXT;`);
+    await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_at TIMESTAMP WITH TIME ZONE;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bdd_kiosk_slug ON branch_desktop_devices (kiosk_slug) WHERE kiosk_slug IS NOT NULL;`);
     // ─────────────────────────────────────────────────────────────────────────
     logger.info("DB migrations applied");
   } catch (err) {

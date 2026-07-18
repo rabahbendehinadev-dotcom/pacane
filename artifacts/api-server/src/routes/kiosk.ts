@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import {
   branchDesktopDevicesTable, qrTokensTable, branchesTable, attendanceAuditLogsTable,
 } from "@workspace/db";
-import { eq, and, lte } from "drizzle-orm";
+import { eq, lte } from "drizzle-orm";
 import crypto from "crypto";
 
 const router = Router();
@@ -24,6 +24,23 @@ function normalizeSlug(s: string): string {
   return s.toUpperCase().trim();
 }
 
+export function hashKioskPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyKioskPassword(password: string, stored: string): boolean {
+  try {
+    const [salt, hash] = stored.split(":");
+    if (!salt || !hash) return false;
+    const candidate = crypto.scryptSync(password, salt, 64).toString("hex");
+    return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(candidate, "hex"));
+  } catch {
+    return false;
+  }
+}
+
 async function getDeviceBySlug(slug: string) {
   const [device] = await db
     .select({
@@ -38,6 +55,7 @@ async function getDeviceBySlug(slug: string) {
       boundDeviceBrowser: branchDesktopDevicesTable.boundDeviceBrowser,
       boundDeviceIp: branchDesktopDevicesTable.boundDeviceIp,
       boundAt: branchDesktopDevicesTable.boundAt,
+      kioskPasswordHash: branchDesktopDevicesTable.kioskPasswordHash,
     })
     .from(branchDesktopDevicesTable)
     .leftJoin(branchesTable, eq(branchesTable.id, branchDesktopDevicesTable.branchId))
@@ -56,48 +74,69 @@ router.get("/kiosk/:slug/status", async (req, res) => {
   const cname = cookieName(slug);
   const cookieToken = (req as any).cookies?.[cname];
 
-  if (!device.boundDeviceToken) {
-    return res.json({ status: "unactivated", branchName: device.branchName, deviceName: device.deviceName });
+  if (device.boundDeviceToken) {
+    if (cookieToken && cookieToken === device.boundDeviceToken) {
+      await db.update(branchDesktopDevicesTable)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(branchDesktopDevicesTable.id, device.id));
+      return res.json({
+        status: "active",
+        branchId: device.branchId,
+        branchName: device.branchName,
+        deviceName: device.deviceName,
+        deviceId: device.id,
+        kioskSlug: device.kioskSlug,
+      });
+    }
+    return res.json({
+      status: "bound_other",
+      error: "Ce kiosk est lié à un autre appareil. Contactez l'administrateur.",
+    });
   }
-
-  if (!cookieToken || cookieToken !== device.boundDeviceToken) {
-    return res.json({ status: "bound_other", error: "Ce kiosk est lié à un autre appareil. Contactez l'administrateur." });
-  }
-
-  await db.update(branchDesktopDevicesTable)
-    .set({ lastSeenAt: new Date() })
-    .where(eq(branchDesktopDevicesTable.id, device.id));
 
   return res.json({
-    status: "active",
-    branchId: device.branchId,
+    status: "need_password",
     branchName: device.branchName,
     deviceName: device.deviceName,
-    deviceId: device.id,
-    kioskSlug: device.kioskSlug,
   });
 });
 
-// ── POST /api/kiosk/:slug/activate ───────────────────────────────────────────
-router.post("/kiosk/:slug/activate", async (req, res) => {
+// ── POST /api/kiosk/:slug/auth — password-based authentication ─────────────
+router.post("/kiosk/:slug/auth", async (req, res) => {
   const slug = normalizeSlug(req.params.slug);
-  const { deviceOs, deviceBrowser } = req.body;
+  const { password, deviceOs, deviceBrowser } = req.body;
+
+  if (!password) return res.status(400).json({ error: "Mot de passe requis", code: "NO_PASSWORD" });
 
   const device = await getDeviceBySlug(slug);
-  if (!device) return res.status(404).json({ error: "Kiosk introuvable" });
+  if (!device) return res.status(404).json({ error: "Kiosk introuvable", code: "NOT_FOUND" });
   if (!device.isActive) return res.status(403).json({ error: "Appareil désactivé", code: "DISABLED" });
+
+  if (!device.kioskPasswordHash || !verifyKioskPassword(password, device.kioskPasswordHash)) {
+    return res.status(401).json({ error: "Mot de passe incorrect", code: "WRONG_PASSWORD" });
+  }
 
   const cname = cookieName(slug);
   const cookieToken = (req as any).cookies?.[cname];
 
   if (device.boundDeviceToken) {
-    if (cookieToken && cookieToken === device.boundDeviceToken) {
+    if (cookieToken === device.boundDeviceToken) {
       await db.update(branchDesktopDevicesTable)
         .set({ lastSeenAt: new Date(), boundDeviceIp: req.ip ?? null })
         .where(eq(branchDesktopDevicesTable.id, device.id));
-      return res.json({ success: true, alreadyBound: true, branchName: device.branchName, deviceName: device.deviceName });
+      res.cookie(cname, cookieToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: COOKIE_MAX_AGE_MS,
+        path: "/",
+      });
+      return res.json({ success: true, branchName: device.branchName, deviceName: device.deviceName });
     }
-    return res.status(403).json({ error: "Ce kiosk est déjà lié à un autre appareil.", code: "ALREADY_BOUND" });
+    return res.status(403).json({
+      error: "Ce kiosk est déjà lié à un autre appareil. Demandez un Reset à l'administrateur.",
+      code: "ALREADY_BOUND",
+    });
   }
 
   const newToken = crypto.randomBytes(32).toString("hex");
@@ -114,7 +153,7 @@ router.post("/kiosk/:slug/activate", async (req, res) => {
   }).where(eq(branchDesktopDevicesTable.id, device.id));
 
   await db.insert(attendanceAuditLogsTable).values({
-    action: "kiosk_device_activated",
+    action: "kiosk_device_authenticated",
     branchId: device.branchId ?? undefined,
     deviceId: String(device.id),
     ipAddress: req.ip ?? null,
@@ -130,7 +169,7 @@ router.post("/kiosk/:slug/activate", async (req, res) => {
     path: "/",
   });
 
-  res.json({ success: true, alreadyBound: false, branchName: device.branchName, deviceName: device.deviceName });
+  res.json({ success: true, branchName: device.branchName, deviceName: device.deviceName });
 });
 
 // ── GET /api/kiosk/:slug/qr ───────────────────────────────────────────────────

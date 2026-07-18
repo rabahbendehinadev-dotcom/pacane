@@ -9,6 +9,7 @@ import { eq, and, desc, gte, lte, inArray, isNull, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
 import crypto from "crypto";
+import { hashKioskPassword, verifyKioskPassword } from "./kiosk";
 
 const router = Router();
 
@@ -591,9 +592,12 @@ router.get("/attendance/devices/desktop", requireAuth, requirePermission("pointa
 // ── POST /api/attendance/devices/desktop ──────────────────────────────────────
 router.post("/attendance/devices/desktop", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
   const me = (req as any).user;
-  const { branchId, deviceName, kioskSlug } = req.body;
+  const { branchId, deviceName, kioskSlug, kioskPassword } = req.body;
   if (!branchId) return res.status(400).json({ error: "branchId requis" });
   if (!kioskSlug) return res.status(400).json({ error: "kioskSlug requis" });
+  if (!kioskPassword || kioskPassword.length < 4) {
+    return res.status(400).json({ error: "Mot de passe requis (4 caractères minimum)" });
+  }
 
   // Validate slug format
   if (!/^[a-zA-Z0-9-]{2,50}$/.test(kioskSlug)) {
@@ -608,11 +612,14 @@ router.post("/attendance/devices/desktop", requireAuth, requirePermission("point
   if (existing) return res.status(409).json({ error: "Ce slug est déjà utilisé" });
 
   const deviceToken = crypto.randomBytes(32).toString("hex");
+  const passwordHash = hashKioskPassword(kioskPassword);
+
   const [device] = await db.insert(branchDesktopDevicesTable).values({
     branchId: parseInt(branchId),
     deviceName: deviceName ?? "Kiosk",
     deviceToken,
     kioskSlug: normalizedSlug,
+    kioskPasswordHash: passwordHash,
     isActive: true,
     activatedByAdminId: me.id,
   }).returning();
@@ -622,7 +629,8 @@ router.post("/attendance/devices/desktop", requireAuth, requirePermission("point
     newValue: { deviceName, kioskSlug: normalizedSlug }, adminId: me.id, ipAddress: req.ip,
   });
 
-  res.status(201).json({ ...device, kioskSlug: normalizedSlug });
+  const { kioskPasswordHash: _omit, ...safeDevice } = device as any;
+  res.status(201).json({ ...safeDevice, kioskSlug: normalizedSlug });
 });
 
 // ── PATCH /api/attendance/devices/desktop/:id ─────────────────────────────────
@@ -645,6 +653,42 @@ router.patch("/attendance/devices/desktop/:id", requireAuth, requirePermission("
     adminId: me.id, ipAddress: req.ip,
   });
   res.json(updated);
+});
+
+// ── PATCH /api/attendance/devices/desktop/:id/password ───────────────────────
+router.patch("/attendance/devices/desktop/:id/password", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+  const me = (req as any).user;
+  const id = parseInt(req.params.id);
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: "Mot de passe trop court (4 caractères minimum)" });
+  }
+
+  const [device] = await db.select({ id: branchDesktopDevicesTable.id })
+    .from(branchDesktopDevicesTable)
+    .where(eq(branchDesktopDevicesTable.id, id));
+  if (!device) return res.status(404).json({ error: "Appareil introuvable" });
+
+  const passwordHash = hashKioskPassword(newPassword);
+
+  await db.update(branchDesktopDevicesTable).set({
+    kioskPasswordHash: passwordHash,
+    boundDeviceToken: null,
+    boundDeviceUa: null,
+    boundDeviceOs: null,
+    boundDeviceBrowser: null,
+    boundDeviceIp: null,
+    boundAt: null,
+  }).where(eq(branchDesktopDevicesTable.id, id));
+
+  await writeAuditLog({
+    userId: me.id, action: "kiosk_password_changed",
+    deviceId: String(id), adminId: me.id, ipAddress: req.ip,
+    notes: "Mot de passe kiosk modifié — appareil lié réinitialisé",
+  });
+
+  res.json({ success: true });
 });
 
 // ── POST /api/attendance/devices/desktop/:id/reset-device ────────────────────

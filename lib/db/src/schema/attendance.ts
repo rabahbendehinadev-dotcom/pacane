@@ -77,6 +77,8 @@ export const branchDesktopDevicesTable = pgTable("branch_desktop_devices", {
   activatedByAdminId: integer("activated_by_admin_id"),
   // Slug-based URL system
   kioskSlug: text("kiosk_slug").unique(),
+  // Password-based auth (scrypt hash: salt:hash)
+  kioskPasswordHash: text("kiosk_password_hash"),
   // Bound device info
   boundDeviceToken: text("bound_device_token"),
   boundDeviceUa: text("bound_device_ua"),

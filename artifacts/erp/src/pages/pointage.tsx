@@ -629,9 +629,13 @@ function DevicesTab({ branches }: { branches: any[] }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [createdKiosk, setCreatedKiosk] = useState<{ slug: string; deviceName: string } | null>(null);
-  const [newDevice, setNewDevice] = useState({ branchId: "", deviceName: "", kioskSlug: "" });
+  const [newDevice, setNewDevice] = useState({ branchId: "", deviceName: "", kioskSlug: "", kioskPassword: "" });
+  const [showNewPwd, setShowNewPwd] = useState(false);
   const [regenSlugId, setRegenSlugId] = useState<number | null>(null);
   const [regenSlugVal, setRegenSlugVal] = useState("");
+  const [changePwdId, setChangePwdId] = useState<number | null>(null);
+  const [changePwdVal, setChangePwdVal] = useState("");
+  const [showChangePwd, setShowChangePwd] = useState(false);
 
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
   const kioskUrl = (slug: string) => `${window.location.origin}${BASE}/kiosk/${slug}`;
@@ -697,6 +701,21 @@ function DevicesTab({ branches }: { branches: any[] }) {
     onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
+  const changePwdMutation = useMutation({
+    mutationFn: async ({ id, newPassword }: { id: number; newPassword: string }) => {
+      const r = await API(`/attendance/devices/desktop/${id}/password`, { method: "PATCH", body: JSON.stringify({ newPassword }) });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+      return r.json();
+    },
+    onSuccess: () => {
+      refetchDesktops();
+      setChangePwdId(null);
+      setChangePwdVal("");
+      toast({ title: "Mot de passe modifié — l'appareil devra se reconnecter" });
+    },
+    onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
+  });
+
   const approveMobileMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       await API(`/attendance/devices/mobile/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
@@ -723,7 +742,7 @@ function DevicesTab({ branches }: { branches: any[] }) {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold flex items-center gap-2"><Monitor className="h-4 w-4" /> Kiosks QR de boutique</h3>
-          <Button size="sm" onClick={() => { setCreatedKiosk(null); setNewDevice({ branchId: "", deviceName: "", kioskSlug: "" }); setAddOpen(true); }} className="gap-1">
+          <Button size="sm" onClick={() => { setCreatedKiosk(null); setNewDevice({ branchId: "", deviceName: "", kioskSlug: "", kioskPassword: "" }); setShowNewPwd(false); setAddOpen(true); }} className="gap-1">
             <Plus className="h-3.5 w-3.5" /> Nouveau kiosk
           </Button>
         </div>
@@ -802,10 +821,14 @@ function DevicesTab({ branches }: { branches: any[] }) {
                     <div className="flex flex-col gap-1.5 shrink-0">
                       {d.isBound && (
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
-                          onClick={() => { if (confirm("Réinitialiser l'appareil lié ? L'ancien PC devra scanner le QR manuellement.")) resetDeviceMutation.mutate(d.id); }}>
+                          onClick={() => { if (confirm("Réinitialiser l'appareil lié ? L'ancien PC devra se reconnecter avec le mot de passe.")) resetDeviceMutation.mutate(d.id); }}>
                           <RotateCcw className="h-3 w-3" /> Reset
                         </Button>
                       )}
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                        onClick={() => { setChangePwdId(d.id); setChangePwdVal(""); setShowChangePwd(false); }}>
+                        🔑 Mot de passe
+                      </Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
                         onClick={() => { setRegenSlugId(d.id); setRegenSlugVal(d.kioskSlug ?? ""); }}>
                         <RefreshCw className="h-3 w-3" /> Nouveau slug
@@ -873,6 +896,46 @@ function DevicesTab({ branches }: { branches: any[] }) {
         </Card>
       </div>
 
+      {/* Change password dialog */}
+      <Dialog open={changePwdId !== null} onOpenChange={o => { if (!o) { setChangePwdId(null); setChangePwdVal(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>🔑 Changer le mot de passe</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">
+              Le nouveau mot de passe sera requis à la prochaine ouverture du kiosk. L'appareil actuellement lié sera automatiquement déconnecté.
+            </p>
+            <div className="relative">
+              <Input
+                type={showChangePwd ? "text" : "password"}
+                placeholder="Nouveau mot de passe (min. 4 caractères)"
+                value={changePwdVal}
+                onChange={e => setChangePwdVal(e.target.value)}
+                className="pr-10"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowChangePwd(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showChangePwd ? "🙈" : "👁️"}
+              </button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setChangePwdId(null); setChangePwdVal(""); }}>Annuler</Button>
+            <Button
+              onClick={() => changePwdId && changePwdMutation.mutate({ id: changePwdId, newPassword: changePwdVal })}
+              disabled={changePwdVal.length < 4 || changePwdMutation.isPending}
+            >
+              {changePwdMutation.isPending ? "Enregistrement..." : "Confirmer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create kiosk dialog */}
       <Dialog open={addOpen} onOpenChange={o => { setAddOpen(o); if (!o) { setCreatedKiosk(null); } }}>
         <DialogContent className="max-w-md">
@@ -900,7 +963,7 @@ function DevicesTab({ branches }: { branches: any[] }) {
                 <Button variant="outline" onClick={() => { setAddOpen(false); setCreatedKiosk(null); }}>Fermer</Button>
               </div>
               <p className="text-xs text-muted-foreground text-center">
-                À la première ouverture, le navigateur sera automatiquement lié à ce kiosk.
+                À la première ouverture, l'opérateur devra saisir le mot de passe configuré.
               </p>
             </div>
           ) : (
@@ -938,6 +1001,26 @@ function DevicesTab({ branches }: { branches: any[] }) {
                 )}
                 <p className="text-xs text-muted-foreground mt-0.5">Lettres, chiffres et tirets uniquement. Unique dans le système.</p>
               </div>
+              <div>
+                <Label>Mot de passe du kiosk *</Label>
+                <div className="relative">
+                  <Input
+                    type={showNewPwd ? "text" : "password"}
+                    placeholder="Minimum 4 caractères"
+                    value={newDevice.kioskPassword}
+                    onChange={e => setNewDevice(f => ({ ...f, kioskPassword: e.target.value }))}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPwd(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showNewPwd ? "🙈" : "👁️"}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">L'opérateur devra saisir ce mot de passe à la première ouverture du kiosk.</p>
+              </div>
             </div>
           )}
 
@@ -946,7 +1029,7 @@ function DevicesTab({ branches }: { branches: any[] }) {
               <Button variant="outline" onClick={() => setAddOpen(false)}>Annuler</Button>
               <Button
                 onClick={() => createMutation.mutate(newDevice)}
-                disabled={!newDevice.branchId || !newDevice.kioskSlug || createMutation.isPending}
+                disabled={!newDevice.branchId || !newDevice.kioskSlug || newDevice.kioskPassword.length < 4 || createMutation.isPending}
               >
                 {createMutation.isPending ? "Création..." : "Créer le kiosk"}
               </Button>
