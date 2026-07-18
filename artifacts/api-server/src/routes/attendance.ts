@@ -802,6 +802,49 @@ router.post("/attendance/devices/desktop/:id/regenerate-slug", requireAuth, requ
   res.json({ success: true, kioskSlug: normalized, device: updated });
 });
 
+// ── DELETE /api/attendance/devices/desktop/:id ───────────────────────────────
+router.delete("/attendance/devices/desktop/:id", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+  const me = (req as any).user;
+  const id = parseInt(req.params.id);
+  const { reason } = req.body ?? {};
+
+  if (!id || isNaN(id)) return res.status(400).json({ error: "ID invalide" });
+
+  const [device] = await db.select({
+    id: branchDesktopDevicesTable.id,
+    branchId: branchDesktopDevicesTable.branchId,
+    branchName: branchesTable.name,
+    deviceName: branchDesktopDevicesTable.deviceName,
+    kioskSlug: branchDesktopDevicesTable.kioskSlug,
+  })
+  .from(branchDesktopDevicesTable)
+  .leftJoin(branchesTable, eq(branchesTable.id, branchDesktopDevicesTable.branchId))
+  .where(eq(branchDesktopDevicesTable.id, id));
+
+  if (!device) return res.status(404).json({ error: "Kiosk introuvable" });
+
+  // Supprimer les QR tokens en attente liés à ce kiosk
+  await db.delete(qrTokensTable).where(eq(qrTokensTable.deviceId, id));
+
+  // Supprimer le kiosk (les enregistrements de pointage conservent leur deviceId orphelin)
+  await db.delete(branchDesktopDevicesTable).where(eq(branchDesktopDevicesTable.id, id));
+
+  // Audit log
+  await writeAuditLog({
+    userId: me.id,
+    adminId: me.id,
+    branchId: device.branchId ?? undefined,
+    action: "kiosk_deleted",
+    deviceId: String(id),
+    ipAddress: req.ip ?? undefined,
+    userAgent: req.headers["user-agent"] ?? undefined,
+    reason: reason ?? undefined,
+    notes: `Kiosk supprimé: "${device.deviceName ?? "?"}" (slug: ${device.kioskSlug ?? "N/A"}, branche: ${device.branchName ?? "?"}) par ${me.name ?? me.username ?? "admin"}`,
+  });
+
+  res.json({ success: true });
+});
+
 // ── GET /api/attendance/devices/mobile ───────────────────────────────────────
 router.get("/attendance/devices/mobile", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
   const devices = await db.select({

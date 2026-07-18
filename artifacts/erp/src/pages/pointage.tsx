@@ -636,6 +636,8 @@ function DevicesTab({ branches }: { branches: any[] }) {
   const [changePwdId, setChangePwdId] = useState<number | null>(null);
   const [changePwdVal, setChangePwdVal] = useState("");
   const [showChangePwd, setShowChangePwd] = useState(false);
+  const [deleteKiosk, setDeleteKiosk] = useState<{ id: number; deviceName: string; branchName: string; kioskSlug: string | null } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
   const kioskUrl = (slug: string) => `${window.location.origin}${BASE}/kiosk/${slug}`;
@@ -712,6 +714,21 @@ function DevicesTab({ branches }: { branches: any[] }) {
       setChangePwdId(null);
       setChangePwdVal("");
       toast({ title: "Mot de passe modifié — l'appareil devra se reconnecter" });
+    },
+    onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const deleteKioskMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const r = await API(`/attendance/devices/desktop/${id}`, { method: "DELETE", body: JSON.stringify({ reason }) });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+      return r.json();
+    },
+    onSuccess: () => {
+      refetchDesktops();
+      setDeleteKiosk(null);
+      setDeleteReason("");
+      toast({ title: "Kiosk supprimé", description: "Le kiosk a été supprimé définitivement. Les anciens pointages sont conservés." });
     },
     onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -836,6 +853,11 @@ function DevicesTab({ branches }: { branches: any[] }) {
                       <Button size="sm" variant="outline" className={`h-7 text-xs ${d.isActive ? "text-red-600 border-red-200 hover:bg-red-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
                         onClick={() => toggleMutation.mutate({ id: d.id, isActive: !d.isActive })}>
                         {d.isActive ? "Désactiver" : "Activer"}
+                      </Button>
+                      <Button size="sm" variant="outline"
+                        className="h-7 text-xs gap-1 text-red-700 border-red-300 hover:bg-red-50 hover:border-red-400 font-medium"
+                        onClick={() => { setDeleteKiosk({ id: d.id, deviceName: d.deviceName ?? "Kiosk", branchName: d.branchName ?? "—", kioskSlug: d.kioskSlug ?? null }); setDeleteReason(""); }}>
+                        <Trash2 className="h-3 w-3" /> Supprimer le kiosk
                       </Button>
                     </div>
                   </div>
@@ -1035,6 +1057,63 @@ function DevicesTab({ branches }: { branches: any[] }) {
               </Button>
             </DialogFooter>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete kiosk confirmation dialog ─────────────────────────── */}
+      <Dialog open={!!deleteKiosk} onOpenChange={o => { if (!o) { setDeleteKiosk(null); setDeleteReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <Trash2 className="h-5 w-5" /> Supprimer le kiosk
+            </DialogTitle>
+          </DialogHeader>
+          {deleteKiosk && (
+            <div className="space-y-4 py-1">
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-red-600 shrink-0" />
+                  <span className="font-semibold text-sm text-red-900">{deleteKiosk.deviceName}</span>
+                </div>
+                <div className="text-xs text-red-700 pl-6">Branche : <span className="font-medium">{deleteKiosk.branchName}</span></div>
+                {deleteKiosk.kioskSlug && (
+                  <div className="text-xs text-red-700 pl-6">Slug : <code className="font-mono bg-red-100 px-1 rounded">{deleteKiosk.kioskSlug}</code></div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">
+                <p className="text-xs font-semibold text-amber-800">⚠️ Cette action est irréversible</p>
+                <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
+                  <li>Le lien du kiosk cessera de fonctionner définitivement</li>
+                  <li>Aucun nouveau QR ou pointage ne sera possible</li>
+                  <li>La liaison appareil / slug sera supprimée</li>
+                  <li>Les anciens pointages seront conservés</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Raison de la suppression <span className="text-muted-foreground">(optionnel)</span></Label>
+                <Input
+                  placeholder="Ex: Kiosk remplacé, fermeture de boutique…"
+                  value={deleteReason}
+                  onChange={e => setDeleteReason(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setDeleteKiosk(null); setDeleteReason(""); }}>
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteKioskMutation.isPending}
+              onClick={() => deleteKiosk && deleteKioskMutation.mutate({ id: deleteKiosk.id, reason: deleteReason })}
+            >
+              {deleteKioskMutation.isPending ? "Suppression…" : "Supprimer définitivement"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
