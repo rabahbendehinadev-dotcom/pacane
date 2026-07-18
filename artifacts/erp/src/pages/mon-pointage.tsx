@@ -168,12 +168,12 @@ export default function MonPointagePage() {
             <div className="h-16 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : !settings?.pointageEnabled ? (
+          ) : settings?.pointageEnabled === false ? (
             <div className="flex items-center gap-3 text-muted-foreground">
               <div className="w-3 h-3 rounded-full bg-gray-300" />
               <div>
-                <p className="text-sm font-medium">Pointage non activé</p>
-                <p className="text-xs">Contactez l'administrateur pour activer votre pointage</p>
+                <p className="text-sm font-medium">Pointage désactivé par l'administration</p>
+                <p className="text-xs">Contactez l'administrateur pour plus d'informations</p>
               </div>
             </div>
           ) : (
@@ -211,9 +211,9 @@ export default function MonPointagePage() {
         <CardContent className="space-y-4">
           {scanState === "idle" && (
             <div className="space-y-3">
-              {!settings?.pointageEnabled && (
+              {settings?.pointageEnabled === false && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Votre pointage n'est pas encore activé. Le scan sera refusé par le serveur.
+                  Votre pointage a été désactivé par l'administration.
                 </p>
               )}
               {cameraError && (

@@ -13,6 +13,33 @@ import { hashKioskPassword, verifyKioskPassword } from "./kiosk";
 
 const router = Router();
 
+// ── Helper: créer les settings de pointage si inexistants ────────────────────
+async function ensureUserAttendanceSettings(userId: number, firstBranchId: number | null) {
+  const [existing] = await db.select().from(userAttendanceSettingsTable)
+    .where(eq(userAttendanceSettingsTable.userId, userId));
+  if (existing) return existing;
+  const [created] = await db.insert(userAttendanceSettingsTable).values({
+    userId,
+    branchId: firstBranchId,
+    pointageEnabled: true,
+    workStartTime: "08:00",
+    workEndTime: "17:00",
+    workDays: ["lun","mar","mer","jeu","ven"] as string[],
+    gracePeriodMinutes: 10,
+    baseSalary: "0",
+    salaryType: "monthly",
+    lateDeductionType: "per_minute",
+    lateDeductionValue: "0",
+    absenceDeductionValue: "0",
+    earlyLeaveDeductionValue: "0",
+    overtimeRateMultiplier: "1.5",
+    maxDeductionPercent: 50,
+    autoDeductions: false,
+    updatedAt: new Date(),
+  }).returning();
+  return created;
+}
+
 // ── HMAC QR secret (from env or fallback for dev) ────────────────────────────
 const QR_SECRET = process.env.QR_HMAC_SECRET ?? "pacane_qr_secret_dev_2024";
 const QR_TTL_MS = 10_000; // 10 seconds
@@ -113,14 +140,8 @@ router.get("/attendance/my-records", requireAuth, async (req, res) => {
   const me = (req as any).user;
   const days = Math.min(parseInt(req.query.days as string) || 30, 90);
 
-  const [settings] = await db.select({
-    pointageEnabled: userAttendanceSettingsTable.pointageEnabled,
-    branchId: userAttendanceSettingsTable.branchId,
-    workStartTime: userAttendanceSettingsTable.workStartTime,
-    workEndTime: userAttendanceSettingsTable.workEndTime,
-    gracePeriodMinutes: userAttendanceSettingsTable.gracePeriodMinutes,
-  }).from(userAttendanceSettingsTable)
-    .where(eq(userAttendanceSettingsTable.userId, me.id));
+  const firstBranchId = (me.branchIds && me.branchIds.length > 0) ? me.branchIds[0] : null;
+  const settings = await ensureUserAttendanceSettings(me.id, firstBranchId);
 
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -473,15 +494,15 @@ router.post("/attendance/scan", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Appareil de branche désactivé", code: "DEVICE_INACTIVE" });
   }
 
-  // 5. Get user's attendance settings
-  const [settings] = await db.select().from(userAttendanceSettingsTable)
-    .where(eq(userAttendanceSettingsTable.userId, me.id));
-  if (!settings?.pointageEnabled) {
-    return res.status(403).json({ error: "Pointage non activé pour ce compte", code: "POINTAGE_DISABLED" });
+  // 5. Get or auto-create user's attendance settings
+  const firstBranchId = (me.branchIds && me.branchIds.length > 0) ? me.branchIds[0] : null;
+  const settings = await ensureUserAttendanceSettings(me.id, firstBranchId);
+  if (settings.pointageEnabled === false) {
+    return res.status(403).json({ error: "Pointage désactivé pour ce compte", code: "POINTAGE_DISABLED" });
   }
 
-  // 6. Branch match: QR branch must match user's branch
-  if (settings.branchId !== qrPayload.branchId) {
+  // 6. Branch match: if settings.branchId is set it must match; null = no restriction
+  if (settings.branchId !== null && settings.branchId !== qrPayload.branchId) {
     await writeAuditLog({
       userId: me.id, branchId: qrPayload.branchId, action: "qr_wrong_branch",
       notes: `User branch: ${settings.branchId}, QR branch: ${qrPayload.branchId}`, ipAddress: req.ip,

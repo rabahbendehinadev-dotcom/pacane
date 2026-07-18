@@ -833,6 +833,31 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_ip TEXT;`);
     await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_at TIMESTAMP WITH TIME ZONE;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bdd_kiosk_slug ON branch_desktop_devices (kiosk_slug) WHERE kiosk_slug IS NOT NULL;`);
+    // Auto-create attendance settings for all existing users who don't have them
+    await db.execute(sql`
+      INSERT INTO user_attendance_settings (
+        user_id, branch_id, pointage_enabled,
+        work_start_time, work_end_time, work_days,
+        grace_period_minutes, base_salary, salary_type,
+        late_deduction_type, late_deduction_value, absence_deduction_value,
+        early_leave_deduction_value, overtime_rate_multiplier,
+        max_deduction_percent, auto_deductions, updated_at
+      )
+      SELECT
+        u.id,
+        CASE WHEN array_length(u.branch_ids, 1) > 0 THEN u.branch_ids[1] ELSE NULL END,
+        true,
+        '08:00', '17:00', ARRAY['lun','mar','mer','jeu','ven']::text[],
+        10, 0, 'monthly',
+        'per_minute', 0, 0,
+        0, 1.5,
+        50, false, NOW()
+      FROM users u
+      WHERE NOT EXISTS (
+        SELECT 1 FROM user_attendance_settings uas WHERE uas.user_id = u.id
+      )
+      AND u.status = 'active';
+    `);
     // ─────────────────────────────────────────────────────────────────────────
     logger.info("DB migrations applied");
   } catch (err) {
