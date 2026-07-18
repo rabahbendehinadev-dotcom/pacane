@@ -32,6 +32,7 @@ export * from "./preparation-orders";
 export * from "./branch-sellers";
 export * from "./checklist";
 export * from "./hr";
+export * from "./attendance";
 export {
   workerAttendanceTable, workerWarningsTable, workerBonusesTable,
   workerNotificationsTable, workerSalariesTable, workerRequestsTable,

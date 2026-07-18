@@ -27,6 +27,7 @@ export const P = {
   preparationOrders: { view: "preparation_orders.view", create: "preparation_orders.create", send: "preparation_orders.send", cancel: "preparation_orders.cancel", print: "preparation_orders.print" },
   myPreparations:  { view: "my_preparations.view", updateStatus: "my_preparations.update_status" },
   checklist:       { manage: "checklist.manage" },
+  pointage:        { view: "pointage.view", admin: "pointage.admin", selfView: "pointage.self_view" },
 } as const;
 
 export function hasPermission(permissions: string[], permission: string): boolean {
@@ -65,6 +66,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   "Gérant": [
     "dashboard.view",
     "branches.view",
+    "pointage.*",
     "users.view", "users.create", "users.edit", "users.suspend",
     "contacts.*",
     "products.*",

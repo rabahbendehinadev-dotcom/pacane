@@ -82,12 +82,14 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "@uppy/aws-s3": "^5.1.0",
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.1",
     "@uppy/react": "^5.2.0",
     "exceljs": "^4.4.0",
     "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.7"
+    "jspdf-autotable": "^5.0.7",
+    "qrcode": "^1.5.4"
   }
 }

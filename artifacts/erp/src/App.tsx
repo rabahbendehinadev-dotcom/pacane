@@ -60,6 +60,8 @@ import ReportProblemPage from "@/pages/report-problem";
 import MyTicketsPage from "@/pages/my-tickets";
 import AdminTicketsPage from "@/pages/admin-tickets";
 import NotificationStatusPage from "@/pages/notification-status";
+import PointagePage from "@/pages/pointage";
+import PointageKioskPage from "@/pages/pointage-kiosk";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -259,6 +261,10 @@ function AppRoutes() {
       <Route path="/notification-status">
         <DashboardLayout><NotificationStatusPage /></DashboardLayout>
       </Route>
+      <Route path="/pointage">
+        <DashboardLayout><PointagePage /></DashboardLayout>
+      </Route>
+      <Route path="/pointage-kiosk" component={PointageKioskPage} />
 
       <Route component={NotFound} />
     </Switch>

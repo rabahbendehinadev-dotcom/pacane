@@ -684,6 +684,146 @@ async function runMigrations() {
       );
     `);
 
+    // ── Pointage Employés tables ──────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS user_attendance_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE,
+        branch_id INTEGER,
+        pointage_enabled BOOLEAN NOT NULL DEFAULT false,
+        work_start_time TEXT NOT NULL DEFAULT '08:00',
+        work_end_time TEXT NOT NULL DEFAULT '17:00',
+        work_days TEXT[] NOT NULL DEFAULT ARRAY['lun','mar','mer','jeu','ven'],
+        grace_period_minutes INTEGER NOT NULL DEFAULT 10,
+        base_salary NUMERIC(15,2) NOT NULL DEFAULT 0,
+        salary_type TEXT NOT NULL DEFAULT 'monthly',
+        late_deduction_type TEXT NOT NULL DEFAULT 'per_minute',
+        late_deduction_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+        absence_deduction_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+        early_leave_deduction_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+        overtime_rate_multiplier NUMERIC(5,2) NOT NULL DEFAULT 1.5,
+        max_deduction_percent INTEGER NOT NULL DEFAULT 50,
+        auto_deductions BOOLEAN NOT NULL DEFAULT false,
+        approved_mobile_device_id TEXT,
+        mobile_device_status TEXT NOT NULL DEFAULT 'none',
+        admin_notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_records (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        branch_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'present',
+        qr_token_nonce TEXT,
+        mobile_device_id TEXT,
+        latitude NUMERIC(10,7),
+        longitude NUMERIC(10,7),
+        location_accuracy NUMERIC(10,2),
+        ip_address TEXT,
+        late_minutes INTEGER,
+        early_leave_minutes INTEGER,
+        overtime_minutes INTEGER,
+        selfie_data TEXT,
+        is_suspicious BOOLEAN NOT NULL DEFAULT false,
+        suspicious_reason TEXT,
+        corrected_by_admin_id INTEGER,
+        correction_reason TEXT,
+        original_timestamp TIMESTAMP WITH TIME ZONE,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_attendance_records_user_id ON attendance_records(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_attendance_records_timestamp ON attendance_records(timestamp);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_attendance_records_branch_id ON attendance_records(branch_id);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS employee_mobile_devices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL UNIQUE,
+        device_name TEXT,
+        user_agent TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_by_admin_id INTEGER,
+        approved_at TIMESTAMP WITH TIME ZONE,
+        revoked_at TIMESTAMP WITH TIME ZONE,
+        last_seen_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS branch_desktop_devices (
+        id SERIAL PRIMARY KEY,
+        branch_id INTEGER NOT NULL,
+        device_token TEXT NOT NULL UNIQUE,
+        device_name TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        activated_by_admin_id INTEGER,
+        last_seen_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS qr_tokens (
+        id SERIAL PRIMARY KEY,
+        branch_id INTEGER NOT NULL,
+        device_id INTEGER NOT NULL,
+        nonce TEXT NOT NULL UNIQUE,
+        hmac TEXT NOT NULL,
+        issued_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        used_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_qr_tokens_expires_at ON qr_tokens(expires_at);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS salary_adjustments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        type TEXT NOT NULL,
+        amount NUMERIC(15,2) NOT NULL,
+        reason TEXT,
+        created_by_admin_id INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_audit_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        target_user_id INTEGER,
+        branch_id INTEGER,
+        action TEXT NOT NULL,
+        previous_value JSONB,
+        new_value JSONB,
+        device_id TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        admin_id INTEGER,
+        reason TEXT,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      UPDATE roles SET permissions = array_append(permissions, 'pointage.view')
+      WHERE permissions IS NOT NULL AND 'pointage.view' != ALL(permissions)
+        AND (permissions && ARRAY['*','pointage.*']::text[]);
+    `);
+    await db.execute(sql`
+      UPDATE roles SET permissions = array_append(permissions, 'pointage.admin')
+      WHERE permissions IS NOT NULL AND 'pointage.admin' != ALL(permissions)
+        AND (permissions && ARRAY['*','pointage.*']::text[]);
+    `);
+    // ─────────────────────────────────────────────────────────────────────────
     logger.info("DB migrations applied");
   } catch (err) {
     logger.warn({ err }, "Migration warning (non-fatal)");
