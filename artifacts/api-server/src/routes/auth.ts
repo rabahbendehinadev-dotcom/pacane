@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, rolesTable } from "@workspace/db";
 import { userDevicesTable, deviceEventsTable, userDeviceSettingsTable } from "@workspace/db";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, or } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
 import { parseUserAgent, fingerprintUA, getIpLocation } from "../lib/device-detection";
 import { sendPushToUser } from "../lib/push-service";
@@ -42,19 +42,21 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const fp = fingerprintUA(ua);
   const deviceInfo = parseUserAgent(ua);
 
-  // ── Load device settings ────────────────────────────────────────────────────
-  const [deviceSettings] = await db.select().from(userDeviceSettingsTable)
-    .where(eq(userDeviceSettingsTable.userId, user.id));
-  const dSettings = deviceSettings ?? { enforcementMode: false, requireMobileBinding: true, maxDesktopDevices: 3, singleMobileSession: false };
-
   // ── Query existing device record ────────────────────────────────────────────
   const [existingDevice] = await db.select().from(userDevicesTable)
     .where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
 
-  // ── Enforcement checks (fatal — can block login) ────────────────────────────
-  if (dSettings.enforcementMode) {
-    // Block if device was rejected or revoked
-    if (existingDevice && (existingDevice.status === "rejected" || existingDevice.status === "revoked")) {
+  // ── Hard enforcement (always active — 1 mobile + 1 desktop per account) ────
+  if (existingDevice) {
+    if (existingDevice.status === "pending") {
+      res.status(403).json({
+        error: "Cet appareil est en attente d'approbation de l'administration.",
+        code: "DEVICE_PENDING_APPROVAL",
+        deviceType: existingDevice.deviceType,
+      });
+      return;
+    }
+    if (existingDevice.status === "rejected" || existingDevice.status === "revoked") {
       await db.insert(deviceEventsTable).values({
         userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
         action: "failed_login", ip, userAgent: ua.slice(0, 500),
@@ -63,43 +65,51 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       res.status(403).json({ error: "Accès refusé : cet appareil a été bloqué par l'administration.", code: "DEVICE_BLOCKED" });
       return;
     }
-    // Mobile binding: if user already has a different approved mobile, block
-    if (deviceInfo.deviceType === "mobile" && dSettings.requireMobileBinding) {
-      const [approvedMobile] = await db.select().from(userDevicesTable)
-        .where(and(
-          eq(userDevicesTable.userId, user.id),
-          eq(userDevicesTable.deviceType, "mobile"),
-          eq(userDevicesTable.status, "approved"),
-          ne(userDevicesTable.fingerprint, fp),
-        ));
-      if (approvedMobile) {
-        await db.insert(deviceEventsTable).values({
-          userId: user.id, fingerprint: fp, deviceType: "mobile",
-          action: "failed_login", ip, userAgent: ua.slice(0, 500),
-          meta: "Mobile non autorisé — un autre mobile est déjà approuvé",
+  }
+
+  if (!existingDevice) {
+    // New device: check if user already has an active device of this type (1-per-type rule)
+    const [activeDevice] = await db.select({ fingerprint: userDevicesTable.fingerprint })
+      .from(userDevicesTable)
+      .where(and(
+        eq(userDevicesTable.userId, user.id),
+        eq(userDevicesTable.deviceType, deviceInfo.deviceType),
+        or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
+      ));
+    if (activeDevice) {
+      // Insert new device as pending and block login
+      await db.insert(userDevicesTable).values({
+        userId: user.id, fingerprint: fp, ...deviceInfo, ip,
+        userAgent: ua.slice(0, 500), loginCount: 1, status: "pending",
+      }).catch(() => {});
+      await db.insert(deviceEventsTable).values({
+        userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
+        action: "pending_approval", ip, userAgent: ua.slice(0, 500),
+        meta: "Nouvel appareil — en attente d'approbation administrative",
+      }).catch(() => {});
+      // Notify admins (fire-and-forget)
+      const label = deviceInfo.deviceType === "mobile" ? "📱 Nouveau mobile" : "💻 Nouveau desktop";
+      db.select({ id: usersTable.id }).from(usersTable)
+        .where(and(eq(usersTable.adminAccess, true), eq(usersTable.status, "active")))
+        .then(admins => {
+          for (const admin of admins) {
+            if (admin.id !== user.id) {
+              sendPushToUser(admin.id, {
+                title: `${label} — Approbation requise`,
+                body: `${user.name} · ${deviceInfo.deviceName} | IP: ${ip}`,
+                type: "security", link: "/users",
+              }).catch(() => {});
+            }
+          }
         }).catch(() => {});
-        res.status(403).json({ error: "Accès refusé : seul l'appareil mobile autorisé peut se connecter. Contactez l'administration.", code: "MOBILE_BINDING_REQUIRED" });
-        return;
-      }
-    }
-    // Cross-account block: same mobile fingerprint approved elsewhere
-    if (deviceInfo.deviceType === "mobile") {
-      const [otherUserDevice] = await db.select({ userId: userDevicesTable.userId })
-        .from(userDevicesTable)
-        .where(and(
-          eq(userDevicesTable.fingerprint, fp),
-          eq(userDevicesTable.status, "approved"),
-          ne(userDevicesTable.userId, user.id),
-        ));
-      if (otherUserDevice) {
-        await db.insert(deviceEventsTable).values({
-          userId: user.id, fingerprint: fp, deviceType: "mobile",
-          action: "failed_login", ip, userAgent: ua.slice(0, 500),
-          meta: "Appareil déjà approuvé pour un autre compte",
-        }).catch(() => {});
-        res.status(403).json({ error: "Cet appareil est déjà associé à un autre compte.", code: "DEVICE_CONFLICT" });
-        return;
-      }
+      const typeLabel = deviceInfo.deviceType === "mobile" ? "mobile" : "ordinateur";
+      res.status(403).json({
+        error: `Un ${typeLabel} est déjà enregistré sur ce compte. Ce nouvel appareil nécessite l'approbation de l'administration.`,
+        code: "DEVICE_PENDING_APPROVAL",
+        deviceType: deviceInfo.deviceType,
+        deviceName: deviceInfo.deviceName,
+      });
+      return;
     }
   }
 
@@ -129,6 +139,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       await db.insert(userDevicesTable).values({
         userId: user.id, fingerprint: fp, ...deviceInfo, ip,
         userAgent: ua.slice(0, 500), loginCount: 1,
+        status: "approved",
         isSuspicious, suspiciousReason,
       });
       await db.insert(deviceEventsTable).values({

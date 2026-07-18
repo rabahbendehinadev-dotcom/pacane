@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useGetUsers, useCreateUser, useUpdateUser, useGetRoles, useGetBranches, User, getGetUsersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, Edit2, UserCircle, Trash2, Shield, Monitor, Smartphone, Clock, AlertTriangle, CheckCircle, XCircle, LogOut, RefreshCw, MapPin, ChevronDown, Save } from "lucide-react";
+import { Plus, Edit2, UserCircle, Trash2, Shield, Monitor, Smartphone, Clock, AlertTriangle, CheckCircle, XCircle, LogOut, RefreshCw, MapPin, Bell } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -28,7 +26,7 @@ interface DeviceRecord {
   os: string | null; osVersion: string | null; browser: string | null; browserVersion: string | null;
   userAgent: string | null; ip: string | null; location: string | null;
   loginCount: number; firstSeenAt: string; lastSeenAt: string;
-  status: "unknown" | "approved" | "rejected" | "revoked";
+  status: "unknown" | "approved" | "rejected" | "revoked" | "pending";
   revokedAt: string | null; revokedByAdminId: number | null; revokedReason: string | null;
   isSuspicious: boolean; suspiciousReason: string | null;
 }
@@ -37,11 +35,6 @@ interface DeviceEvent {
   id: number; userId: number; fingerprint: string | null; deviceType: string | null;
   action: string; adminId: number | null; reason: string | null;
   ip: string | null; userAgent: string | null; meta: string | null; createdAt: string;
-}
-
-interface DeviceSettings {
-  userId?: number; maxDesktopDevices: number; requireMobileBinding: boolean;
-  singleMobileSession: boolean; enforcementMode: boolean;
 }
 
 interface ActionModal {
@@ -62,6 +55,7 @@ function deviceStatusBadge(status: string, isSuspicious: boolean) {
   const m: Record<string, React.ReactNode> = {
     unknown: <Badge variant="outline" className="text-xs text-gray-500">Inconnu</Badge>,
     approved: <Badge className="text-xs bg-green-100 text-green-700 border-green-200 gap-1"><CheckCircle className="h-3 w-3" />Approuvé</Badge>,
+    pending: <Badge className="text-xs bg-yellow-100 text-yellow-700 border-yellow-200 gap-1"><Clock className="h-3 w-3" />En attente</Badge>,
     rejected: <Badge className="text-xs bg-red-100 text-red-700 border-red-200 gap-1"><XCircle className="h-3 w-3" />Rejeté</Badge>,
     revoked: <Badge className="text-xs bg-gray-100 text-gray-500 border-gray-200">Révoqué</Badge>,
   };
@@ -77,6 +71,7 @@ function actionLabel(action: string) {
   const m: Record<string, string> = {
     login: "Connexion", new_device: "Nouvel appareil", failed_login: "Tentative échouée",
     approved: "Approuvé", rejected: "Rejeté", revoked: "Révoqué",
+    pending_approval: "En attente d'approbation",
     reset_mobile: "Reset mobile", reset_desktop: "Reset desktop",
     disconnect_all: "Déconnexion forcée",
   };
@@ -86,6 +81,7 @@ function actionLabel(action: string) {
 function actionColor(action: string) {
   if (action === "failed_login") return "bg-red-50 border-l-2 border-red-400";
   if (action === "new_device") return "bg-blue-50 border-l-2 border-blue-400";
+  if (action === "pending_approval") return "bg-yellow-50 border-l-2 border-yellow-400";
   if (action === "approved") return "bg-green-50 border-l-2 border-green-400";
   if (action === "reset_mobile" || action === "reset_desktop" || action === "disconnect_all") return "bg-orange-50 border-l-2 border-orange-400";
   return "hover:bg-muted/30";
@@ -97,6 +93,9 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
   const [showReason, setShowReason] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState("");
 
+  const isPending = device.status === "pending";
+  const isInactive = device.status === "revoked" || device.status === "rejected";
+
   function handleAction(status: string) {
     if (status === "approved") { onPatch(status, ""); return; }
     setShowReason(status); setReasonText("");
@@ -107,9 +106,16 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
   }
 
   return (
-    <div className={`border rounded-lg p-3 ${device.isSuspicious ? "border-orange-200 bg-orange-50/50" : device.status === "revoked" || device.status === "rejected" ? "opacity-70 bg-gray-50" : "bg-card"}`}>
+    <div className={`border rounded-lg p-3 ${
+      isPending ? "border-yellow-300 bg-yellow-50/50" :
+      device.isSuspicious ? "border-orange-200 bg-orange-50/50" :
+      isInactive ? "opacity-70 bg-gray-50" : "bg-card"
+    }`}>
       <div className="flex items-start gap-3">
-        <div className={`mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${device.deviceType === "mobile" ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"}`}>
+        <div className={`mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+          isPending ? "bg-yellow-100 text-yellow-600" :
+          device.deviceType === "mobile" ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"
+        }`}>
           {device.deviceType === "mobile" ? <Smartphone className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
         </div>
         <div className="flex-1 min-w-0">
@@ -120,14 +126,19 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {device.ip && <span className="font-mono">IP: {device.ip}</span>}
             {device.location && <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{device.location}</span>}
-            <span>{device.loginCount} connexion{device.loginCount !== 1 ? "s" : ""}</span>
-            <span>Dernier: {formatDate(device.lastSeenAt)}</span>
+            {!isPending && <span>{device.loginCount} connexion{device.loginCount !== 1 ? "s" : ""}</span>}
+            <span>{isPending ? "Soumis" : "Dernier"}: {formatDate(device.lastSeenAt)}</span>
             <span>Premier: {formatDate(device.firstSeenAt)}</span>
           </div>
+          {isPending && (
+            <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
+              <Bell className="h-3 w-3 shrink-0" />En attente de décision administrative
+            </p>
+          )}
           {device.isSuspicious && device.suspiciousReason && (
             <p className="text-xs text-orange-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" />{device.suspiciousReason}</p>
           )}
-          {(device.status === "revoked" || device.status === "rejected") && device.revokedReason && (
+          {(isInactive) && device.revokedReason && (
             <p className="text-xs text-muted-foreground mt-1">Raison : {device.revokedReason}</p>
           )}
           {showReason && (
@@ -141,33 +152,46 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
           )}
         </div>
         {!showReason && (
-          <div className="flex gap-1 shrink-0">
-            {device.status !== "approved" && (
-              <TooltipProvider><Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" disabled={disabled} onClick={() => handleAction("approved")}>
-                    <CheckCircle className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger><TooltipContent>Approuver</TooltipContent>
-              </Tooltip></TooltipProvider>
-            )}
-            {device.status !== "rejected" && device.status !== "revoked" && (
-              <TooltipProvider><Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:bg-red-50" disabled={disabled} onClick={() => handleAction("rejected")}>
-                    <XCircle className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger><TooltipContent>Rejeter</TooltipContent>
-              </Tooltip></TooltipProvider>
-            )}
-            {device.status !== "revoked" && (
-              <TooltipProvider><Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-500 hover:bg-gray-100" disabled={disabled} onClick={() => handleAction("revoked")}>
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger><TooltipContent>Révoquer</TooltipContent>
-              </Tooltip></TooltipProvider>
+          <div className="flex gap-1.5 shrink-0">
+            {isPending ? (
+              <>
+                <Button size="sm" className="text-xs h-7 px-3 bg-green-600 hover:bg-green-700 text-white gap-1.5" disabled={disabled} onClick={() => handleAction("approved")}>
+                  <CheckCircle className="h-3.5 w-3.5" />Approuver
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs h-7 px-3 text-red-600 border-red-200 hover:bg-red-50 gap-1.5" disabled={disabled} onClick={() => handleAction("rejected")}>
+                  <XCircle className="h-3.5 w-3.5" />Rejeter
+                </Button>
+              </>
+            ) : (
+              <>
+                {device.status !== "approved" && device.status !== "unknown" && (
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" disabled={disabled} onClick={() => handleAction("approved")}>
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger><TooltipContent>Approuver</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                )}
+                {device.status !== "rejected" && device.status !== "revoked" && (
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:bg-red-50" disabled={disabled} onClick={() => handleAction("rejected")}>
+                        <XCircle className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger><TooltipContent>Rejeter</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                )}
+                {device.status !== "revoked" && (
+                  <TooltipProvider><Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-500 hover:bg-gray-100" disabled={disabled} onClick={() => handleAction("revoked")}>
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger><TooltipContent>Révoquer</TooltipContent>
+                  </Tooltip></TooltipProvider>
+                )}
+              </>
             )}
           </div>
         )}
@@ -209,8 +233,6 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const qc = useQueryClient();
   const token = () => localStorage.getItem("erp_token") ?? "";
   const [actionModal, setActionModal] = useState<ActionModal | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [localSettings, setLocalSettings] = useState<DeviceSettings | null>(null);
 
   const { data: devices = [], isLoading: devicesLoading } = useQuery<DeviceRecord[]>({
     queryKey: ["user-devices", user.id],
@@ -226,32 +248,6 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
       const r = await fetch(`/api/users/${user.id}/device-events`, { headers: { Authorization: `Bearer ${token()}` } });
       return r.ok ? r.json() : [];
     },
-  });
-
-  const { data: deviceSettings } = useQuery<DeviceSettings>({
-    queryKey: ["user-device-settings", user.id],
-    queryFn: async () => {
-      const r = await fetch(`/api/users/${user.id}/device-settings`, { headers: { Authorization: `Bearer ${token()}` } });
-      return r.ok ? r.json() : { maxDesktopDevices: 3, requireMobileBinding: true, singleMobileSession: false, enforcementMode: false };
-    },
-  });
-
-  useEffect(() => { if (deviceSettings && !localSettings) setLocalSettings(deviceSettings); }, [deviceSettings]);
-
-  const currentSettings = localSettings ?? deviceSettings ?? { maxDesktopDevices: 3, requireMobileBinding: true, singleMobileSession: false, enforcementMode: false };
-
-  const saveSettings = useMutation({
-    mutationFn: async (s: DeviceSettings) => {
-      const r = await fetch(`/api/users/${user.id}/device-settings`, {
-        method: "PUT", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((data as any).error ?? "Erreur");
-      return data;
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["user-device-settings", user.id] }); toast({ title: "Paramètres enregistrés" }); },
-    onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
   const patchDevice = useMutation({
@@ -310,23 +306,30 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
     onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
-  const mobiles = devices.filter(d => d.deviceType === "mobile");
-  const desktops = devices.filter(d => d.deviceType === "desktop");
+  const pendingDevices = devices.filter(d => d.status === "pending");
+  const mobiles = devices.filter(d => d.deviceType === "mobile" && d.status !== "pending");
+  const desktops = devices.filter(d => d.deviceType === "desktop" && d.status !== "pending");
   const suspiciousDevices = devices.filter(d => d.isSuspicious);
   const failedLogins = events.filter(e => e.action === "failed_login");
+  const pendingEvents = events.filter(e => e.action === "pending_approval");
   const suspiciousCount = new Set([...suspiciousDevices.map(d => d.fingerprint), ...failedLogins.map(e => e.fingerprint ?? "")]).size;
 
-  const anyPending = patchDevice.isPending || resetMobile.isPending || resetDesktop.isPending || disconnectAll.isPending || saveSettings.isPending;
+  const anyPending = patchDevice.isPending || resetMobile.isPending || resetDesktop.isPending || disconnectAll.isPending;
 
   return (
     <>
       <Dialog open onOpenChange={() => onClose()}>
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
               <Shield className="h-4 w-4 text-primary" />
               Appareils et sécurité —{" "}
               <span className="font-normal text-muted-foreground">{user.name}</span>
+              {pendingDevices.length > 0 && (
+                <Badge className="ml-1 text-xs bg-yellow-100 text-yellow-700 border-yellow-200 gap-1">
+                  <Clock className="h-3 w-3" />{pendingDevices.length} en attente
+                </Badge>
+              )}
               {suspiciousCount > 0 && (
                 <Badge className="ml-1 text-xs bg-orange-100 text-orange-700 border-orange-200 gap-1">
                   <AlertTriangle className="h-3 w-3" />{suspiciousCount} suspect{suspiciousCount > 1 ? "s" : ""}
@@ -335,10 +338,12 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
             </DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="devices" className="mt-1">
+          <Tabs defaultValue={pendingDevices.length > 0 ? "devices" : "devices"} className="mt-1">
             <TabsList>
-              <TabsTrigger value="devices">
-                Appareils <Badge variant="outline" className="ml-1.5 text-xs">{devices.length}</Badge>
+              <TabsTrigger value="devices" className={pendingDevices.length > 0 ? "text-yellow-700" : ""}>
+                Appareils{pendingDevices.length > 0
+                  ? <Badge className="ml-1.5 text-xs bg-yellow-100 text-yellow-700 border-yellow-200">{pendingDevices.length} ⏳</Badge>
+                  : <Badge variant="outline" className="ml-1.5 text-xs">{devices.length}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="history">
                 Historique <Badge variant="outline" className="ml-1.5 text-xs">{events.length}</Badge>
@@ -377,78 +382,54 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* ── Pending approvals section ─── */}
+                  {pendingDevices.length > 0 && (
+                    <div className="rounded-lg border border-yellow-300 bg-yellow-50/60 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-yellow-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Bell className="h-3.5 w-3.5" />Approbation requise ({pendingDevices.length})
+                      </p>
+                      <p className="text-xs text-yellow-700">
+                        {pendingDevices.length === 1
+                          ? "Un nouvel appareil attend votre décision. Approuvez-le pour remplacer l'ancien, ou rejetez-le."
+                          : `${pendingDevices.length} nouveaux appareils attendent votre décision.`}
+                      </p>
+                      <div className="space-y-2">
+                        {pendingDevices.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Active mobiles ─── */}
                   {mobiles.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Smartphone className="h-3.5 w-3.5" />Mobiles ({mobiles.length}/{currentSettings.maxDesktopDevices === 1 ? "1" : "1 max"})
+                        <Smartphone className="h-3.5 w-3.5" />Mobile (1/1 max)
                       </p>
                       <div className="space-y-2">
                         {mobiles.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
                       </div>
                     </div>
                   )}
+
+                  {/* ── Active desktops ─── */}
                   {desktops.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Monitor className="h-3.5 w-3.5" />Desktops ({desktops.length}/{currentSettings.maxDesktopDevices} max)
+                        <Monitor className="h-3.5 w-3.5" />Desktop (1/1 max)
                       </p>
                       <div className="space-y-2">
                         {desktops.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
                       </div>
                     </div>
                   )}
+
+                  {pendingDevices.length > 0 && mobiles.length === 0 && desktops.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center pt-1">
+                      Aucun appareil actif — en attente d'approbation ci-dessus.
+                    </p>
+                  )}
                 </div>
               )}
-
-              {/* ── Settings collapsible ─────────────────────────────────── */}
-              <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="w-full justify-between text-xs text-muted-foreground mt-2">
-                    Paramètres de sécurité
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <Card className="mt-2">
-                    <CardContent className="pt-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Mode d'application</p>
-                          <p className="text-xs text-muted-foreground">Bloque les appareils rejetés/révoqués à la connexion</p>
-                        </div>
-                        <Switch checked={currentSettings.enforcementMode} onCheckedChange={v => setLocalSettings(s => ({ ...(s ?? currentSettings), enforcementMode: v }))} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Liaison mobile obligatoire</p>
-                          <p className="text-xs text-muted-foreground">Un seul mobile approuvé à la fois</p>
-                        </div>
-                        <Switch checked={currentSettings.requireMobileBinding} onCheckedChange={v => setLocalSettings(s => ({ ...(s ?? currentSettings), requireMobileBinding: v }))} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Session mobile unique</p>
-                          <p className="text-xs text-muted-foreground">Déconnecte les autres sessions mobiles actives</p>
-                        </div>
-                        <Switch checked={currentSettings.singleMobileSession} onCheckedChange={v => setLocalSettings(s => ({ ...(s ?? currentSettings), singleMobileSession: v }))} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Desktops max</p>
-                          <p className="text-xs text-muted-foreground">Nombre de desktops autorisés</p>
-                        </div>
-                        <Input type="number" min={1} max={10} className="w-20 h-8 text-sm text-center"
-                          value={currentSettings.maxDesktopDevices}
-                          onChange={e => setLocalSettings(s => ({ ...(s ?? currentSettings), maxDesktopDevices: parseInt(e.target.value) || 3 }))} />
-                      </div>
-                      <Button size="sm" className="w-full gap-2" disabled={saveSettings.isPending}
-                        onClick={() => saveSettings.mutate(currentSettings)}>
-                        <Save className="h-3.5 w-3.5" />Enregistrer les paramètres
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </CollapsibleContent>
-              </Collapsible>
             </TabsContent>
 
             {/* ── Historique tab ─────────────────────────────────────────────────── */}

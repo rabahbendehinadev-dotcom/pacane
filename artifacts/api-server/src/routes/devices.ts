@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { userDevicesTable, deviceEventsTable, usersTable, userDeviceSettingsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or, ne } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/permissions";
 
@@ -79,6 +79,43 @@ router.patch("/users/:id/devices/:fingerprint", requireAuth, requirePermission(P
   const [device] = await db.select().from(userDevicesTable)
     .where(and(eq(userDevicesTable.userId, userId), eq(userDevicesTable.fingerprint, fingerprint)));
   if (!device) return res.status(404).json({ error: "Appareil introuvable" });
+
+  // When approving a pending device → auto-revoke existing active devices of same type
+  if (status === "approved" && device.status === "pending") {
+    const currentActives = await db.select({ fingerprint: userDevicesTable.fingerprint })
+      .from(userDevicesTable)
+      .where(and(
+        eq(userDevicesTable.userId, userId),
+        eq(userDevicesTable.deviceType, device.deviceType),
+        ne(userDevicesTable.fingerprint, fingerprint),
+        or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
+      ));
+    if (currentActives.length > 0) {
+      await db.update(userDevicesTable).set({
+        status: "revoked",
+        revokedAt: new Date(),
+        revokedByAdminId: admin.id,
+        revokedReason: `Remplacé par un nouvel appareil approuvé`,
+      }).where(and(
+        eq(userDevicesTable.userId, userId),
+        eq(userDevicesTable.deviceType, device.deviceType),
+        ne(userDevicesTable.fingerprint, fingerprint),
+        or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
+      ));
+      for (const old of currentActives) {
+        await db.insert(deviceEventsTable).values({
+          userId, fingerprint: old.fingerprint, deviceType: device.deviceType,
+          action: "revoked", adminId: admin.id,
+          reason: `Remplacé par un nouvel appareil approuvé`,
+          ip: req.ip, userAgent: req.headers["user-agent"] ?? null,
+        });
+      }
+      // Increment tokenVersion to invalidate sessions on old device
+      const [u] = await db.select({ tokenVersion: usersTable.tokenVersion }).from(usersTable).where(eq(usersTable.id, userId));
+      const newVersion = (u?.tokenVersion ?? 0) + 1;
+      await db.update(usersTable).set({ tokenVersion: newVersion }).where(eq(usersTable.id, userId));
+    }
+  }
 
   await db.update(userDevicesTable).set({
     status,
