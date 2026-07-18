@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, rolesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { userDevicesTable, deviceEventsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth";
+import { parseUserAgent, fingerprintUA } from "../lib/device-detection";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -35,7 +37,55 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
   await db.update(usersTable).set({ lastLogin: new Date() }).where(eq(usersTable.id, user.id));
-  const token = generateToken(user.id);
+
+  const ua = req.headers["user-agent"] ?? "Unknown";
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip ?? "";
+  const fp = fingerprintUA(ua);
+  const deviceInfo = parseUserAgent(ua);
+
+  try {
+    const [existing] = await db.select().from(userDevicesTable)
+      .where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
+
+    if (!existing) {
+      // Check if this mobile device is already used by another account
+      let isSuspicious = false;
+      let suspiciousReason: string | null = null;
+      if (deviceInfo.deviceType === "mobile") {
+        const [otherUser] = await db.select({ userId: userDevicesTable.userId })
+          .from(userDevicesTable)
+          .where(and(eq(userDevicesTable.fingerprint, fp), eq(userDevicesTable.status, "approved")));
+        if (otherUser && otherUser.userId !== user.id) {
+          isSuspicious = true;
+          suspiciousReason = `Appareil déjà associé à un autre compte (userId: ${otherUser.userId})`;
+        }
+      }
+      await db.insert(userDevicesTable).values({
+        userId: user.id, fingerprint: fp, ...deviceInfo, ip,
+        userAgent: ua.slice(0, 500), loginCount: 1,
+        isSuspicious, suspiciousReason,
+      });
+      await db.insert(deviceEventsTable).values({
+        userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
+        action: "new_device", ip, userAgent: ua.slice(0, 500),
+        meta: isSuspicious ? suspiciousReason : null,
+      });
+    } else {
+      await db.update(userDevicesTable).set({
+        lastSeenAt: new Date(), ip, loginCount: (existing.loginCount ?? 0) + 1,
+        userAgent: ua.slice(0, 500),
+      }).where(and(eq(userDevicesTable.userId, user.id), eq(userDevicesTable.fingerprint, fp)));
+      await db.insert(deviceEventsTable).values({
+        userId: user.id, fingerprint: fp, deviceType: deviceInfo.deviceType,
+        action: "login", ip, userAgent: ua.slice(0, 500),
+      });
+    }
+  } catch (_err) {
+    // Device tracking is non-fatal
+  }
+
+  const tv = user.tokenVersion ?? 0;
+  const token = generateToken(user.id, tv);
   res.json({ user: await buildUserResponse(user), token });
 });
 

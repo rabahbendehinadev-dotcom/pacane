@@ -30,6 +30,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: "Utilisateur introuvable ou inactif" });
     return;
   }
+  // Validate tokenVersion — if admin did "disconnect all", old tokens are invalid
+  const userTv = user.tokenVersion ?? 0;
+  if (userTv > 0 && payload.tv < userTv) {
+    res.status(401).json({ error: "Session expirée, reconnectez-vous", code: "SESSION_REVOKED" });
+    return;
+  }
   req.userId = user.id;
   req.user = user;
 

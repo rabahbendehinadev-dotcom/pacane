@@ -33,6 +33,7 @@ export * from "./branch-sellers";
 export * from "./checklist";
 export * from "./hr";
 export * from "./attendance";
+export * from "./devices";
 export {
   workerAttendanceTable, workerWarningsTable, workerBonusesTable,
   workerNotificationsTable, workerSalariesTable, workerRequestsTable,

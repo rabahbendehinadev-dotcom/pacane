@@ -833,6 +833,51 @@ async function runMigrations() {
     await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_device_ip TEXT;`);
     await db.execute(sql`ALTER TABLE branch_desktop_devices ADD COLUMN IF NOT EXISTS bound_at TIMESTAMP WITH TIME ZONE;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bdd_kiosk_slug ON branch_desktop_devices (kiosk_slug) WHERE kiosk_slug IS NOT NULL;`);
+    // Device tracking tables
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS user_devices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        fingerprint TEXT NOT NULL,
+        device_type TEXT NOT NULL DEFAULT 'desktop',
+        device_name TEXT,
+        os TEXT,
+        os_version TEXT,
+        browser TEXT,
+        browser_version TEXT,
+        user_agent TEXT,
+        ip TEXT,
+        login_count INTEGER NOT NULL DEFAULT 1,
+        first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        status TEXT NOT NULL DEFAULT 'unknown',
+        revoked_at TIMESTAMP WITH TIME ZONE,
+        revoked_by_admin_id INTEGER,
+        revoked_reason TEXT,
+        is_suspicious BOOLEAN NOT NULL DEFAULT false,
+        suspicious_reason TEXT,
+        UNIQUE(user_id, fingerprint)
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON user_devices (user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_user_devices_fingerprint ON user_devices (fingerprint);`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS device_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        fingerprint TEXT,
+        device_type TEXT,
+        action TEXT NOT NULL,
+        admin_id INTEGER,
+        reason TEXT,
+        ip TEXT,
+        user_agent TEXT,
+        meta TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_device_events_user_id ON device_events (user_id);`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;`);
     // Auto-create attendance settings for all existing users who don't have them
     await db.execute(sql`
       INSERT INTO user_attendance_settings (

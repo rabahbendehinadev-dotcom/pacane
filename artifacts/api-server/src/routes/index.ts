@@ -53,6 +53,7 @@ import workerNotificationsRouter from "./worker-notifications";
 import supportTicketsRouter from "./support-tickets";
 import attendanceRouter from "./attendance";
 import kioskRouter from "./kiosk";
+import devicesRouter from "./devices";
 
 const router: IRouter = Router();
 
@@ -112,5 +113,6 @@ router.use(workerNotificationsRouter);
 router.use(supportTicketsRouter);
 router.use(attendanceRouter);
 router.use(kioskRouter);
+router.use(devicesRouter);
 
 export default router;

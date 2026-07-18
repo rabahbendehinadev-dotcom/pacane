@@ -17,6 +17,7 @@ export const usersTable = pgTable("users", {
   defaultBranchId: integer("default_branch_id"),
   posAccess: boolean("pos_access").notNull().default(false),
   adminAccess: boolean("admin_access").notNull().default(false),
+  tokenVersion: integer("token_version").notNull().default(0),
   lastLogin: timestamp("last_login", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
