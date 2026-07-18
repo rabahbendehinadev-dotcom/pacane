@@ -379,7 +379,7 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
 }
 
 // ── EMPLOYEES TAB ────────────────────────────────────────────────────────────
-function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; users: any[]; refetchUsers: () => void }) {
+function EmployeesTab({ branches, users, refetchUsers, isLoading, isError }: { branches: any[]; users: any[]; refetchUsers: () => void; isLoading?: boolean; isError?: boolean }) {
   const qc = useQueryClient();
   const [settingsUser, setSettingsUser] = useState<any>(null);
   const [form, setForm] = useState<any>({});
@@ -436,6 +436,20 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
     approved:{ label: "Approuvé",   cls: "bg-green-100 text-green-700" },
     rejected:{ label: "Rejeté",     cls: "bg-red-100 text-red-700" },
   };
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 py-8 text-muted-foreground text-sm">
+      <span className="animate-spin">⏳</span> Chargement des employés…
+    </div>
+  );
+
+  if (isError) return (
+    <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-2">
+      <p className="text-sm font-medium text-red-700">Impossible de charger la liste des employés.</p>
+      <p className="text-xs text-red-500">Vérifiez votre connexion ou rechargez la page.</p>
+      <button className="text-xs underline text-red-600 hover:text-red-800" onClick={() => refetchUsers()}>Réessayer</button>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -1181,14 +1195,18 @@ export default function PointagePage() {
     },
   });
 
-  const { data: users = [], refetch: refetchUsers } = useQuery({
+  const { data: users = [], refetch: refetchUsers, isLoading: usersLoading, isError: usersError } = useQuery({
     queryKey: ["attendance-users"],
     queryFn: async () => {
       const r = await API("/attendance/users");
-      if (!r.ok) return [];
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+        throw new Error(err?.error ?? `HTTP ${r.status}`);
+      }
       const d = await r.json();
       return Array.isArray(d) ? d : [];
     },
+    retry: 2,
   });
 
   return (
@@ -1216,7 +1234,7 @@ export default function PointagePage() {
 
         {isAdmin && (
           <TabsContent value="employees" className="mt-4">
-            <EmployeesTab branches={branches} users={users} refetchUsers={refetchUsers} />
+            <EmployeesTab branches={branches} users={users} refetchUsers={refetchUsers} isLoading={usersLoading} isError={usersError} />
           </TabsContent>
         )}
 
