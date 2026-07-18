@@ -55,11 +55,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isError]);
 
+  const [location] = useLocation();
+  const isPublicRoute = location.startsWith("/kiosk/") || location.startsWith("/pointage-kiosk");
+
   useEffect(() => {
-    if (!token) {
+    if (!token && !isPublicRoute) {
       setLocation("/login");
     }
-  }, [token, setLocation]);
+  }, [token, isPublicRoute, setLocation]);
 
   return (
     <AuthContext.Provider
