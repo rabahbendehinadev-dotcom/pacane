@@ -50,7 +50,7 @@ function statusColor(s: string) {
   return m[s] ?? "bg-gray-100";
 }
 
-function deviceStatusBadge(status: string, isSuspicious: boolean) {
+function mobileStatusBadge(status: string, isSuspicious: boolean) {
   if (isSuspicious) return <Badge className="text-xs bg-orange-100 text-orange-700 border-orange-200 gap-1"><AlertTriangle className="h-3 w-3" />Suspect</Badge>;
   const m: Record<string, React.ReactNode> = {
     unknown: <Badge variant="outline" className="text-xs text-gray-500">Inconnu</Badge>,
@@ -87,9 +87,38 @@ function actionColor(action: string) {
   return "hover:bg-muted/30";
 }
 
-// ── DeviceCard ────────────────────────────────────────────────────────────────
+// ── DesktopMonitorRow — monitoring only, no action buttons ───────────────────
 
-function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPatch: (status: string, reason: string) => void; disabled: boolean }) {
+function DesktopMonitorRow({ device }: { device: DeviceRecord }) {
+  const browser = [device.browser, device.browserVersion].filter(Boolean).join(" ");
+  const os = [device.os, device.osVersion].filter(Boolean).join(" ");
+  return (
+    <div className="flex items-start gap-3 border rounded-lg p-3 bg-card">
+      <div className="mt-0.5 h-8 w-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+        <Monitor className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{device.deviceName ?? "Ordinateur inconnu"}</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
+          {browser && <span>🌐 {browser}</span>}
+          {os && <span>💻 {os}</span>}
+          {device.ip && <span className="font-mono">IP: {device.ip}</span>}
+          {device.location && <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{device.location}</span>}
+          <span>{device.loginCount} connexion{device.loginCount !== 1 ? "s" : ""}</span>
+          <span>Dernier: {formatDate(device.lastSeenAt)}</span>
+          <span>Premier: {formatDate(device.firstSeenAt)}</span>
+        </div>
+        {device.isSuspicious && device.suspiciousReason && (
+          <p className="text-xs text-orange-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" />{device.suspiciousReason}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── MobileDeviceCard — full security controls ─────────────────────────────────
+
+function MobileDeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPatch: (status: string, reason: string) => void; disabled: boolean }) {
   const [showReason, setShowReason] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState("");
 
@@ -113,15 +142,14 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
     }`}>
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
-          isPending ? "bg-yellow-100 text-yellow-600" :
-          device.deviceType === "mobile" ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"
+          isPending ? "bg-yellow-100 text-yellow-600" : "bg-blue-100 text-blue-600"
         }`}>
-          {device.deviceType === "mobile" ? <Smartphone className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+          <Smartphone className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="text-sm font-medium truncate">{device.deviceName ?? "Appareil inconnu"}</p>
-            {deviceStatusBadge(device.status, device.isSuspicious)}
+            <p className="text-sm font-medium truncate">{device.deviceName ?? "Téléphone inconnu"}</p>
+            {mobileStatusBadge(device.status, device.isSuspicious)}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {device.ip && <span className="font-mono">IP: {device.ip}</span>}
@@ -138,7 +166,7 @@ function DeviceCard({ device, onPatch, disabled }: { device: DeviceRecord; onPat
           {device.isSuspicious && device.suspiciousReason && (
             <p className="text-xs text-orange-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" />{device.suspiciousReason}</p>
           )}
-          {(isInactive) && device.revokedReason && (
+          {isInactive && device.revokedReason && (
             <p className="text-xs text-muted-foreground mt-1">Raison : {device.revokedReason}</p>
           )}
           {showReason && (
@@ -306,9 +334,10 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
     onError: (e: any) => toast({ title: e.message, variant: "destructive" }),
   });
 
-  const pendingDevices = devices.filter(d => d.status === "pending");
+  // Mobile: pending = awaiting approval. Desktop: never pending — monitoring only.
+  const pendingDevices = devices.filter(d => d.status === "pending" && d.deviceType === "mobile");
   const mobiles = devices.filter(d => d.deviceType === "mobile" && d.status !== "pending");
-  const desktops = devices.filter(d => d.deviceType === "desktop" && d.status !== "pending");
+  const desktops = devices.filter(d => d.deviceType === "desktop");
   const suspiciousDevices = devices.filter(d => d.isSuspicious);
   const failedLogins = events.filter(e => e.action === "failed_login");
   const pendingEvents = events.filter(e => e.action === "pending_approval");
@@ -357,13 +386,9 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
             {/* ── Appareils tab ──────────────────────────────────────────────────── */}
             <TabsContent value="devices" className="space-y-3 mt-3">
               <div className="flex items-center gap-2 flex-wrap">
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={anyPending || mobiles.length === 0}
-                  onClick={() => setActionModal({ title: "Reset mobile", description: "Tous les appareils mobiles seront révoqués et l'utilisateur sera déconnecté.", requireReason: true, reasonLabel: "Raison du reset *", fn: (r) => resetMobile.mutate(r) })}>
-                  <Smartphone className="h-3.5 w-3.5" />Reset mobiles
-                </Button>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={anyPending || desktops.length === 0}
-                  onClick={() => setActionModal({ title: "Reset desktop", description: "Tous les appareils desktop seront révoqués et l'utilisateur sera déconnecté.", requireReason: true, reasonLabel: "Raison du reset *", fn: (r) => resetDesktop.mutate(r) })}>
-                  <Monitor className="h-3.5 w-3.5" />Reset desktops
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={anyPending || mobiles.filter(d => d.status !== "rejected").length === 0}
+                  onClick={() => setActionModal({ title: "Reset mobile", description: "Le téléphone enregistré sera révoqué. L'utilisateur pourra enregistrer un nouveau téléphone à la prochaine connexion.", requireReason: true, reasonLabel: "Raison du reset *", fn: (r) => resetMobile.mutate(r) })}>
+                  <Smartphone className="h-3.5 w-3.5" />Reset mobile
                 </Button>
                 <div className="flex-1" />
                 <Button size="sm" variant="destructive" className="gap-1.5 text-xs" disabled={anyPending}
@@ -394,7 +419,7 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
                           : `${pendingDevices.length} nouveaux appareils attendent votre décision.`}
                       </p>
                       <div className="space-y-2">
-                        {pendingDevices.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
+                        {pendingDevices.map(d => <MobileDeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
                       </div>
                     </div>
                   )}
@@ -403,29 +428,29 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
                   {mobiles.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Smartphone className="h-3.5 w-3.5" />Mobile (1/1 max)
+                        <Smartphone className="h-3.5 w-3.5" />Téléphone — Sécurité (1/1 max)
                       </p>
                       <div className="space-y-2">
-                        {mobiles.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
+                        {mobiles.map(d => <MobileDeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
                       </div>
                     </div>
                   )}
 
-                  {/* ── Active desktops ─── */}
+                  {/* ── Desktop — monitoring only ─── */}
                   {desktops.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Monitor className="h-3.5 w-3.5" />Desktop (1/1 max)
+                        <Monitor className="h-3.5 w-3.5" />Ordinateurs — Surveillance uniquement
                       </p>
                       <div className="space-y-2">
-                        {desktops.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
+                        {desktops.map(d => <DesktopMonitorRow key={d.fingerprint} device={d} />)}
                       </div>
                     </div>
                   )}
 
                   {pendingDevices.length > 0 && mobiles.length === 0 && desktops.length === 0 && (
                     <p className="text-xs text-muted-foreground text-center pt-1">
-                      Aucun appareil actif — en attente d'approbation ci-dessus.
+                      Aucun téléphone actif — en attente d'approbation ci-dessus.
                     </p>
                   )}
                 </div>
@@ -481,7 +506,10 @@ function DeviceDialog({ user, onClose }: { user: User; onClose: () => void }) {
                         <AlertTriangle className="h-3.5 w-3.5" />Appareils suspects ({suspiciousDevices.length})
                       </p>
                       <div className="space-y-2">
-                        {suspiciousDevices.map(d => <DeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />)}
+                        {suspiciousDevices.map(d => d.deviceType === "mobile"
+                          ? <MobileDeviceCard key={d.fingerprint} device={d} onPatch={(status, reason) => patchDevice.mutate({ fingerprint: d.fingerprint, status, reason })} disabled={anyPending} />
+                          : <DesktopMonitorRow key={d.fingerprint} device={d} />
+                        )}
                       </div>
                     </div>
                   )}

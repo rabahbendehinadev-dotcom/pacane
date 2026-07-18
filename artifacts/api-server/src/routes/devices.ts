@@ -80,6 +80,11 @@ router.patch("/users/:id/devices/:fingerprint", requireAuth, requirePermission(P
     .where(and(eq(userDevicesTable.userId, userId), eq(userDevicesTable.fingerprint, fingerprint)));
   if (!device) return res.status(404).json({ error: "Appareil introuvable" });
 
+  // Desktop devices are monitoring-only — no approval/rejection applicable
+  if (device.deviceType === "desktop") {
+    return res.status(400).json({ error: "Les ordinateurs sont en surveillance uniquement. Aucune approbation n'est requise." });
+  }
+
   // When approving a pending device → auto-revoke existing active devices of same type
   if (status === "approved" && device.status === "pending") {
     const currentActives = await db.select({ fingerprint: userDevicesTable.fingerprint })
