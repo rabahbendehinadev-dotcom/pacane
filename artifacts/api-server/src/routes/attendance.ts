@@ -21,7 +21,7 @@ async function ensureUserAttendanceSettings(userId: number, firstBranchId: numbe
   const [created] = await db.insert(userAttendanceSettingsTable).values({
     userId,
     branchId: firstBranchId,
-    pointageEnabled: true,
+    pointageEnabled: false,
     workStartTime: "08:00",
     workEndTime: "17:00",
     workDays: ["lun","mar","mer","jeu","ven"] as string[],

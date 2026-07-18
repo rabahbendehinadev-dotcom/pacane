@@ -44,12 +44,12 @@ router.post("/users", requireAuth, requirePermission(P.users.create), async (req
     const [role] = await db.select().from(rolesTable).where(eq(rolesTable.id, user.roleId));
     roleName = role?.name ?? null;
   }
-  // Auto-create attendance settings with pointageEnabled: true
+  // Auto-create attendance settings (pointageEnabled: false — admin must activate)
   const firstBranch = (branchIds && branchIds.length > 0) ? branchIds[0] : null;
   await db.insert(userAttendanceSettingsTable).values({
     userId: user.id,
     branchId: firstBranch,
-    pointageEnabled: true,
+    pointageEnabled: false,
     workStartTime: "08:00",
     workEndTime: "17:00",
     workDays: ["lun","mar","mer","jeu","ven"] as string[],

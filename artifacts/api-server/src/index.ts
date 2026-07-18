@@ -846,7 +846,7 @@ async function runMigrations() {
       SELECT
         u.id,
         CASE WHEN array_length(u.branch_ids, 1) > 0 THEN u.branch_ids[1] ELSE NULL END,
-        true,
+        false,
         '08:00', '17:00', ARRAY['lun','mar','mer','jeu','ven']::text[],
         10, 0, 'monthly',
         'per_minute', 0, 0,
