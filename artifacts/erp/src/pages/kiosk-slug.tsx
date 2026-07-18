@@ -46,7 +46,6 @@ export default function KioskSlugPage() {
 
   // QR
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState(10);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -73,16 +72,21 @@ export default function KioskSlugPage() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
+  const QR_DURATION = 10;
+
+  function startCountdown() {
     if (timerRef.current) clearInterval(timerRef.current);
+    setTimeLeft(QR_DURATION);
+    let count = QR_DURATION;
     timerRef.current = setInterval(() => {
-      if (expiresAt) {
-        const r = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / 1000));
-        setTimeLeft(r);
+      count -= 1;
+      setTimeLeft(count);
+      if (count <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
       }
-    }, 250);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [expiresAt]);
+    }, 1000);
+  }
 
   async function fetchQR() {
     try {
@@ -92,7 +96,6 @@ export default function KioskSlugPage() {
       if (!r.ok) { setErrorMsg("Erreur serveur"); return; }
       const data = await r.json();
       if (data.branchName) setBranchName(data.branchName);
-      setExpiresAt(new Date(data.expiresAt));
       const url = await QRCode.toDataURL(data.qrData, {
         width: 480, margin: 2,
         color: { dark: "#111827", light: "#ffffff" },
@@ -100,6 +103,7 @@ export default function KioskSlugPage() {
       });
       setQrDataUrl(url);
       setLastUpdated(new Date());
+      startCountdown();
     } catch {
       setErrorMsg("Connexion perdue");
     }

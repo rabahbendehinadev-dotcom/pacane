@@ -13,7 +13,6 @@ export default function PointageKiosk() {
   const [setupInput, setSetupInput] = useState({ token: "", branchId: "" });
 
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState(10);
   const [error, setError] = useState("");
   const [branchName, setBranchName] = useState("");
@@ -21,11 +20,27 @@ export default function PointageKiosk() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const QR_DURATION = 10;
+
   // Clock
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  function startCountdown() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setTimeLeft(QR_DURATION);
+    let count = QR_DURATION;
+    timerRef.current = setInterval(() => {
+      count -= 1;
+      setTimeLeft(count);
+      if (count <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }, 1000);
+  }
 
   async function fetchQR() {
     if (!deviceToken || !branchId) return;
@@ -40,12 +55,12 @@ export default function PointageKiosk() {
       }
       const data = await r.json();
       setError("");
-      setExpiresAt(new Date(data.expiresAt));
       if (data.qrData) {
         const url = await QRCode.toDataURL(data.qrData, { width: 400, margin: 2, color: { dark: "#1a1a1a", light: "#ffffff" } });
         setQrDataUrl(url);
       }
       if (data.branchName) setBranchName(data.branchName);
+      startCountdown();
     } catch {
       setError("Impossible de contacter le serveur");
     }
@@ -55,21 +70,12 @@ export default function PointageKiosk() {
     if (setupMode || !deviceToken || !branchId) return;
     fetchQR();
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchQR, 10_000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    intervalRef.current = setInterval(fetchQR, QR_DURATION * 1000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [setupMode, deviceToken, branchId]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      if (expiresAt) {
-        const remaining = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / 1000));
-        setTimeLeft(remaining);
-      }
-    }, 250);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [expiresAt]);
 
   function activate() {
     if (!setupInput.token || !setupInput.branchId) return;
