@@ -170,7 +170,12 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ["attendance-records", filters],
-    queryFn: async () => { const r = await API(`/attendance/records?${params}&limit=200`); return r.json(); },
+    queryFn: async () => {
+      const r = await API(`/attendance/records?${params}&limit=200`);
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    },
   });
 
   const addMutation = useMutation({
@@ -628,13 +633,23 @@ function DevicesTab({ branches }: { branches: any[] }) {
 
   const { data: desktops = [], refetch: refetchDesktops } = useQuery({
     queryKey: ["desktop-devices"],
-    queryFn: async () => { const r = await API("/attendance/devices/desktop"); return r.json(); },
+    queryFn: async () => {
+      const r = await API("/attendance/devices/desktop");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    },
     refetchInterval: 30_000,
   });
 
   const { data: mobiles = [] } = useQuery({
     queryKey: ["mobile-devices"],
-    queryFn: async () => { const r = await API("/attendance/devices/mobile"); return r.json(); },
+    queryFn: async () => {
+      const r = await API("/attendance/devices/mobile");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    },
   });
 
   const createMutation = useMutation({
@@ -945,12 +960,22 @@ export default function PointagePage() {
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
-    queryFn: async () => { const r = await API("/branches"); return r.json(); },
+    queryFn: async () => {
+      const r = await API("/branches");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    },
   });
 
   const { data: users = [], refetch: refetchUsers } = useQuery({
     queryKey: ["attendance-users"],
-    queryFn: async () => { const r = await API("/attendance/users"); return r.json(); },
+    queryFn: async () => {
+      const r = await API("/attendance/users");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    },
   });
 
   return (
