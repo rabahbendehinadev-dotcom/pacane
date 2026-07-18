@@ -44,6 +44,7 @@ import {
   BellRing,
   Ticket,
   ScanLine,
+  Fingerprint,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -150,6 +151,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       title: "Équipe",
       items: [
         { label: "Checklist", href: "/checklist", icon: ClipboardCheck },
+        { label: "Mon Pointage", href: "/mon-pointage", icon: Fingerprint },
         { label: "Pointage Employés", href: "/pointage", icon: ScanLine, perm: "pointage.view" },
       ],
     },

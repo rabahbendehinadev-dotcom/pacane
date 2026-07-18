@@ -63,6 +63,7 @@ import NotificationStatusPage from "@/pages/notification-status";
 import PointagePage from "@/pages/pointage";
 import PointageKioskPage from "@/pages/pointage-kiosk";
 import KioskSlugPage from "@/pages/kiosk-slug";
+import MonPointagePage from "@/pages/mon-pointage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -261,6 +262,9 @@ function AppRoutes() {
       </Route>
       <Route path="/notification-status">
         <DashboardLayout><NotificationStatusPage /></DashboardLayout>
+      </Route>
+      <Route path="/mon-pointage">
+        <DashboardLayout><MonPointagePage /></DashboardLayout>
       </Route>
       <Route path="/pointage">
         <DashboardLayout><PointagePage /></DashboardLayout>

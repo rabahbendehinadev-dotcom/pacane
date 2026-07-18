@@ -108,6 +108,40 @@ router.put("/attendance/settings/:userId", requireAuth, requirePermission("point
   res.json({ success: true });
 });
 
+// ── GET /api/attendance/my-records — personal records, no special perm needed ──
+router.get("/attendance/my-records", requireAuth, async (req, res) => {
+  const me = (req as any).user;
+  const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+
+  const [settings] = await db.select({
+    pointageEnabled: userAttendanceSettingsTable.pointageEnabled,
+    branchId: userAttendanceSettingsTable.branchId,
+    workStartTime: userAttendanceSettingsTable.workStartTime,
+    workEndTime: userAttendanceSettingsTable.workEndTime,
+    gracePeriodMinutes: userAttendanceSettingsTable.gracePeriodMinutes,
+  }).from(userAttendanceSettingsTable)
+    .where(eq(userAttendanceSettingsTable.userId, me.id));
+
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const records = await db.select({
+    id: attendanceRecordsTable.id,
+    type: attendanceRecordsTable.type,
+    timestamp: attendanceRecordsTable.timestamp,
+    status: attendanceRecordsTable.status,
+    lateMinutes: attendanceRecordsTable.lateMinutes,
+    earlyLeaveMinutes: attendanceRecordsTable.earlyLeaveMinutes,
+    notes: attendanceRecordsTable.notes,
+  }).from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, me.id),
+      gte(attendanceRecordsTable.timestamp, since),
+    ))
+    .orderBy(desc(attendanceRecordsTable.timestamp));
+
+  res.json({ settings: settings ?? null, records });
+});
+
 // ── GET /api/attendance/today ─────────────────────────────────────────────────
 router.get("/attendance/today", requireAuth, requirePermission("pointage.view"), async (req, res) => {
   const me = (req as any).user;
