@@ -878,6 +878,18 @@ async function runMigrations() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_device_events_user_id ON device_events (user_id);`);
     await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;`);
+    await db.execute(sql`ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS location TEXT;`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS user_device_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE,
+        max_desktop_devices INTEGER NOT NULL DEFAULT 3,
+        require_mobile_binding BOOLEAN NOT NULL DEFAULT true,
+        single_mobile_session BOOLEAN NOT NULL DEFAULT false,
+        enforcement_mode BOOLEAN NOT NULL DEFAULT false,
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
     // Auto-create attendance settings for all existing users who don't have them
     await db.execute(sql`
       INSERT INTO user_attendance_settings (

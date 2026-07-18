@@ -12,6 +12,7 @@ export const userDevicesTable = pgTable("user_devices", {
   browserVersion: text("browser_version"),
   userAgent: text("user_agent"),
   ip: text("ip"),
+  location: text("location"),
   loginCount: integer("login_count").notNull().default(1),
   firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
@@ -21,6 +22,16 @@ export const userDevicesTable = pgTable("user_devices", {
   revokedReason: text("revoked_reason"),
   isSuspicious: boolean("is_suspicious").notNull().default(false),
   suspiciousReason: text("suspicious_reason"),
+});
+
+export const userDeviceSettingsTable = pgTable("user_device_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique(),
+  maxDesktopDevices: integer("max_desktop_devices").notNull().default(3),
+  requireMobileBinding: boolean("require_mobile_binding").notNull().default(true),
+  singleMobileSession: boolean("single_mobile_session").notNull().default(false),
+  enforcementMode: boolean("enforcement_mode").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const deviceEventsTable = pgTable("device_events", {

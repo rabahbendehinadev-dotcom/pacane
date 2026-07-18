@@ -44,3 +44,16 @@ export function parseUserAgent(ua: string): DeviceInfo {
 export function fingerprintUA(ua: string): string {
   return crypto.createHash("sha256").update(ua ?? "").digest("hex").slice(0, 32);
 }
+
+export async function getIpLocation(ip: string): Promise<string | null> {
+  try {
+    if (!ip || ip === "127.0.0.1" || ip === "::1" || ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) return null;
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(`http://ip-api.com/json/${ip}?fields=status,city,country`, { signal: ctrl.signal });
+    clearTimeout(timeout);
+    const data = await r.json() as { status: string; city?: string; country?: string };
+    if (data.status === "success" && data.city && data.country) return `${data.city}, ${data.country}`;
+  } catch {}
+  return null;
+}
