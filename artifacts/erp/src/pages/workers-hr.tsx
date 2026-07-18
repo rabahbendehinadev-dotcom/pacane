@@ -92,41 +92,41 @@ export default function WorkersHR() {
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: stats } = useQuery<HRStats>({
     queryKey: ["hr-stats"],
-    queryFn: async () => { const r = await fetch("/api/workers/hr-stats", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/hr-stats", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 60_000, refetchInterval: 120_000,
   });
 
   const { data: trendData = [] } = useQuery<TrendPoint[]>({
     queryKey: ["attendance-trend"],
-    queryFn: async () => { const r = await fetch("/api/workers/attendance-trend", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/attendance-trend", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 300_000,
     enabled: activeTab === "dashboard",
   });
 
   const { data: deptStats = [] } = useQuery<DeptStat[]>({
     queryKey: ["department-stats"],
-    queryFn: async () => { const r = await fetch("/api/workers/department-stats", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/department-stats", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 300_000,
     enabled: activeTab === "dashboard",
   });
 
   const { data: employeeOfMonth } = useQuery<EmployeeOfMonth | null>({
     queryKey: ["employee-of-month"],
-    queryFn: async () => { const r = await fetch("/api/workers/employee-of-month", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/employee-of-month", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 3_600_000,
     enabled: activeTab === "dashboard",
   });
 
   const { data: salaryStats } = useQuery<SalaryStats>({
     queryKey: ["salary-stats"],
-    queryFn: async () => { const r = await fetch("/api/workers/salary-stats", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/salary-stats", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 300_000,
     enabled: activeTab === "dashboard",
   });
 
   const { data: todayAttendance = [], isLoading: todayLoading } = useQuery<TodayEntry[]>({
     queryKey: ["attendance-today"],
-    queryFn: async () => { const r = await fetch("/api/workers/attendance-today", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/attendance-today", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 30_000,
     enabled: activeTab === "today",
   });
@@ -135,7 +135,7 @@ export default function WorkersHR() {
     queryKey: ["calendar-events", calYear, calMonth],
     queryFn: async () => {
       const r = await fetch(`/api/workers/calendar-events?month=${calYear}-${String(calMonth).padStart(2, "0")}`, { headers: AUTH() });
-      return r.json();
+      if (!r.ok) throw new Error(r.status + ""); return r.json();
     },
     staleTime: 120_000,
     enabled: activeTab === "calendar",
@@ -143,14 +143,14 @@ export default function WorkersHR() {
 
   const { data: pendingRequests = [], isLoading: reqLoading } = useQuery<PendingRequest[]>({
     queryKey: ["hr-pending-requests"],
-    queryFn: async () => { const r = await fetch("/api/workers/requests-pending", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/requests-pending", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 30_000,
     enabled: activeTab === "requests",
   });
 
   const { data: ranking = [], isLoading: rankLoading } = useQuery<RankingEntry[]>({
     queryKey: ["hr-ranking"],
-    queryFn: async () => { const r = await fetch("/api/workers/ranking", { headers: AUTH() }); return r.json(); },
+    queryFn: async () => { const r = await fetch("/api/workers/ranking", { headers: AUTH() }); if (!r.ok) throw new Error(r.status + ""); return r.json(); },
     staleTime: 120_000,
     enabled: activeTab === "ranking" || activeTab === "analyses",
   });

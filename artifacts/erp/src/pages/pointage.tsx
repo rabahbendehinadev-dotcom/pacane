@@ -60,6 +60,7 @@ function TodayTab({ branches }: { branches: any[] }) {
     queryKey: ["attendance-today", branchId],
     queryFn: async () => {
       const r = await API(`/attendance/today${branchId ? `?branchId=${branchId}` : ""}`);
+      if (!r.ok) return null;
       return r.json();
     },
     refetchInterval: 30_000,
@@ -385,7 +386,11 @@ function EmployeesTab({ branches, users, refetchUsers }: { branches: any[]; user
 
   const { data: settingsDetail } = useQuery({
     queryKey: ["attendance-settings", settingsUser?.userId],
-    queryFn: async () => { const r = await API(`/attendance/settings/${settingsUser.userId}`); return r.json(); },
+    queryFn: async () => {
+      const r = await API(`/attendance/settings/${settingsUser.userId}`);
+      if (!r.ok) return null;
+      return r.json();
+    },
     enabled: !!settingsUser,
   });
 
