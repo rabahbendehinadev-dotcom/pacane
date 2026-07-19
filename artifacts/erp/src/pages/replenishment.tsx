@@ -495,15 +495,18 @@ export default function ReplenishmentPage() {
 
             <div className="flex flex-col gap-1.5 min-w-[150px]">
               <Label className="text-xs font-medium">Catégorie</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Toutes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes</SelectItem>
-                  {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                items={[
+                  { value: "all", label: "Toutes" },
+                  ...categories.map(c => ({ value: String(c.id), label: c.name })),
+                ]}
+                value={categoryId}
+                onValueChange={setCategoryId}
+                placeholder="Toutes"
+                searchPlaceholder="Rechercher une catégorie..."
+                emptyMessage="Aucune catégorie trouvée."
+                drawerTitle="Choisir une catégorie"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5 min-w-[160px]">
