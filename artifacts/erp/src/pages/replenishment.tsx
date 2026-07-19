@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BranchMultiSelect } from "@/components/ui/branch-multi-select";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
@@ -513,16 +514,19 @@ export default function ReplenishmentPage() {
                   <span className="font-medium">{workers.find(w => w.id === loggedWorkerId)?.name ?? "—"}</span>
                 </div>
               ) : (
-                <Select value={workerId} onValueChange={setWorkerId}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Tous" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="none">Non affecté</SelectItem>
-                    {workers.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  items={[
+                    { value: "all", label: "Tous" },
+                    { value: "none", label: "Non affecté" },
+                    ...workers.map(w => ({ value: String(w.id), label: w.name })),
+                  ]}
+                  value={workerId}
+                  onValueChange={setWorkerId}
+                  placeholder="Tous"
+                  searchPlaceholder="Rechercher un responsable..."
+                  emptyMessage="Aucun responsable trouvé."
+                  drawerTitle="Choisir un responsable"
+                />
               )}
             </div>
 

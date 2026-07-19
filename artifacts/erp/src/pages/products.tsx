@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "@/hooks/use-toast";
 import { ExportButton } from "@/components/ExportButton";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 
 function cacheBust(url: string, updatedAt?: string | Date | null, id?: number | null): string {
   const v = updatedAt ? new Date(updatedAt).getTime() : (id ?? "");
@@ -572,17 +573,20 @@ export default function Products() {
 
             <div>
               <Label>Responsable de préparation</Label>
-              <Select value={form.workerId} onValueChange={v => setForm(f => ({ ...f, workerId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Non affecté" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Non affecté</SelectItem>
-                  {allWorkers.filter(w => w.isActive || w.id.toString() === form.workerId).map(w => (
-                    <SelectItem key={w.id} value={String(w.id)}>
-                      {w.name}{!w.isActive ? " (désactivé)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                items={[
+                  { value: "none", label: "Non affecté" },
+                  ...allWorkers
+                    .filter(w => w.isActive || w.id.toString() === form.workerId)
+                    .map(w => ({ value: String(w.id), label: w.name + (!w.isActive ? " (désactivé)" : "") })),
+                ]}
+                value={form.workerId || "none"}
+                onValueChange={v => setForm(f => ({ ...f, workerId: v }))}
+                placeholder="Non affecté"
+                searchPlaceholder="Rechercher un responsable..."
+                emptyMessage="Aucun responsable trouvé."
+                drawerTitle="Responsable de préparation"
+              />
             </div>
 
             {/* Sites commerciaux — multi-select dropdown */}

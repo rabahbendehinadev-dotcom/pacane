@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,7 +122,6 @@ export default function POS() {
   const [creditBlockInfo, setCreditBlockInfo] = useState<{ state: string; creditLimit: number | null; unpaidBalance: number; canOverride: boolean } | null>(null);
   const [creditOverrideOpen, setCreditOverrideOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{ ref: string; total: number; change: number; items: CartItem[]; paymentMethod: string; customerName: string | null; customerPhone: string | null; branchName: string; branchPhone: string | null; cashierName: string } | null>(null);
-  const [clientComboOpen, setClientComboOpen] = useState(false);
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [whatsappPopoverOpen, setWhatsappPopoverOpen] = useState(false);
   const [newClientName, setNewClientName] = useState("");
@@ -602,57 +602,22 @@ export default function POS() {
 
                 <div className="px-4 pt-3 pb-0 space-y-2">
                   <div className="flex gap-1.5">
-                    <Popover open={clientComboOpen} onOpenChange={setClientComboOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={clientComboOpen}
-                          className="flex-1 h-8 text-xs justify-between font-normal overflow-hidden"
-                        >
-                          <span className="truncate">
-                            {customerId === "none"
-                              ? "Comptoir"
-                              : (customers.find(c => String(c.id) === customerId) as any)?.displayName ?? "Client..."}
-                          </span>
-                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Rechercher un client..." className="h-8 text-xs" />
-                          <CommandList>
-                            <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">Aucun client trouvé.</CommandEmpty>
-                            <CommandGroup>
-                              <CommandItem
-                                value="comptoir"
-                                onSelect={() => { setCustomerId("none"); setCreditBlockInfo(null); setClientComboOpen(false); }}
-                                className="text-xs cursor-pointer"
-                              >
-                                <Check className={`mr-2 h-3.5 w-3.5 ${customerId === "none" ? "opacity-100" : "opacity-0"}`} />
-                                Comptoir
-                              </CommandItem>
-                              {customers.map(c => {
-                                const cAny = c as any;
-                                const searchVal = [cAny.displayName, cAny.phone].filter(Boolean).join(" ");
-                                return (
-                                  <CommandItem
-                                    key={c.id}
-                                    value={searchVal}
-                                    onSelect={() => { setCustomerId(String(c.id)); setCreditBlockInfo(null); setClientComboOpen(false); }}
-                                    className="text-xs cursor-pointer"
-                                  >
-                                    <Check className={`mr-2 h-3.5 w-3.5 ${customerId === String(c.id) ? "opacity-100" : "opacity-0"}`} />
-                                    <span className="flex-1 truncate">{cAny.displayName}</span>
-                                    {cAny.phone && <span className="ml-2 text-[10px] text-muted-foreground shrink-0">{cAny.phone}</span>}
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    <SearchableCombobox
+                      items={[
+                        { value: "none", label: "Comptoir" },
+                        ...customers.map(c => {
+                          const cAny = c as any;
+                          return { value: String(c.id), label: cAny.displayName + (cAny.phone ? ` — ${cAny.phone}` : "") };
+                        }),
+                      ]}
+                      value={customerId}
+                      onValueChange={v => { setCustomerId(v); setCreditBlockInfo(null); }}
+                      placeholder="Comptoir"
+                      searchPlaceholder="Rechercher un client..."
+                      emptyMessage="Aucun client trouvé."
+                      drawerTitle="Choisir un client"
+                      triggerClassName="flex-1 h-8 text-xs"
+                    />
                     <Button
                       variant="outline"
                       size="icon"
