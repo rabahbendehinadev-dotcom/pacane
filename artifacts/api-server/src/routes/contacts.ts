@@ -23,8 +23,8 @@ router.get("/contacts", requireAuth, requirePermission(P.contacts.view), async (
     ilike(contactsTable.phone, `%${search}%`)
   )!);
   const contacts = conditions.length
-    ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.displayName)
-    : await db.select().from(contactsTable).orderBy(contactsTable.displayName);
+    ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(sql`LOWER(${contactsTable.displayName})`)
+    : await db.select().from(contactsTable).orderBy(sql`LOWER(${contactsTable.displayName})`);
 
   const withBalance = await Promise.all(contacts.map(async c => {
     let unpaidBalance = 0;

@@ -384,7 +384,8 @@ export default function Sales() {
   });
   const counts = apiCounts ?? { all: 0, draft: 0, quotation: 0, order: 0, sale: 0, comptoir: 0 };
 
-  const { data: customers = [] } = useGetContacts({ type: "customer" });
+  const { data: customersRaw = [] } = useGetContacts({ type: "customer" });
+  const customers = [...customersRaw].sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? "", undefined, { sensitivity: "base" }));
   const { data: branches = [] } = useGetBranches();
   const { data: products = [] } = useGetProducts({});
   const { data: units = [] } = useGetUnits();

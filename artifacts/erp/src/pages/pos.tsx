@@ -129,7 +129,8 @@ export default function POS() {
 
   const { data: products = [] } = useGetProducts({});
   const { data: branches = [] } = useGetBranches();
-  const { data: customers = [] } = useGetContacts({ type: "customer" });
+  const { data: customersRaw = [] } = useGetContacts({ type: "customer" });
+  const customers = [...customersRaw].sort((a, b) => ((a as any).displayName ?? "").localeCompare((b as any).displayName ?? "", undefined, { sensitivity: "base" }));
   const { data: discountReasons = [] } = useQuery<{ id: number; label: string; requiresNote: boolean; isActive: boolean }[]>({
     queryKey: ["discount-reasons"],
     queryFn: () => customFetch("/api/settings/discount-reasons").catch(() => []),
