@@ -325,18 +325,98 @@ router.get("/attendance/records", requireAuth, requirePermission("pointage.view"
   res.json(records);
 });
 
+// ── GET /api/attendance/preview/:userId — auto-résout boutique + type ─────────
+router.get("/attendance/preview/:userId", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+  const userId = parseInt(req.params.userId);
+
+  const [settings] = await db.select({
+    branchId: userAttendanceSettingsTable.branchId,
+    allowedBranchIds: userAttendanceSettingsTable.allowedBranchIds,
+    workStartTime: userAttendanceSettingsTable.workStartTime,
+    workEndTime: userAttendanceSettingsTable.workEndTime,
+    gracePeriodMinutes: userAttendanceSettingsTable.gracePeriodMinutes,
+  }).from(userAttendanceSettingsTable)
+    .where(eq(userAttendanceSettingsTable.userId, userId));
+
+  if (!settings) return res.status(404).json({ error: "Paramètres de pointage introuvables pour cet employé" });
+
+  const resolvedBranchId: number | null =
+    (settings.allowedBranchIds && settings.allowedBranchIds.length > 0)
+      ? settings.allowedBranchIds[0]
+      : settings.branchId ?? null;
+
+  let branchName: string | null = null;
+  if (resolvedBranchId) {
+    const [branch] = await db.select({ name: branchesTable.name })
+      .from(branchesTable).where(eq(branchesTable.id, resolvedBranchId));
+    branchName = branch?.name ?? null;
+  }
+
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Algiers" });
+  const dayStart = new Date(`${todayStr}T00:00:00+01:00`);
+  const [lastRecord] = await db.select({ type: attendanceRecordsTable.type })
+    .from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, userId),
+      gte(attendanceRecordsTable.timestamp, dayStart),
+    ))
+    .orderBy(desc(attendanceRecordsTable.timestamp))
+    .limit(1);
+
+  const inferredType: "IN" | "OUT" = (!lastRecord || lastRecord.type === "OUT") ? "IN" : "OUT";
+
+  res.json({
+    branchId: resolvedBranchId,
+    branchName,
+    inferredType,
+    serverTime: new Date().toISOString(),
+  });
+});
+
 // ── POST /api/attendance/records (admin manual entry) ─────────────────────────
 router.post("/attendance/records", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
   const me = (req as any).user;
-  const { userId, branchId, type, timestamp, notes, reason } = req.body;
-  if (!userId || !branchId || !type || !timestamp) return res.status(400).json({ error: "Champs requis manquants" });
+  const { userId, branchId: bodyBranchId, type: bodyType, timestamp: bodyTimestamp, notes, reason } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId requis" });
 
-  const ts = new Date(timestamp);
   const [settings] = await db.select().from(userAttendanceSettingsTable)
     .where(eq(userAttendanceSettingsTable.userId, parseInt(userId)));
 
+  // Auto-resolve branchId if not provided
+  let resolvedBranchId: number;
+  if (bodyBranchId) {
+    resolvedBranchId = parseInt(bodyBranchId);
+  } else {
+    const autoBranchId = (settings?.allowedBranchIds && settings.allowedBranchIds.length > 0)
+      ? settings.allowedBranchIds[0]
+      : settings?.branchId ?? null;
+    if (!autoBranchId) return res.status(400).json({ error: "Aucune boutique configurée pour cet employé. Configurez ses paramètres de pointage." });
+    resolvedBranchId = autoBranchId;
+  }
+
+  // Auto-resolve type if not provided (last record today → toggle)
+  let resolvedType: "IN" | "OUT";
+  if (bodyType) {
+    resolvedType = bodyType;
+  } else {
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Algiers" });
+    const dayStart = new Date(`${todayStr}T00:00:00+01:00`);
+    const [lastRecord] = await db.select({ type: attendanceRecordsTable.type })
+      .from(attendanceRecordsTable)
+      .where(and(
+        eq(attendanceRecordsTable.userId, parseInt(userId)),
+        gte(attendanceRecordsTable.timestamp, dayStart),
+      ))
+      .orderBy(desc(attendanceRecordsTable.timestamp))
+      .limit(1);
+    resolvedType = (!lastRecord || lastRecord.type === "OUT") ? "IN" : "OUT";
+  }
+
+  // Auto-use server time if not provided
+  const ts = bodyTimestamp ? new Date(bodyTimestamp) : new Date();
+
   let lateMinutes: number | null = null;
-  if (type === "IN" && settings?.workStartTime) {
+  if (resolvedType === "IN" && settings?.workStartTime) {
     const [h, m] = settings.workStartTime.split(":").map(Number);
     const expected = new Date(ts);
     expected.setHours(h, m + (settings.gracePeriodMinutes ?? 0), 0, 0);
@@ -345,8 +425,8 @@ router.post("/attendance/records", requireAuth, requirePermission("pointage.admi
 
   const [record] = await db.insert(attendanceRecordsTable).values({
     userId: parseInt(userId),
-    branchId: parseInt(branchId),
-    type,
+    branchId: resolvedBranchId,
+    type: resolvedType,
     timestamp: ts,
     status: "corrected",
     lateMinutes,
@@ -356,8 +436,8 @@ router.post("/attendance/records", requireAuth, requirePermission("pointage.admi
   }).returning();
 
   await writeAuditLog({
-    userId: me.id, targetUserId: parseInt(userId), branchId: parseInt(branchId),
-    action: "manual_record_added", newValue: { type, timestamp, reason },
+    userId: me.id, targetUserId: parseInt(userId), branchId: resolvedBranchId,
+    action: "manual_record_added", newValue: { type: resolvedType, timestamp: ts.toISOString(), reason },
     adminId: me.id, reason, ipAddress: req.ip,
   });
 

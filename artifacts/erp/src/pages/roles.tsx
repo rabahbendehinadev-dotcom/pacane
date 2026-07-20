@@ -14,7 +14,7 @@ import {
   ShoppingCart, ShoppingBag, Monitor, BookOpen, Factory,
   Receipt, BarChart2, Settings, ArrowLeftRight, SlidersHorizontal,
   RotateCcw, Wallet, TrendingUp, LayoutDashboard,
-  HardHat, ClipboardList, ClipboardCheck, Repeat2
+  HardHat, ClipboardList, ClipboardCheck, Repeat2, ScanLine
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -256,6 +256,14 @@ const MODULES = [
       { key: "internal_consumptions.confirm", label: "Confirmer",     sub: "Valider une consommation" },
       { key: "internal_consumptions.cancel",  label: "Annuler",       sub: "Annuler une consommation" },
       { key: "internal_consumptions.*",       label: "Accès complet", sub: "Toutes les actions consommations" },
+    ],
+  },
+  {
+    label: "Pointage", icon: ScanLine,
+    permissions: [
+      { key: "pointage.view",  label: "Consulter",     sub: "Voir l'historique et les présences du jour" },
+      { key: "pointage.admin", label: "Administrer",    sub: "Saisie manuelle, correction, paramètres employés" },
+      { key: "pointage.*",     label: "Accès complet", sub: "Toutes les actions pointage" },
     ],
   },
 ];

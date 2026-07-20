@@ -159,7 +159,7 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
   const [filters, setFilters] = useState({ userId: "", branchId: "", dateFrom: "", dateTo: "", status: "" });
   const [editRecord, setEditRecord] = useState<any>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [addForm, setAddForm] = useState({ userId: "", branchId: "", type: "IN", timestamp: "", notes: "", reason: "" });
+  const [addForm, setAddForm] = useState({ userId: "", notes: "", reason: "" });
   const [editForm, setEditForm] = useState({ timestamp: "", status: "", notes: "", reason: "" });
 
   const params = new URLSearchParams();
@@ -194,6 +194,16 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
   const deleteMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => { const r = await API(`/attendance/records/${id}`, { method: "DELETE", body: JSON.stringify({ reason }) }); if (!r.ok) throw new Error("Erreur"); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["attendance-records"] }); toast({ title: "Pointage supprimé" }); },
+  });
+
+  const { data: addPreview, isFetching: previewLoading } = useQuery({
+    queryKey: ["attendance-preview", addForm.userId],
+    queryFn: async () => {
+      const r = await API(`/attendance/preview/${addForm.userId}`);
+      if (!r.ok) return null;
+      return r.json();
+    },
+    enabled: !!addForm.userId && addOpen,
   });
 
   function openEdit(rec: any) {
@@ -240,7 +250,14 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
             <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous</SelectItem>
-              {["present","late","early_leave","overtime","suspicious","corrected"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {([
+                { key: "present",     label: "Présent" },
+                { key: "late",        label: "En retard" },
+                { key: "early_leave", label: "Sortie anticipée" },
+                { key: "overtime",    label: "Heures supp." },
+                { key: "suspicious",  label: "Suspect" },
+                { key: "corrected",   label: "Corrigé" },
+              ] as const).map(({ key, label }) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -300,43 +317,54 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
       </Card>
 
       {/* Add dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={v => { setAddOpen(v); if (!v) setAddForm({ userId: "", notes: "", reason: "" }); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Ajouter un pointage manuel</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
               <Label>Employé *</Label>
               <Select value={addForm.userId} onValueChange={v => setAddForm(f => ({ ...f, userId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                <SelectContent>{users.map(u => <SelectItem key={u.userId} value={String(u.userId)}>{u.name}</SelectItem>)}</SelectContent>
+                <SelectTrigger><SelectValue placeholder="Choisir un employé..." /></SelectTrigger>
+                <SelectContent>
+                  {users.map(u => <SelectItem key={u.userId} value={String(u.userId)}>{u.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Boutique *</Label>
-              <Select value={addForm.branchId} onValueChange={v => setAddForm(f => ({ ...f, branchId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                <SelectContent>{branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Type *</Label>
-                <Select value={addForm.type} onValueChange={v => setAddForm(f => ({ ...f, type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="IN">Entrée</SelectItem><SelectItem value="OUT">Sortie</SelectItem></SelectContent>
-                </Select>
+
+            {addForm.userId && (
+              <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Résumé automatique</p>
+                {previewLoading ? (
+                  <p className="text-xs text-muted-foreground animate-pulse">Chargement…</p>
+                ) : addPreview ? (
+                  <>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground w-20 shrink-0">Boutique :</span>
+                      <span className="font-medium">{addPreview.branchName ?? <span className="text-destructive">Non configurée</span>}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground w-20 shrink-0">Type :</span>
+                      <Badge variant={addPreview.inferredType === "IN" ? "default" : "secondary"}>
+                        {addPreview.inferredType === "IN" ? "Entrée" : "Sortie"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground w-20 shrink-0">Heure :</span>
+                      <span className="font-medium">{addPreview.serverTime ? new Date(addPreview.serverTime).toLocaleTimeString("fr-DZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"} <span className="text-xs text-muted-foreground">(heure serveur)</span></span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-destructive">Impossible de récupérer les paramètres de cet employé.</p>
+                )}
               </div>
-              <div>
-                <Label>Date & Heure *</Label>
-                <Input type="datetime-local" value={addForm.timestamp} onChange={e => setAddForm(f => ({ ...f, timestamp: e.target.value }))} />
-              </div>
-            </div>
-            <div><Label>Raison</Label><Input value={addForm.reason} onChange={e => setAddForm(f => ({ ...f, reason: e.target.value }))} /></div>
-            <div><Label>Notes</Label><Input value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} /></div>
+            )}
+
+            <div><Label>Raison <span className="text-xs text-muted-foreground">(optionnel)</span></Label><Input value={addForm.reason} onChange={e => setAddForm(f => ({ ...f, reason: e.target.value }))} placeholder="Ex: Oubli de badge, correction…" /></div>
+            <div><Label>Notes <span className="text-xs text-muted-foreground">(optionnel)</span></Label><Input value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Annuler</Button>
-            <Button onClick={() => addMutation.mutate(addForm)} disabled={!addForm.userId || !addForm.branchId || !addForm.timestamp || addMutation.isPending}>
+            <Button onClick={() => addMutation.mutate(addForm)} disabled={!addForm.userId || !addPreview?.branchId || addMutation.isPending}>
               Enregistrer
             </Button>
           </DialogFooter>
@@ -356,8 +384,16 @@ function RecordsTab({ branches, users }: { branches: any[]; users: any[] }) {
                 <Select value={editForm.status} onValueChange={v => setEditForm(f => ({ ...f, status: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["present","late","early_leave","overtime","suspicious","corrected","pending_validation"].map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    {([
+                      { key: "present",             label: "Présent" },
+                      { key: "late",                label: "En retard" },
+                      { key: "early_leave",         label: "Sortie anticipée" },
+                      { key: "overtime",            label: "Heures supp." },
+                      { key: "suspicious",          label: "Suspect" },
+                      { key: "corrected",           label: "Corrigé" },
+                      { key: "pending_validation",  label: "En attente" },
+                    ] as const).map(({ key, label }) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
