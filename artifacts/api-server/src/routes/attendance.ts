@@ -7,7 +7,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, gte, lte, inArray, isNull, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission } from "../middlewares/permissions";
+import { requirePermission, requireAnyPermission } from "../middlewares/permissions";
 import crypto from "crypto";
 import { hashKioskPassword, verifyKioskPassword } from "./kiosk";
 
@@ -326,7 +326,7 @@ router.get("/attendance/records", requireAuth, requirePermission("pointage.view"
 });
 
 // ── GET /api/attendance/preview/:userId — auto-résout boutique + type ─────────
-router.get("/attendance/preview/:userId", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+router.get("/attendance/preview/:userId", requireAuth, requireAnyPermission("pointage.add", "pointage.admin"), async (req, res) => {
   const userId = parseInt(req.params.userId);
 
   const [settings] = await db.select({
@@ -374,7 +374,7 @@ router.get("/attendance/preview/:userId", requireAuth, requirePermission("pointa
 });
 
 // ── POST /api/attendance/records (admin manual entry) ─────────────────────────
-router.post("/attendance/records", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+router.post("/attendance/records", requireAuth, requireAnyPermission("pointage.add", "pointage.admin"), async (req, res) => {
   const me = (req as any).user;
   const { userId, branchId: bodyBranchId, type: bodyType, timestamp: bodyTimestamp, notes, reason } = req.body;
   if (!userId) return res.status(400).json({ error: "userId requis" });
@@ -445,7 +445,7 @@ router.post("/attendance/records", requireAuth, requirePermission("pointage.admi
 });
 
 // ── PATCH /api/attendance/records/:id (admin correction) ─────────────────────
-router.patch("/attendance/records/:id", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+router.patch("/attendance/records/:id", requireAuth, requireAnyPermission("pointage.edit", "pointage.admin"), async (req, res) => {
   const me = (req as any).user;
   const id = parseInt(req.params.id);
   const { timestamp, status, notes, reason } = req.body;
@@ -471,7 +471,7 @@ router.patch("/attendance/records/:id", requireAuth, requirePermission("pointage
 });
 
 // ── DELETE /api/attendance/records/:id ────────────────────────────────────────
-router.delete("/attendance/records/:id", requireAuth, requirePermission("pointage.admin"), async (req, res) => {
+router.delete("/attendance/records/:id", requireAuth, requireAnyPermission("pointage.delete", "pointage.admin"), async (req, res) => {
   const me = (req as any).user;
   const id = parseInt(req.params.id);
   const { reason } = req.body;

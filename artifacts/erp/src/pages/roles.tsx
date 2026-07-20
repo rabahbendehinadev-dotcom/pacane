@@ -261,9 +261,12 @@ const MODULES = [
   {
     label: "Pointage", icon: ScanLine,
     permissions: [
-      { key: "pointage.view",  label: "Consulter",     sub: "Voir l'historique et les présences du jour" },
-      { key: "pointage.admin", label: "Administrer",    sub: "Saisie manuelle, correction, paramètres employés" },
-      { key: "pointage.*",     label: "Accès complet", sub: "Toutes les actions pointage" },
+      { key: "pointage.view",   label: "Consulter",                  sub: "Voir l'historique et les présences du jour" },
+      { key: "pointage.add",    label: "Ajouter un pointage manuel",  sub: "Créer une entrée ou sortie manuellement" },
+      { key: "pointage.edit",   label: "Modifier un pointage",        sub: "Corriger un enregistrement existant" },
+      { key: "pointage.delete", label: "Supprimer un pointage",       sub: "Supprimer définitivement un enregistrement" },
+      { key: "pointage.admin",  label: "Administration",              sub: "Paramètres employés, appareils, audit" },
+      { key: "pointage.*",      label: "Accès complet",               sub: "Toutes les actions pointage" },
     ],
   },
 ];
