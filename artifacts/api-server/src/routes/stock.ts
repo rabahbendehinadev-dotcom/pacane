@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, stockLevelsTable, stockMovementsTable, productsTable, branchesTable, unitsTable } from "@workspace/db";
+import { db, stockLevelsTable, stockMovementsTable, productsTable, branchesTable, unitsTable, categoriesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -8,7 +8,7 @@ import { P } from "../lib/permissions";
 const router: IRouter = Router();
 
 router.get("/stock", requireAuth, requirePermission(P.stock.view), async (req, res): Promise<void> => {
-  const { branchId, type, alert } = req.query as Record<string, string>;
+  const { branchId, type, alert, categoryId } = req.query as Record<string, string>;
   const scope = visibleBranchIds(req.user!);
   if (scope !== null && scope.length === 0) { res.json([]); return; }
 
@@ -16,14 +16,17 @@ router.get("/stock", requireAuth, requirePermission(P.stock.view), async (req, r
     sl: stockLevelsTable,
     productName: productsTable.name,
     productType: productsTable.type,
+    productCategoryId: productsTable.categoryId,
     alertQty: productsTable.alertQuantity,
     costPrice: productsTable.costPrice,
     branchName: branchesTable.name,
-    unitName: unitsTable.abbreviation
+    unitName: unitsTable.abbreviation,
+    categoryName: categoriesTable.name,
   }).from(stockLevelsTable)
     .leftJoin(productsTable, eq(stockLevelsTable.productId, productsTable.id))
     .leftJoin(branchesTable, eq(stockLevelsTable.branchId, branchesTable.id))
     .leftJoin(unitsTable, eq(productsTable.unitId, unitsTable.id))
+    .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .orderBy(productsTable.name);
 
   let result = rows.map(r => {
@@ -35,6 +38,7 @@ router.get("/stock", requireAuth, requirePermission(P.stock.view), async (req, r
     else if (alertQty && qty <= alertQty) status = "low";
     return {
       productId: r.sl.productId, productName: r.productName ?? "", productType: r.productType ?? "",
+      categoryId: r.productCategoryId ?? null, categoryName: r.categoryName ?? null,
       branchId: r.sl.branchId, branchName: r.branchName ?? "", quantity: qty,
       alertQuantity: alertQty, unitName: r.unitName ?? "", status,
       valueCost: qty * parseFloat(r.costPrice as string ?? "0")
@@ -43,6 +47,7 @@ router.get("/stock", requireAuth, requirePermission(P.stock.view), async (req, r
   if (scope !== null) result = result.filter(r => scope.includes(r.branchId));
   if (branchId) result = result.filter(r => r.branchId === parseInt(branchId, 10));
   if (type) result = result.filter(r => r.productType === type);
+  if (categoryId) result = result.filter(r => r.categoryId === parseInt(categoryId, 10));
   if (alert) result = result.filter(r => r.status === alert || (alert === "alert" && r.status !== "ok"));
   res.json(result);
 });

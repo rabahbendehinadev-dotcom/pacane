@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useGetStockLevels, useGetStockAlerts, useGetStockMovements, useGetBranches } from "@workspace/api-client-react";
+import { useGetStockLevels, useGetStockAlerts, useGetStockMovements, useGetBranches, useGetCategories } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,7 @@ function formatDA(n: number) { return new Intl.NumberFormat("fr-DZ", { maximumFr
 
 type StockLevel = {
   productId: number; productName: string; productType: string;
+  categoryId: number | null; categoryName: string | null;
   branchId: number; branchName: string; quantity: number;
   alertQuantity: number | null; unitName: string; status: string; valueCost: number;
 };
@@ -65,6 +66,7 @@ export default function Stock() {
   // Niveaux filters
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
 
   // Mouvements filters
   const [filterMvtType, setFilterMvtType] = useState<string>("all");
@@ -89,6 +91,7 @@ export default function Stock() {
   const isAdmin = user?.adminAccess;
 
   const { data: branches = [] } = useGetBranches();
+  const { data: categories = [] } = useGetCategories();
   const { data: levels = [], isLoading: loadingLevels, refetch: refetchLevels } = useGetStockLevels(
     branchId !== "all" ? { branchId: parseInt(branchId) } : {}
   );
@@ -107,13 +110,14 @@ export default function Stock() {
 
   // Filtered levels (Niveaux tab)
   const filteredLevels = useMemo(() => {
-    return levels.filter(l => {
+    return (levels as StockLevel[]).filter(l => {
       if (search && !l.productName.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterStatus !== "all" && l.status !== filterStatus) return false;
       if (filterType !== "all" && l.productType !== filterType) return false;
+      if (filterCategory !== "all" && String(l.categoryId ?? "") !== filterCategory) return false;
       return true;
     });
-  }, [levels, search, filterStatus, filterType]);
+  }, [levels, search, filterStatus, filterType, filterCategory]);
 
   // Filtered movements (Mouvements tab)
   const filteredMovements = useMemo(() => {
@@ -141,7 +145,7 @@ export default function Stock() {
   const kpiOut = filteredLevels.filter(l => l.status === "out").length;
 
   // Is any filter active?
-  const hasLevelsFilter = branchId !== "all" || filterStatus !== "all" || filterType !== "all" || search !== "";
+  const hasLevelsFilter = branchId !== "all" || filterStatus !== "all" || filterType !== "all" || filterCategory !== "all" || search !== "";
   const hasMvtFilter = filterMvtType !== "all" || filterDateFrom !== "" || filterDateTo !== "";
   const hasAnyFilter = hasLevelsFilter || hasMvtFilter;
 
@@ -150,6 +154,7 @@ export default function Stock() {
     setSearch("");
     setFilterStatus("all");
     setFilterType("all");
+    setFilterCategory("all");
     setFilterMvtType("all");
     setFilterDateFrom("");
     setFilterDateTo("");
@@ -287,6 +292,20 @@ export default function Stock() {
                     <SelectItem value="all">Tous les types</SelectItem>
                     {productTypes.map(t => (
                       <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {categories.length > 0 && (
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="h-8 w-[180px] text-xs bg-background">
+                    <SelectValue placeholder="Toutes les catégories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les catégories</SelectItem>
+                    {categories.map(c => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
