@@ -5,6 +5,8 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import { requirePermission } from "../middlewares/permissions";
+import { P } from "../lib/permissions";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -152,7 +154,7 @@ router.post("/support-tickets/:id/replies", requireAuth, async (req: any, res: a
 // ── Admin endpoints ───────────────────────────────────────────────────────────
 
 // GET /api/support-tickets — admin list with filters
-router.get("/support-tickets", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.get("/support-tickets", requireAuth, requirePermission(P.adminTickets.view), async (req: any, res: any): Promise<void> => {
   const { status, urgency, type: ticketType, userId: filterUserId, branchId } = req.query;
   const page = parseInt(req.query.page as string) || 1;
   const limit = 25;
@@ -213,7 +215,7 @@ router.get("/support-tickets", requireAuth, requireAdmin, async (req: any, res: 
 });
 
 // PATCH /api/support-tickets/:id — admin update
-router.patch("/support-tickets/:id", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.patch("/support-tickets/:id", requireAuth, requirePermission(P.adminTickets.edit), async (req: any, res: any): Promise<void> => {
   const id = parseInt(req.params.id);
   const { status, urgency, assigneeUserId, assigneeName, internalNote } = req.body;
 

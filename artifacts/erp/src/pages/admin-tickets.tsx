@@ -45,6 +45,16 @@ export default function AdminTicketsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  const _perms: string[] = (user as any)?.permissions ?? [];
+  function _hasPerm(p: string) {
+    if (_perms.includes("*")) return true;
+    if (_perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return _perms.includes(`${mod}.*`);
+  }
+  const canEdit   = user?.adminAccess || _hasPerm("admin_tickets.edit");
+  const canCreate = user?.adminAccess || _hasPerm("admin_tickets.create");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [isInternal, setIsInternal] = useState(false);
@@ -264,36 +274,40 @@ export default function AdminTicketsPage() {
               </div>
 
               {/* Status change */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground">Changer le statut :</span>
-                <div className="flex gap-1 flex-wrap">
-                  {ALL_STATUSES.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => updateMutation.mutate({ id: selectedId, status: s })}
-                      className={`text-xs px-2 py-1 rounded font-medium transition-all hover:opacity-80 ${detail.ticket.status === s ? STATUS_CONFIG[s]?.color + " ring-2 ring-current/30" : "bg-muted text-muted-foreground"}`}
-                    >
-                      {STATUS_CONFIG[s]?.label ?? s}
-                    </button>
-                  ))}
+              {canEdit && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Changer le statut :</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {ALL_STATUSES.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => updateMutation.mutate({ id: selectedId, status: s })}
+                        className={`text-xs px-2 py-1 rounded font-medium transition-all hover:opacity-80 ${detail.ticket.status === s ? STATUS_CONFIG[s]?.color + " ring-2 ring-current/30" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {STATUS_CONFIG[s]?.label ?? s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Internal note */}
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Note interne (invisible pour l'utilisateur)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={internalNote || detail.ticket.internal_note || ""}
-                    onChange={e => setInternalNote(e.target.value)}
-                    placeholder="Ajouter une note..."
-                    className="text-sm"
-                  />
-                  <Button size="sm" variant="outline" onClick={() => updateMutation.mutate({ id: selectedId, internalNote })}>
-                    Enregistrer
-                  </Button>
+              {canEdit && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Note interne (invisible pour l'utilisateur)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={internalNote || detail.ticket.internal_note || ""}
+                      onChange={e => setInternalNote(e.target.value)}
+                      placeholder="Ajouter une note..."
+                      className="text-sm"
+                    />
+                    <Button size="sm" variant="outline" onClick={() => updateMutation.mutate({ id: selectedId, internalNote })}>
+                      Enregistrer
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Replies */}
               {detail.replies?.length > 0 && (
@@ -312,24 +326,26 @@ export default function AdminTicketsPage() {
               )}
 
               {/* Reply box */}
-              <div className="border-t pt-3 space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium">Répondre :</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs">
-                    <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} />
-                    <span className="text-amber-600">Note interne</span>
-                  </label>
+              {canCreate && (
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium">Répondre :</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} />
+                      <span className="text-amber-600">Note interne</span>
+                    </label>
+                  </div>
+                  <Textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Écrivez votre réponse ici..." rows={3} />
+                  <Button
+                    onClick={() => { if (replyBody.trim()) replyMutation.mutate({ id: selectedId!, body: replyBody, internal: isInternal }); }}
+                    disabled={replyMutation.isPending || !replyBody.trim()}
+                    className="flex items-center gap-2" size="sm"
+                  >
+                    {replyMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    Envoyer {isInternal ? "la note" : "la réponse"}
+                  </Button>
                 </div>
-                <Textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Écrivez votre réponse ici..." rows={3} />
-                <Button
-                  onClick={() => { if (replyBody.trim()) replyMutation.mutate({ id: selectedId!, body: replyBody, internal: isInternal }); }}
-                  disabled={replyMutation.isPending || !replyBody.trim()}
-                  className="flex items-center gap-2" size="sm"
-                >
-                  {replyMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  Envoyer {isInternal ? "la note" : "la réponse"}
-                </Button>
-              </div>
+              )}
             </div>
           ) : <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}
         </DialogContent>

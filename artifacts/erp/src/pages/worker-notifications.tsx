@@ -75,6 +75,17 @@ export default function WorkerNotificationsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  const _perms: string[] = (user as any)?.permissions ?? [];
+  function _hasPerm(p: string) {
+    if (_perms.includes("*")) return true;
+    if (_perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return _perms.includes(`${mod}.*`);
+  }
+  const canCreate = user?.adminAccess || _hasPerm("worker_notif.create");
+  const canEdit   = user?.adminAccess || _hasPerm("worker_notif.edit");
+  const canDelete = user?.adminAccess || _hasPerm("worker_notif.delete");
+
   const [createOpen, setCreateOpen]   = useState(false);
   const [detailId, setDetailId]       = useState<number | null>(null);
   const [form, setForm]               = useState(EMPTY_FORM);
@@ -207,10 +218,12 @@ export default function WorkerNotificationsPage() {
             <p className="text-xs text-muted-foreground">Envoyer des messages à votre équipe</p>
           </div>
         </div>
-        <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          Nouveau
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Nouveau
+          </Button>
+        )}
       </div>
 
       {/* List */}
@@ -221,7 +234,7 @@ export default function WorkerNotificationsPage() {
           <CardContent className="flex flex-col items-center justify-center py-14 gap-3">
             <Bell className="h-10 w-10 text-muted-foreground/30" />
             <p className="text-sm text-muted-foreground">Aucune notification envoyée</p>
-            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>Envoyer la première</Button>
+            {canCreate && <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>Envoyer la première</Button>}
           </CardContent>
         </Card>
       ) : (
@@ -255,16 +268,18 @@ export default function WorkerNotificationsPage() {
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDetailId(n.id)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
-                      {n.push_failed_count > 0 && (
+                      {canCreate && n.push_failed_count > 0 && (
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => resendMutation.mutate(n.id)}>
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => {
-                        if (confirm("Archiver cette notification ?")) archiveMutation.mutate(n.id);
-                      }}>
-                        <Archive className="h-3.5 w-3.5" />
-                      </Button>
+                      {canDelete && (
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => {
+                          if (confirm("Archiver cette notification ?")) archiveMutation.mutate(n.id);
+                        }}>
+                          <Archive className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

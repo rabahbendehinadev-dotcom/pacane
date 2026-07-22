@@ -8,6 +8,8 @@ import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { requirePermission } from "../middlewares/permissions";
+import { P } from "../lib/permissions";
 import webPush from "web-push";
 import { logger } from "../lib/logger";
 
@@ -279,7 +281,7 @@ router.post("/worker-notifications/recipients/:id/acknowledge", requireAuth, asy
 // ── Admin endpoints ───────────────────────────────────────────────────────────
 
 // GET /api/worker-notifications/push-status — admin: push subscription status per user
-router.get("/worker-notifications/push-status", requireAuth, requireAdmin, async (_req: any, res: any): Promise<void> => {
+router.get("/worker-notifications/push-status", requireAuth, requirePermission(P.notifStatus.view), async (_req: any, res: any): Promise<void> => {
   try {
     const rows = await pool.query(`
       SELECT
@@ -316,7 +318,7 @@ router.get("/worker-notifications/push-status", requireAuth, requireAdmin, async
 // GET /api/worker-notifications/recipients — admin: ALL user accounts as potential recipients.
 // Every user from the Utilisateurs page can receive a notification, whatever their role.
 // Worker linkage is informational only (shows the worker name next to the account).
-router.get("/worker-notifications/recipients", requireAuth, requireAdmin, async (_req: any, res: any): Promise<void> => {
+router.get("/worker-notifications/recipients", requireAuth, requirePermission(P.workerNotif.create), async (_req: any, res: any): Promise<void> => {
   try {
     const rows = await pool.query(`
       SELECT
@@ -343,7 +345,7 @@ router.get("/worker-notifications/recipients", requireAuth, requireAdmin, async 
 });
 
 // GET /api/worker-notifications/recipient-preview — admin: preview recipients before sending
-router.post("/worker-notifications/recipient-preview", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.post("/worker-notifications/recipient-preview", requireAuth, requirePermission(P.workerNotif.create), async (req: any, res: any): Promise<void> => {
   try {
     const recipients = await resolveRecipientUserIds(req.body.criteria || {});
     const userIds = recipients.map(r => r.userId);
@@ -378,7 +380,7 @@ router.post("/worker-notifications/recipient-preview", requireAuth, requireAdmin
 });
 
 // GET /api/worker-notifications — admin list
-router.get("/worker-notifications", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.get("/worker-notifications", requireAuth, requirePermission(P.workerNotif.view), async (req: any, res: any): Promise<void> => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = 20;
   const offset = (page - 1) * limit;
@@ -413,7 +415,7 @@ router.get("/worker-notifications", requireAuth, requireAdmin, async (req: any, 
 });
 
 // POST /api/worker-notifications — admin creates + sends
-router.post("/worker-notifications", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.post("/worker-notifications", requireAuth, requirePermission(P.workerNotif.create), async (req: any, res: any): Promise<void> => {
   const { title, body, type, priority, expiresAt, imageUrl, criteria } = req.body;
   const senderUserId = req.user.id;
   const senderName = req.user.name;
@@ -532,7 +534,7 @@ router.post("/worker-notifications", requireAuth, requireAdmin, async (req: any,
 });
 
 // GET /api/worker-notifications/:id — admin detail
-router.get("/worker-notifications/:id", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.get("/worker-notifications/:id", requireAuth, requirePermission(P.workerNotif.view), async (req: any, res: any): Promise<void> => {
   const id = parseInt(req.params.id);
   try {
     const notifResult = await pool.query(
@@ -565,7 +567,7 @@ router.get("/worker-notifications/:id", requireAuth, requireAdmin, async (req: a
 });
 
 // PATCH /api/worker-notifications/:id — admin edit (before anyone reads it)
-router.patch("/worker-notifications/:id", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.patch("/worker-notifications/:id", requireAuth, requirePermission(P.workerNotif.edit), async (req: any, res: any): Promise<void> => {
   const id = parseInt(req.params.id);
   const { title, body, type, priority, expiresAt, imageUrl } = req.body;
   try {
@@ -587,7 +589,7 @@ router.patch("/worker-notifications/:id", requireAuth, requireAdmin, async (req:
 });
 
 // DELETE /api/worker-notifications/:id — admin archive
-router.delete("/worker-notifications/:id", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.delete("/worker-notifications/:id", requireAuth, requirePermission(P.workerNotif.delete), async (req: any, res: any): Promise<void> => {
   const id = parseInt(req.params.id);
   try {
     await pool.query(`UPDATE admin_worker_notifications SET is_archived = true WHERE id = $1`, [id]);
@@ -598,7 +600,7 @@ router.delete("/worker-notifications/:id", requireAuth, requireAdmin, async (req
 });
 
 // POST /api/worker-notifications/:id/resend — resend push to failed recipients
-router.post("/worker-notifications/:id/resend", requireAuth, requireAdmin, async (req: any, res: any): Promise<void> => {
+router.post("/worker-notifications/:id/resend", requireAuth, requirePermission(P.workerNotif.create), async (req: any, res: any): Promise<void> => {
   const id = parseInt(req.params.id);
   try {
     const notifResult = await pool.query(`SELECT * FROM admin_worker_notifications WHERE id = $1`, [id]);

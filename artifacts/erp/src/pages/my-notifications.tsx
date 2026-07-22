@@ -44,6 +44,7 @@ const TYPE_LABELS: Record<string, string> = {
 export default function MyNotificationsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+
   const qc = useQueryClient();
   const [selected, setSelected] = useState<any>(null);
   const [pendingAck, setPendingAck] = useState<any[]>([]);
@@ -94,6 +95,17 @@ export default function MyNotificationsPage() {
       qc.invalidateQueries({ queryKey: ["my-pending-ack"] });
     },
   });
+
+  const _perms: string[] = (user as any)?.permissions ?? [];
+  function _hasPerm(p: string) {
+    if (_perms.includes("*")) return true;
+    if (_perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return _perms.includes(`${mod}.*`);
+  }
+  if (user && !user.adminAccess && !_hasPerm("my_notif.view")) {
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
+  }
 
   async function handleAck(recipientId: number) {
     setAcking(true);

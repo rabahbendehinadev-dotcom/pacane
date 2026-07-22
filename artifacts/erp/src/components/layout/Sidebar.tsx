@@ -158,12 +158,12 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
     {
       title: "Communications",
       items: [
-        { label: "Notifications employés", href: "/worker-notifications", icon: Bell, adminOnly: true },
-        { label: "Tickets utilisateurs", href: "/admin-tickets", icon: Ticket, adminOnly: true },
-        { label: "Statut des notifications", href: "/notification-status", icon: BellRing, adminOnly: true },
-        { label: "Mes notifications", href: "/my-notifications", icon: Bell },
-        { label: "Signaler un problème", href: "/report-problem", icon: AlertCircle },
-        { label: "Mes tickets", href: "/my-tickets", icon: Ticket },
+        { label: "Notifications employés", href: "/worker-notifications", icon: Bell, perm: "worker_notif.view" },
+        { label: "Tickets utilisateurs", href: "/admin-tickets", icon: Ticket, perm: "admin_tickets.view" },
+        { label: "Statut des notifications", href: "/notification-status", icon: BellRing, perm: "notif_status.view" },
+        { label: "Mes notifications", href: "/my-notifications", icon: Bell, perm: "my_notif.view" },
+        { label: "Signaler un problème", href: "/report-problem", icon: AlertCircle, perm: "report.view" },
+        { label: "Mes tickets", href: "/my-tickets", icon: Ticket, perm: "my_tickets.view" },
       ],
     },
     {

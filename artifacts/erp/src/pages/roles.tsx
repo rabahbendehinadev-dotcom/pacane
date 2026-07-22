@@ -14,7 +14,8 @@ import {
   ShoppingCart, ShoppingBag, Monitor, BookOpen, Factory,
   Receipt, BarChart2, Settings, ArrowLeftRight, SlidersHorizontal,
   RotateCcw, Wallet, TrendingUp, LayoutDashboard,
-  HardHat, ClipboardList, ClipboardCheck, Repeat2, ScanLine
+  HardHat, ClipboardList, ClipboardCheck, Repeat2, ScanLine,
+  Bell, BellRing, Ticket, AlertCircle, MessageSquare
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -267,6 +268,66 @@ const MODULES = [
       { key: "pointage.delete", label: "Supprimer un pointage",       sub: "Supprimer définitivement un enregistrement" },
       { key: "pointage.admin",  label: "Administration",              sub: "Paramètres employés, appareils, audit" },
       { key: "pointage.*",      label: "Accès complet",               sub: "Toutes les actions pointage" },
+    ],
+  },
+  {
+    label: "Notifications employés", icon: Bell,
+    permissions: [
+      { key: "worker_notif.view",   label: "Consulter",   sub: "Voir la liste des notifications envoyées" },
+      { key: "worker_notif.create", label: "Ajouter",     sub: "Créer et envoyer des notifications à l'équipe" },
+      { key: "worker_notif.edit",   label: "Modifier",    sub: "Modifier une notification existante" },
+      { key: "worker_notif.delete", label: "Supprimer",   sub: "Supprimer une notification" },
+      { key: "worker_notif.*",      label: "Accès complet", sub: "Toutes les actions notifications employés" },
+    ],
+  },
+  {
+    label: "Tickets utilisateurs (admin)", icon: Ticket,
+    permissions: [
+      { key: "admin_tickets.view",   label: "Consulter", sub: "Voir tous les tickets soumis par les utilisateurs" },
+      { key: "admin_tickets.create", label: "Répondre",  sub: "Répondre aux tickets et ajouter des notes internes" },
+      { key: "admin_tickets.edit",   label: "Modifier",  sub: "Changer le statut des tickets" },
+      { key: "admin_tickets.delete", label: "Supprimer", sub: "Supprimer un ticket" },
+      { key: "admin_tickets.*",      label: "Accès complet", sub: "Toutes les actions gestion tickets" },
+    ],
+  },
+  {
+    label: "Statut des notifications", icon: BellRing,
+    permissions: [
+      { key: "notif_status.view",   label: "Consulter", sub: "Voir le statut des notifications push par utilisateur" },
+      { key: "notif_status.create", label: "Ajouter",   sub: "Gérer les abonnements push" },
+      { key: "notif_status.edit",   label: "Modifier",  sub: "Modifier les préférences de notification" },
+      { key: "notif_status.delete", label: "Supprimer", sub: "Révoquer des abonnements push" },
+      { key: "notif_status.*",      label: "Accès complet", sub: "Toutes les actions statut notifications" },
+    ],
+  },
+  {
+    label: "Mes notifications", icon: Bell,
+    permissions: [
+      { key: "my_notif.view",   label: "Consulter", sub: "Voir ses propres notifications reçues" },
+      { key: "my_notif.create", label: "Ajouter",   sub: "Acquitter ou marquer comme lu" },
+      { key: "my_notif.edit",   label: "Modifier",  sub: "Modifier ses préférences de notification" },
+      { key: "my_notif.delete", label: "Supprimer", sub: "Supprimer ses propres notifications" },
+      { key: "my_notif.*",      label: "Accès complet", sub: "Toutes les actions mes notifications" },
+    ],
+  },
+  {
+    label: "Signaler un problème", icon: AlertCircle,
+    permissions: [
+      { key: "report.view",   label: "Consulter", sub: "Accéder à la page de signalement" },
+      { key: "report.create", label: "Ajouter",   sub: "Soumettre un nouveau ticket de problème" },
+      { key: "report.edit",   label: "Modifier",  sub: "Modifier un signalement soumis" },
+      { key: "report.delete", label: "Supprimer", sub: "Annuler un signalement" },
+      { key: "report.*",      label: "Accès complet", sub: "Toutes les actions signalement" },
+    ],
+  },
+  {
+    label: "Mes tickets", icon: MessageSquare,
+    permissions: [
+      { key: "my_tickets.view",   label: "Consulter", sub: "Voir ses propres tickets soumis" },
+      { key: "my_tickets.create", label: "Ajouter",   sub: "Répondre à ses tickets" },
+      { key: "my_tickets.edit",   label: "Modifier",  sub: "Modifier ses tickets" },
+      { key: "my_tickets.delete", label: "Supprimer", sub: "Supprimer un ticket personnel" },
+      { key: "my_tickets.*",      label: "Accès complet", sub: "Toutes les actions mes tickets" },
     ],
   },
 ];

@@ -32,7 +32,14 @@ export default function NotificationStatusPage() {
     staleTime: 60_000,
   });
 
-  if (!user?.adminAccess) {
+  const perms: string[] = (user as any)?.permissions ?? [];
+  function hasPerm(p: string) {
+    if (perms.includes("*")) return true;
+    if (perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return perms.includes(`${mod}.*`);
+  }
+  if (!user?.adminAccess && !hasPerm("notif_status.view")) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
   }
 

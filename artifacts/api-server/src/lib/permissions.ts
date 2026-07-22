@@ -28,6 +28,12 @@ export const P = {
   myPreparations:  { view: "my_preparations.view", updateStatus: "my_preparations.update_status" },
   checklist:       { manage: "checklist.manage" },
   pointage:        { view: "pointage.view", add: "pointage.add", edit: "pointage.edit", delete: "pointage.delete", admin: "pointage.admin", selfView: "pointage.self_view" },
+  workerNotif:     { view: "worker_notif.view",   create: "worker_notif.create",   edit: "worker_notif.edit",   delete: "worker_notif.delete" },
+  adminTickets:    { view: "admin_tickets.view",   create: "admin_tickets.create",  edit: "admin_tickets.edit",  delete: "admin_tickets.delete" },
+  notifStatus:     { view: "notif_status.view",    create: "notif_status.create",   edit: "notif_status.edit",   delete: "notif_status.delete" },
+  myNotif:         { view: "my_notif.view",        create: "my_notif.create",       edit: "my_notif.edit",       delete: "my_notif.delete" },
+  report:          { view: "report.view",          create: "report.create",         edit: "report.edit",         delete: "report.delete" },
+  myTickets:       { view: "my_tickets.view",      create: "my_tickets.create",     edit: "my_tickets.edit",     delete: "my_tickets.delete" },
 } as const;
 
 export function hasPermission(permissions: string[], permission: string): boolean {
@@ -91,6 +97,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "workers.*",
     "preparation_orders.*",
     "my_preparations.*",
+    "worker_notif.*",
+    "admin_tickets.*",
+    "notif_status.*",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Caissier": [
@@ -101,6 +113,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "sales.view", "sales.create",
     "returns.view", "returns.create",
     "wallet.view",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Responsable production": [
@@ -110,6 +125,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "stock.view",
     "products.view",
     "contacts.view",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Responsable stock": [
@@ -121,6 +139,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "purchases.view", "purchases.receive",
     "purchase_returns.view",
     "internal_consumptions.*",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Responsable achats": [
@@ -132,6 +153,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "purchase_returns.*",
     "reports.view",
     "replenishment.*",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Comptable": [
@@ -148,10 +172,16 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "treasury.view",
     "analytics.view",
     "settings.view",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 
   "Ouvrier": [
     "my_preparations.view",
     "my_preparations.update_status",
+    "my_notif.*",
+    "report.*",
+    "my_tickets.*",
   ],
 };

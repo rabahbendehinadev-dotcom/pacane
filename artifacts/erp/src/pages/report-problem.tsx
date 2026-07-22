@@ -36,6 +36,7 @@ const URGENCY_LEVELS = [
 export default function ReportProblemPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+
   const [, navigate] = useLocation();
   const [submitted, setSubmitted] = useState<any>(null);
 
@@ -62,6 +63,17 @@ export default function ReportProblemPage() {
     },
     onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
+
+  const _perms: string[] = (user as any)?.permissions ?? [];
+  function _hasPerm(p: string) {
+    if (_perms.includes("*")) return true;
+    if (_perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return _perms.includes(`${mod}.*`);
+  }
+  if (user && !user.adminAccess && !_hasPerm("report.view")) {
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

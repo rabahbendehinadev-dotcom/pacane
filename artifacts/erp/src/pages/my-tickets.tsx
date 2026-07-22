@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -36,8 +37,10 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function MyTicketsPage() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+
   const [, navigate] = useLocation();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [replyBody, setReplyBody] = useState("");
@@ -78,6 +81,17 @@ export default function MyTicketsPage() {
     },
     onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
+
+  const _perms: string[] = (user as any)?.permissions ?? [];
+  function _hasPerm(p: string) {
+    if (_perms.includes("*")) return true;
+    if (_perms.includes(p)) return true;
+    const mod = p.split(".")[0];
+    return _perms.includes(`${mod}.*`);
+  }
+  if (user && !user.adminAccess && !_hasPerm("my_tickets.view")) {
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
