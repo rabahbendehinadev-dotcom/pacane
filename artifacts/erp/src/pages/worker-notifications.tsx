@@ -201,7 +201,7 @@ export default function WorkerNotificationsPage() {
   );
   const selectedRecipients = recipients.filter((u: any) => form.selectedUserIds.includes(u.id));
 
-  if (!user?.adminAccess) {
+  if (user && !user.adminAccess && !_hasPerm("worker_notif.view")) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
   }
 

@@ -121,7 +121,7 @@ export default function AdminTicketsPage() {
     onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
   });
 
-  if (!user?.adminAccess) {
+  if (user && !user.adminAccess && !_hasPerm("admin_tickets.view")) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Accès non autorisé</div>;
   }
 
