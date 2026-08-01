@@ -72,7 +72,7 @@ export default function Login() {
   }
 
   return (
-    <div className={`min-h-screen w-full flex items-center justify-center bg-secondary/30 ${isRtl ? "rtl" : "ltr"}`}>
+    <div className={`min-h-screen w-full flex flex-col items-center justify-center bg-secondary/30 ${isRtl ? "rtl" : "ltr"}`}>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
 
       <Card className="w-full max-w-md relative z-10 shadow-2xl border-none">
@@ -187,6 +187,10 @@ export default function Login() {
           </>
         )}
       </Card>
+
+      <p className="relative z-10 mt-6 text-xs text-muted-foreground/60 text-center select-none">
+        Developed by <span className="font-medium text-muted-foreground/80">Rabah Bendehina</span>
+      </p>
     </div>
   );
 }
