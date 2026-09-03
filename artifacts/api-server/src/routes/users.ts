@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, rolesTable } from "@workspace/db";
 import { userAttendanceSettingsTable } from "@workspace/db";
-import { eq, and, inArray, not } from "drizzle-orm";
+import { eq, and, inArray, not, sql } from "drizzle-orm";
 import { hashPassword } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
@@ -82,10 +82,16 @@ router.get("/users/:id", requireAuth, requirePermission(P.users.view), async (re
 
 router.patch("/users/:id", requireAuth, requirePermission(P.users.edit), async (req, res): Promise<void> => {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, email, phone, status, language, roleId, workerId, branchIds, posAccess, adminAccess } = req.body;
+  const { name, email, password, phone, status, language, roleId, workerId, branchIds, posAccess, adminAccess } = req.body;
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = name;
   if (email != null) updates.email = email;
+  // An empty password in the edit form means "keep the current password".
+  // A non-empty password must replace the stored hash.
+  if (typeof password === "string" && password.length > 0) {
+    updates.passwordHash = hashPassword(password);
+    updates.tokenVersion = sql`COALESCE(${usersTable.tokenVersion}, 0) + 1`;
+  }
   if (phone != null) updates.phone = phone;
   if (status != null) updates.status = status;
   if (language != null) updates.language = language;
