@@ -198,6 +198,15 @@ export default function Adjustments() {
   const createValid = formBranchId && formReason
     && formItems.every(fi => fi.productId && fi.qty && !isNaN(parseFloat(fi.qty)) && parseFloat(fi.qty) > 0)
     && (!hasNegativeItem || photoData);
+  const createBlockedReason = !formBranchId
+    ? "Choisissez une boutique"
+    : !formReason
+      ? "Choisissez un motif"
+      : !formItems.every(fi => fi.productId && fi.qty && !isNaN(parseFloat(fi.qty)) && parseFloat(fi.qty) > 0)
+        ? "Complétez le produit et la quantité de chaque ligne"
+        : hasNegativeItem && !photoData
+          ? "Ajoutez la photo obligatoire pour enregistrer le déstockage"
+          : null;
 
   async function handleCreate() {
     if (!createValid || creating) return;
@@ -965,7 +974,10 @@ export default function Adjustments() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label>Produits *</Label>
-                <span className="text-xs text-muted-foreground">{formItems.length} produit{formItems.length > 1 ? "s" : ""}</span>
+                <div className="text-right">
+                  <span className="block text-xs text-muted-foreground">{formItems.length} produit{formItems.length > 1 ? "s" : ""}</span>
+                  <span className="block text-[11px] text-primary">Nombre illimité</span>
+                </div>
               </div>
               <div className="space-y-3">
                 {formItems.map((fi, idx) => {
@@ -1093,11 +1105,16 @@ export default function Adjustments() {
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 pt-2 border-t">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleCreate} disabled={!createValid || creating}>
-              {creating ? "Enregistrement..." : `Enregistrer ${formItems.length > 1 ? `(${formItems.length} produits)` : ""}`}
-            </Button>
+          <DialogFooter className="shrink-0 pt-2 border-t flex-col sm:flex-row">
+            {createBlockedReason && (
+              <p className="w-full text-xs text-destructive sm:mr-auto sm:w-auto">{createBlockedReason}</p>
+            )}
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setDialogOpen(false)}>Annuler</Button>
+              <Button className="flex-1 sm:flex-none" onClick={handleCreate} disabled={!createValid || creating}>
+                {creating ? "Enregistrement..." : `Enregistrer ${formItems.length > 1 ? `(${formItems.length} produits)` : ""}`}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
