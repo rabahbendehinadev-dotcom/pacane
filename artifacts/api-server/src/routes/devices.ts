@@ -85,13 +85,19 @@ router.patch("/users/:id/devices/:fingerprint", requireAuth, requirePermission(P
     return res.status(400).json({ error: "Les ordinateurs sont en surveillance uniquement. Aucune approbation n'est requise." });
   }
 
-  // When approving a pending device → auto-revoke existing active devices of same type
-  if (status === "approved" && device.status === "pending") {
+  // When approving a mobile device, keep the one-mobile rule consistent even
+  // when an administrator is re-authorising a previously revoked device.
+  if (
+    status === "approved" &&
+    device.deviceType === "mobile" &&
+    device.status !== "approved" &&
+    device.status !== "unknown"
+  ) {
     const currentActives = await db.select({ fingerprint: userDevicesTable.fingerprint })
       .from(userDevicesTable)
       .where(and(
         eq(userDevicesTable.userId, userId),
-        eq(userDevicesTable.deviceType, device.deviceType),
+        eq(userDevicesTable.deviceType, "mobile"),
         ne(userDevicesTable.fingerprint, fingerprint),
         or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
       ));
@@ -103,7 +109,7 @@ router.patch("/users/:id/devices/:fingerprint", requireAuth, requirePermission(P
         revokedReason: `Remplacé par un nouvel appareil approuvé`,
       }).where(and(
         eq(userDevicesTable.userId, userId),
-        eq(userDevicesTable.deviceType, device.deviceType),
+        eq(userDevicesTable.deviceType, "mobile"),
         ne(userDevicesTable.fingerprint, fingerprint),
         or(eq(userDevicesTable.status, "approved"), eq(userDevicesTable.status, "unknown")),
       ));
@@ -147,9 +153,13 @@ router.post("/users/:id/devices/reset-mobile", requireAuth, requirePermission(PE
     return res.status(400).json({ error: "La raison est obligatoire pour réinitialiser le mobile" });
   }
 
-  await db.update(userDevicesTable).set({
-    status: "revoked", revokedAt: new Date(), revokedByAdminId: admin.id, revokedReason: reason,
-  }).where(and(eq(userDevicesTable.userId, userId), eq(userDevicesTable.deviceType, "mobile")));
+  // A reset means "forget the registered phones", not "block the current
+  // phone forever". Keep the audit trail in device_events, then allow the
+  // next login from the same phone to register it again.
+  await db.delete(userDevicesTable).where(and(
+    eq(userDevicesTable.userId, userId),
+    eq(userDevicesTable.deviceType, "mobile"),
+  ));
 
   const [u] = await db.select({ tokenVersion: usersTable.tokenVersion }).from(usersTable).where(eq(usersTable.id, userId));
   const newVersion = (u?.tokenVersion ?? 0) + 1;

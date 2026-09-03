@@ -195,10 +195,10 @@ function MobileDeviceCard({ device, onPatch, disabled }: { device: DeviceRecord;
                 {device.status !== "approved" && device.status !== "unknown" && (
                   <TooltipProvider><Tooltip>
                     <TooltipTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" disabled={disabled} onClick={() => handleAction("approved")}>
-                        <CheckCircle className="h-3.5 w-3.5" />
+                      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs text-green-700 border-green-200 hover:bg-green-50 gap-1.5" disabled={disabled} onClick={() => handleAction("approved")}>
+                        <CheckCircle className="h-3.5 w-3.5" />Autoriser
                       </Button>
-                    </TooltipTrigger><TooltipContent>Approuver</TooltipContent>
+                    </TooltipTrigger><TooltipContent>Autoriser cet appareil</TooltipContent>
                   </Tooltip></TooltipProvider>
                 )}
                 {device.status !== "rejected" && device.status !== "revoked" && (
