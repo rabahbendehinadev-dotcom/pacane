@@ -123,6 +123,28 @@ function fmtDate(d: string | Date | null | undefined): string {
   }
 }
 
+function fmtSaleDateTime(d: string | Date | null | undefined): string {
+  if (!d) return "—";
+  try {
+    const dt = typeof d === "string" ? new Date(d) : d;
+    const date = dt.toLocaleDateString("fr-DZ", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "Africa/Algiers",
+    });
+    const time = dt.toLocaleTimeString("fr-DZ", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Africa/Algiers",
+    });
+    return `${date} à ${time}`;
+  } catch {
+    return String(d);
+  }
+}
+
 const DOC_TYPE_LABELS: Record<string, string> = {
   sale: "FACTURE", quotation: "DEVIS", order: "BON DE COMMANDE CLIENT", draft: "BROUILLON",
 };
@@ -361,7 +383,7 @@ export function generateSalePdf(sale: SaleDocData, company: CompanySettings): vo
   buildHeader(
     doc, company,
     docTypeLabel, sale.reference,
-    fmtDate(sale.createdAt), sale.branchName,
+    fmtSaleDateTime(sale.createdAt), sale.branchName,
     sale.status, statusLabel,
     sale.branchPhone,
   );
@@ -502,7 +524,7 @@ export function generateSaleTicketPdf(sale: SaleDocData, company: CompanySetting
   doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...TEXT_MUTED);
   doc.text(`Réf: ${sale.reference}`, L, y);
   doc.text(statusLabel, R, y, { align: "right" }); y += 4;
-  doc.text(`Date: ${fmtDate(sale.createdAt)}`, L, y); y += 4;
+  doc.text(`Date et heure: ${fmtSaleDateTime(sale.createdAt)}`, L, y); y += 4;
   doc.text(`Boutique: ${sale.branchName}`, L, y); y += 4;
   if (sale.type !== "sale" && sale.promisedDate) {
     doc.text(`Livraison: ${fmtDate(sale.promisedDate)}`, L, y); y += 4;
@@ -1005,7 +1027,7 @@ export function generatePosReceiptPdf(receipt: PosReceiptData, company: CompanyS
     doc.text("TICKET DE CAISSE", cx, y, { align: "center" }); y += 5;
     doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...TEXT_MUTED);
     doc.text(`Réf: ${receipt.reference}`, 4, y); y += 4;
-    doc.text(fmtDate(receipt.createdAt), 4, y);
+    doc.text(fmtSaleDateTime(receipt.createdAt), 4, y);
     if (receipt.cashierName) doc.text(`Caissier: ${receipt.cashierName}`, pageW - 4, y, { align: "right" });
     y += 4;
     if (receipt.customerName) { doc.text(`Client: ${receipt.customerName}`, 4, y); y += 4; }
@@ -1064,7 +1086,7 @@ export function generatePosReceiptPdf(receipt: PosReceiptData, company: CompanyS
   } else {
     // A4 receipt layout — use standard header
     buildHeader(doc, company, "TICKET DE CAISSE", receipt.reference,
-      fmtDate(receipt.createdAt), receipt.branchName, "confirmed", "Confirmé", receipt.branchPhone);
+      fmtSaleDateTime(receipt.createdAt), receipt.branchName, "confirmed", "Confirmé", receipt.branchPhone);
 
     let y = 55;
     if (receipt.cashierName || receipt.customerName) {
