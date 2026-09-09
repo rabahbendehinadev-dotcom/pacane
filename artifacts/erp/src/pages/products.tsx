@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useSearch } from "wouter";
-import { useGetProducts, useCreateProduct, useUpdateProduct, useGetCategories, useGetUnits, useGetBranches, getGetProductsQueryKey, Product } from "@workspace/api-client-react";
+import { useCreateProduct, useUpdateProduct, useGetCategories, useGetUnits, useGetBranches, getGetProductsQueryKey, Product } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -10,12 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Edit2, Trash2, Package, ImagePlus, X, Loader2, ChevronsUpDown, Check, Upload, AlertTriangle, HardHat } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Package, ImagePlus, X, Loader2, ChevronsUpDown, Check, Upload, AlertTriangle, HardHat, SlidersHorizontal, RotateCcw } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ function formatDA(n: number) { return new Intl.NumberFormat("fr-DZ", { maximumFr
 const EMPTY = { name: "", type: "finished", sku: "", categoryId: "none", unitId: "none", workerId: "none", costPrice: "", sellingPrice: "", alertQuantity: "", isSellable: true, isPurchasable: true, isFabricated: false, isInternalConsumable: false, description: "" };
 
 interface WorkerOption { id: number; name: string; isActive: boolean; }
+interface ProductFilterOptions { types: string[]; workers: Array<{ id: number; name: string }>; }
 async function fetchActiveWorkers(): Promise<WorkerOption[]> {
   const r = await fetch("/api/workers", { headers: { Authorization: `Bearer ${localStorage.getItem("erp_token")}` } });
   if (!r.ok) return [];
@@ -56,12 +58,43 @@ function typeBadge(type: string) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${s.cls}`}>{s.label}</span>;
 }
 
+const PRODUCT_TYPE_OPTIONS = [
+  { value: "finished", label: "Produit fini" },
+  { value: "ingredient", label: "Ingrédient" },
+  { value: "semi_finished", label: "Semi-fini" },
+  { value: "consumable", label: "Consommable" },
+  { value: "service", label: "Service" },
+  { value: "packaging", label: "Emballage" },
+];
+
+type MarginPreset = "all" | "negative" | "zero" | "0-20" | "20-40" | "40-60" | "60+";
+type StockStatus = "all" | "in" | "out" | "low";
+
 export default function Products() {
   const qc = useQueryClient();
   const searchStr = useSearch();
   const [search, setSearch] = useState(() => new URLSearchParams(searchStr).get("q") ?? "");
   const [typeFilter, setTypeFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterCategoryIds, setFilterCategoryIds] = useState<number[]>([]);
+  const [filterWorkerIds, setFilterWorkerIds] = useState<number[]>([]);
+  const [filterBranchIds, setFilterBranchIds] = useState<number[]>([]);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [minCost, setMinCost] = useState("");
+  const [maxCost, setMaxCost] = useState("");
+  const [marginPreset, setMarginPreset] = useState<MarginPreset>("all");
+  const [minMargin, setMinMargin] = useState("");
+  const [maxMargin, setMaxMargin] = useState("");
+  const [filterSellable, setFilterSellable] = useState(false);
+  const [filterPurchasable, setFilterPurchasable] = useState(false);
+  const [missingCategory, setMissingCategory] = useState(false);
+  const [missingWorker, setMissingWorker] = useState(false);
+  const [missingPrice, setMissingPrice] = useState(false);
+  const [missingCost, setMissingCost] = useState(false);
+  const [stockStatus, setStockStatus] = useState<StockStatus>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
@@ -108,14 +141,64 @@ export default function Products() {
 
   const { user } = useAuth();
   const isAdmin = !!(user as any)?.adminAccess;
-  const { data: rawProducts = [], isLoading } = useGetProducts({ search: search || undefined, type: typeFilter !== "all" ? typeFilter : undefined });
-  const products = branchFilter === "all"
-    ? rawProducts
-    : rawProducts.filter(p => ((p as any).branchIds ?? []).includes(parseInt(branchFilter)));
   const { data: categories = [] } = useGetCategories();
   const { data: units = [] } = useGetUnits();
   const { data: branches = [] } = useGetBranches();
   const { data: allWorkers = [] } = useQuery<WorkerOption[]>({ queryKey: ["workers"], queryFn: fetchActiveWorkers });
+  const { data: productFilterOptions = { types: [], workers: [] } } = useQuery<ProductFilterOptions>({
+    queryKey: ["/api/products/filter-options"],
+    queryFn: () => customFetch<ProductFilterOptions>("/api/products/filter-options"),
+  });
+  const availableTypeOptions = useMemo(() => {
+    const known = new Map(PRODUCT_TYPE_OPTIONS.map(option => [option.value, option]));
+    for (const value of productFilterOptions.types) {
+      if (!known.has(value)) known.set(value, { value, label: value });
+    }
+    return Array.from(known.values());
+  }, [productFilterOptions.types]);
+  const productQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    const effectiveTypes = filterTypes.length > 0 ? filterTypes : (typeFilter !== "all" ? [typeFilter] : []);
+    const effectiveBranches = filterBranchIds.length > 0 ? filterBranchIds : (branchFilter !== "all" ? [Number(branchFilter)] : []);
+    if (effectiveTypes.length > 0) params.set("types", effectiveTypes.join(","));
+    if (filterCategoryIds.length > 0) params.set("categoryIds", filterCategoryIds.join(","));
+    if (filterWorkerIds.length > 0) params.set("workerIds", filterWorkerIds.join(","));
+    if (effectiveBranches.length > 0) params.set("branchIds", effectiveBranches.join(","));
+    if (minPrice) params.set("minPrice", minPrice);
+    if (maxPrice) params.set("maxPrice", maxPrice);
+    if (minCost) params.set("minCost", minCost);
+    if (maxCost) params.set("maxCost", maxCost);
+
+    let effectiveMinMargin = minMargin;
+    let effectiveMaxMargin = maxMargin;
+    if (!minMargin && !maxMargin) {
+      if (marginPreset === "negative") effectiveMaxMargin = "-0.0001";
+      if (marginPreset === "zero") { effectiveMinMargin = "0"; effectiveMaxMargin = "0"; }
+      if (marginPreset === "0-20") { effectiveMinMargin = "0"; effectiveMaxMargin = "20"; }
+      if (marginPreset === "20-40") { effectiveMinMargin = "20"; effectiveMaxMargin = "40"; }
+      if (marginPreset === "40-60") { effectiveMinMargin = "40"; effectiveMaxMargin = "60"; }
+      if (marginPreset === "60+") effectiveMinMargin = "60.0001";
+    }
+    if (effectiveMinMargin) params.set("minMargin", effectiveMinMargin);
+    if (effectiveMaxMargin) params.set("maxMargin", effectiveMaxMargin);
+    if (filterSellable) params.set("vendable", "true");
+    if (filterPurchasable) params.set("achetable", "true");
+    if (missingCategory) params.set("missingCategory", "true");
+    if (missingWorker) params.set("missingWorker", "true");
+    if (missingPrice) params.set("missingPrice", "true");
+    if (missingCost) params.set("missingCost", "true");
+    if (stockStatus !== "all") params.set("stockStatuses", stockStatus);
+    return params.toString();
+  }, [
+    search, typeFilter, branchFilter, filterTypes, filterCategoryIds, filterWorkerIds, filterBranchIds,
+    minPrice, maxPrice, minCost, maxCost, marginPreset, minMargin, maxMargin, filterSellable,
+    filterPurchasable, missingCategory, missingWorker, missingPrice, missingCost, stockStatus,
+  ]);
+  const { data: products = [], isLoading } = useQuery<Product[]>({
+    queryKey: getGetProductsQueryKey({ advanced: productQuery } as any),
+    queryFn: () => customFetch<Product[]>(`/api/products${productQuery ? `?${productQuery}` : ""}`),
+  });
   const pieceUnitId = units.find(u => !u.allowDecimals && (u.name.toLowerCase().includes("pièce") || u.abbreviation.toLowerCase() === "pcs"))?.id?.toString() ?? null;
   const EMPTY_DAYS = { targetDim: "", targetLun: "", targetMar: "", targetMer: "", targetJeu: "", targetVen: "", targetSat: "" };
   const DAY_KEYS = ["targetDim", "targetLun", "targetMar", "targetMer", "targetJeu", "targetVen", "targetSat"] as const;
@@ -305,6 +388,38 @@ export default function Products() {
   const allVisibleSelected = products.length > 0 && products.every(p => selectedIds.includes(p.id));
   const allFinished = selectedIds.length > 0 && selectedIds.every(id => products.find(p => p.id === id)?.type === "finished");
 
+  const advancedFilterCount =
+    (filterTypes.length > 0 ? 1 : 0) +
+    (filterCategoryIds.length > 0 ? 1 : 0) +
+    (filterWorkerIds.length > 0 ? 1 : 0) +
+    (filterBranchIds.length > 0 ? 1 : 0) +
+    (minPrice || maxPrice ? 1 : 0) +
+    (minCost || maxCost ? 1 : 0) +
+    (marginPreset !== "all" || minMargin || maxMargin ? 1 : 0) +
+    (filterSellable ? 1 : 0) +
+    (filterPurchasable ? 1 : 0) +
+    (missingCategory ? 1 : 0) +
+    (missingWorker ? 1 : 0) +
+    (missingPrice ? 1 : 0) +
+    (missingCost ? 1 : 0) +
+    (stockStatus !== "all" ? 1 : 0);
+
+  function resetAdvancedFilters() {
+    setFilterTypes([]);
+    setFilterCategoryIds([]);
+    setFilterWorkerIds([]);
+    setFilterBranchIds([]);
+    setMinPrice(""); setMaxPrice(""); setMinCost(""); setMaxCost("");
+    setMarginPreset("all"); setMinMargin(""); setMaxMargin("");
+    setFilterSellable(false); setFilterPurchasable(false);
+    setMissingCategory(false); setMissingWorker(false); setMissingPrice(false); setMissingCost(false);
+    setStockStatus("all");
+  }
+
+  function toggleListValue<T>(setter: React.Dispatch<React.SetStateAction<T[]>>, value: T) {
+    setter(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
+  }
+
   function openBulkUnit() {
     const defaultUnit = typeFilter === "finished" && pieceUnitId ? pieceUnitId : (pieceUnitId ?? "none");
     setBulkUnitId(defaultUnit);
@@ -315,8 +430,7 @@ export default function Products() {
     if (bulkUnitId === "none" || selectedIds.length === 0) return;
     setBulkLoading(true);
     try {
-      const res = await customFetch("/api/products/bulk-unit", { method: "PATCH", body: JSON.stringify({ productIds: selectedIds, unitId: parseInt(bulkUnitId) }) });
-      const data = await res.json();
+      const data = await customFetch<{ updatedCount: number }>("/api/products/bulk-unit", { method: "PATCH", body: JSON.stringify({ productIds: selectedIds, unitId: parseInt(bulkUnitId) }) });
       qc.invalidateQueries({ queryKey: getGetProductsQueryKey() });
       setSelectedIds([]);
       setBulkUnitOpen(false);
@@ -328,12 +442,12 @@ export default function Products() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-serif font-bold">Produits</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{products.length} produit{products.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{products.length} produit{products.length !== 1 ? "s" : ""} trouvé{products.length !== 1 ? "s" : ""}</p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           <ExportButton
             endpoint="export/products"
             params={{ search: search || undefined, type: typeFilter !== "all" ? typeFilter : undefined, branchId: branchFilter !== "all" ? branchFilter : undefined }}
@@ -360,14 +474,14 @@ export default function Products() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Rechercher..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <Select value={branchFilter} onValueChange={value => { setBranchFilter(value); setFilterBranchIds([]); }}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="Tous les sites" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les sites</SelectItem>
                 {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <Select value={typeFilter} onValueChange={value => { setTypeFilter(value); setFilterTypes([]); }}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="Tous les types" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous</SelectItem>
@@ -375,11 +489,84 @@ export default function Products() {
                 <SelectItem value="ingredient">Ingrédients</SelectItem>
                 <SelectItem value="semi_finished">Semi-finis</SelectItem>
                 <SelectItem value="consumable">Consommables</SelectItem>
+                <SelectItem value="service">Services</SelectItem>
+                <SelectItem value="packaging">Emballages</SelectItem>
               </SelectContent>
             </Select>
+            <Button variant="outline" className="gap-2 shrink-0" onClick={() => setFiltersOpen(true)}>
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtres
+              {advancedFilterCount > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
+                  {advancedFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {advancedFilterCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {filterTypes.map(value => (
+            <Badge key={`type-${value}`} variant="secondary" className="gap-1 py-1">
+              Type: {availableTypeOptions.find(option => option.value === value)?.label ?? value}
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => toggleListValue(setFilterTypes, value)}><X className="h-3 w-3" /></button>
+            </Badge>
+          ))}
+          {filterCategoryIds.map(id => (
+            <Badge key={`category-${id}`} variant="secondary" className="gap-1 py-1">
+              Catégorie: {categories.find(category => category.id === id)?.name ?? id}
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => toggleListValue(setFilterCategoryIds, id)}><X className="h-3 w-3" /></button>
+            </Badge>
+          ))}
+          {filterWorkerIds.map(id => (
+            <Badge key={`worker-${id}`} variant="secondary" className="gap-1 py-1">
+              Responsable: {productFilterOptions.workers.find(worker => worker.id === id)?.name ?? id}
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => toggleListValue(setFilterWorkerIds, id)}><X className="h-3 w-3" /></button>
+            </Badge>
+          ))}
+          {filterBranchIds.map(id => (
+            <Badge key={`branch-${id}`} variant="secondary" className="gap-1 py-1">
+              Site: {branches.find(branch => branch.id === id)?.name ?? id}
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => toggleListValue(setFilterBranchIds, id)}><X className="h-3 w-3" /></button>
+            </Badge>
+          ))}
+          {(minPrice || maxPrice) && (
+            <Badge variant="secondary" className="gap-1 py-1">
+              Prix: {minPrice || "0"}–{maxPrice || "∞"} DA
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => { setMinPrice(""); setMaxPrice(""); }}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {(minCost || maxCost) && (
+            <Badge variant="secondary" className="gap-1 py-1">
+              Coût: {minCost || "0"}–{maxCost || "∞"} DA
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => { setMinCost(""); setMaxCost(""); }}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {(marginPreset !== "all" || minMargin || maxMargin) && (
+            <Badge variant="secondary" className="gap-1 py-1">
+              Marge: {minMargin || maxMargin ? `${minMargin || "−∞"}%–${maxMargin || "∞"}%` : marginPreset}
+              <button type="button" aria-label="Retirer ce filtre" onClick={() => { setMarginPreset("all"); setMinMargin(""); setMaxMargin(""); }}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {filterSellable && <Badge variant="secondary" className="gap-1 py-1">Vendable<button type="button" onClick={() => setFilterSellable(false)}><X className="h-3 w-3" /></button></Badge>}
+          {filterPurchasable && <Badge variant="secondary" className="gap-1 py-1">Achetable<button type="button" onClick={() => setFilterPurchasable(false)}><X className="h-3 w-3" /></button></Badge>}
+          {missingCategory && <Badge variant="secondary" className="gap-1 py-1">Sans catégorie<button type="button" onClick={() => setMissingCategory(false)}><X className="h-3 w-3" /></button></Badge>}
+          {missingWorker && <Badge variant="secondary" className="gap-1 py-1">Sans responsable<button type="button" onClick={() => setMissingWorker(false)}><X className="h-3 w-3" /></button></Badge>}
+          {missingPrice && <Badge variant="secondary" className="gap-1 py-1">Prix manquant<button type="button" onClick={() => setMissingPrice(false)}><X className="h-3 w-3" /></button></Badge>}
+          {missingCost && <Badge variant="secondary" className="gap-1 py-1">Coût manquant<button type="button" onClick={() => setMissingCost(false)}><X className="h-3 w-3" /></button></Badge>}
+          {stockStatus !== "all" && (
+            <Badge variant="secondary" className="gap-1 py-1">
+              Stock: {{ in: "En stock", out: "Rupture", low: "Stock faible" }[stockStatus]}
+              <button type="button" onClick={() => setStockStatus("all")}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-muted-foreground" onClick={resetAdvancedFilters}>
+            <RotateCcw className="h-3.5 w-3.5" />Réinitialiser les filtres
+          </Button>
+        </div>
+      )}
 
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-lg">
@@ -427,7 +614,7 @@ export default function Products() {
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
-                        <ProductThumb url={p.imageUrl ?? null} name={p.name} updatedAt={p.updatedAt} id={p.id} />
+                        <ProductThumb url={p.imageUrl ?? null} name={p.name} updatedAt={(p as any).updatedAt} id={p.id} />
                       </div>
                       <div>
                         <p className="font-medium text-sm">{p.name}</p>
@@ -493,6 +680,174 @@ export default function Products() {
           </Table>
         </CardContent>
       </Card>
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
+          <SheetHeader className="px-5 pt-5 pb-4 border-b pr-12">
+            <SheetTitle className="flex items-center gap-2">
+              <SlidersHorizontal className="h-5 w-5 text-primary" />
+              Filtres avancés
+            </SheetTitle>
+            <SheetDescription>Combinez plusieurs critères pour affiner le catalogue.</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Type de produit</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {availableTypeOptions.map(option => (
+                  <label key={option.value} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                    <Checkbox
+                      checked={filterTypes.includes(option.value)}
+                      onCheckedChange={() => {
+                        setTypeFilter("all");
+                        toggleListValue(setFilterTypes, option.value);
+                      }}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Catégories</Label>
+              <div className="max-h-44 overflow-y-auto rounded-md border p-2 space-y-1">
+                {categories.length === 0 ? (
+                  <p className="text-sm text-muted-foreground px-2 py-3">Aucune catégorie disponible</p>
+                ) : categories.map(category => (
+                  <label key={category.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-muted/50">
+                    <Checkbox checked={filterCategoryIds.includes(category.id)} onCheckedChange={() => toggleListValue(setFilterCategoryIds, category.id)} />
+                    <span className="truncate">{category.name}</span>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Responsables</Label>
+              <div className="max-h-44 overflow-y-auto rounded-md border p-2 space-y-1">
+                {productFilterOptions.workers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground px-2 py-3">Aucun responsable disponible</p>
+                ) : productFilterOptions.workers.map(worker => (
+                  <label key={worker.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-muted/50">
+                    <Checkbox checked={filterWorkerIds.includes(worker.id)} onCheckedChange={() => toggleListValue(setFilterWorkerIds, worker.id)} />
+                    <span className="truncate">{worker.name}</span>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Sites commerciaux</Label>
+              <div className="max-h-44 overflow-y-auto rounded-md border p-2 space-y-1">
+                {branches.map(branch => (
+                  <label key={branch.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-muted/50">
+                    <Checkbox
+                      checked={filterBranchIds.includes(branch.id)}
+                      onCheckedChange={() => {
+                        setBranchFilter("all");
+                        toggleListValue(setFilterBranchIds, branch.id);
+                      }}
+                    />
+                    <span className="truncate">{branch.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Les produits disponibles dans tous les sites restent inclus.</p>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Prix de vente</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs text-muted-foreground">Minimum (DA)</Label><Input type="number" min="0" value={minPrice} onChange={event => setMinPrice(event.target.value)} placeholder="0" /></div>
+                <div><Label className="text-xs text-muted-foreground">Maximum (DA)</Label><Input type="number" min="0" value={maxPrice} onChange={event => setMaxPrice(event.target.value)} placeholder="Illimité" /></div>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Coût</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs text-muted-foreground">Minimum (DA)</Label><Input type="number" min="0" value={minCost} onChange={event => setMinCost(event.target.value)} placeholder="0" /></div>
+                <div><Label className="text-xs text-muted-foreground">Maximum (DA)</Label><Input type="number" min="0" value={maxCost} onChange={event => setMaxCost(event.target.value)} placeholder="Illimité" /></div>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Marge</Label>
+              <Select value={marginPreset} onValueChange={value => { setMarginPreset(value as MarginPreset); setMinMargin(""); setMaxMargin(""); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les marges</SelectItem>
+                  <SelectItem value="negative">Marge négative</SelectItem>
+                  <SelectItem value="zero">0 %</SelectItem>
+                  <SelectItem value="0-20">0–20 %</SelectItem>
+                  <SelectItem value="20-40">20–40 %</SelectItem>
+                  <SelectItem value="40-60">40–60 %</SelectItem>
+                  <SelectItem value="60+">Plus de 60 %</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs text-muted-foreground">Minimum personnalisé (%)</Label><Input type="number" value={minMargin} onChange={event => { setMinMargin(event.target.value); setMarginPreset("all"); }} placeholder="−∞" /></div>
+                <div><Label className="text-xs text-muted-foreground">Maximum personnalisé (%)</Label><Input type="number" value={maxMargin} onChange={event => { setMaxMargin(event.target.value); setMarginPreset("all"); }} placeholder="∞" /></div>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Attributs</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                  <Checkbox checked={filterSellable} onCheckedChange={value => setFilterSellable(!!value)} />Vendable
+                </label>
+                <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                  <Checkbox checked={filterPurchasable} onCheckedChange={value => setFilterPurchasable(!!value)} />Achetable
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">Cochez les deux pour afficher uniquement les produits vendables et achetables.</p>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Informations manquantes</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { label: "Sans catégorie", checked: missingCategory, set: setMissingCategory },
+                  { label: "Sans responsable", checked: missingWorker, set: setMissingWorker },
+                  { label: "Prix nul ou manquant", checked: missingPrice, set: setMissingPrice },
+                  { label: "Coût nul ou manquant", checked: missingCost, set: setMissingCost },
+                ].map(item => (
+                  <label key={item.label} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                    <Checkbox checked={item.checked} onCheckedChange={value => item.set(!!value)} />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <Label className="text-sm font-semibold">Stock / disponibilité</Label>
+              <Select value={stockStatus} onValueChange={value => setStockStatus(value as StockStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les niveaux de stock</SelectItem>
+                  <SelectItem value="in">En stock</SelectItem>
+                  <SelectItem value="out">Rupture de stock</SelectItem>
+                  <SelectItem value="low">Stock faible</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Le stock faible utilise le seuil d'alerte déjà configuré sur chaque produit.</p>
+            </section>
+          </div>
+
+          <SheetFooter className="border-t px-5 py-4 gap-2 bg-background">
+            <Button variant="outline" className="gap-2" onClick={resetAdvancedFilters}>
+              <RotateCcw className="h-4 w-4" />Réinitialiser
+            </Button>
+            <Button onClick={() => setFiltersOpen(false)}>
+              Afficher {products.length} produit{products.length !== 1 ? "s" : ""}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

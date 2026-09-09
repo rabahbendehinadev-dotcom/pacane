@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, categoriesTable, unitsTable, productsTable, stockLevelsTable, workersTable } from "@workspace/db";
-import { eq, and, ilike, sql, like, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, sql, inArray, isNull, gt, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission, assertBranchAccess, visibleBranchIds } from "../middlewares/permissions";
 import { P } from "../lib/permissions";
@@ -66,33 +66,110 @@ router.post("/units", requireAuth, requirePermission(P.products.create), async (
 
 // PRODUCTS
 router.get("/products", requireAuth, async (req, res): Promise<void> => {
-  const { type, categoryId, search } = req.query as Record<string, string>;
+  const query = req.query as Record<string, string | undefined>;
+  const parseStringList = (value?: string) => value?.split(",").map(v => v.trim()).filter(Boolean) ?? [];
+  const parseNumberList = (value?: string) => parseStringList(value).map(Number).filter(Number.isFinite);
+  const parseNumber = (value?: string) => {
+    if (value == null || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const types = parseStringList(query.types ?? query.type);
+  const categoryIds = parseNumberList(query.categoryIds ?? query.categoryId);
+  const workerIds = parseNumberList(query.workerIds);
+  const branchIds = parseNumberList(query.branchIds ?? query.branchId);
+  const minPrice = parseNumber(query.minPrice);
+  const maxPrice = parseNumber(query.maxPrice);
+  const minCost = parseNumber(query.minCost);
+  const maxCost = parseNumber(query.maxCost);
+  const minMargin = parseNumber(query.minMargin);
+  const maxMargin = parseNumber(query.maxMargin);
+  const stockStatuses = parseStringList(query.stockStatuses);
+
+  const totalStockSql = sql<number>`COALESCE((SELECT SUM(sl.quantity) FROM stock_levels sl WHERE sl.product_id = ${productsTable.id}), 0)`;
+  const marginSql = sql<number>`((${productsTable.sellingPrice} - ${productsTable.costPrice}) / NULLIF(${productsTable.sellingPrice}, 0) * 100)`;
+  const conditions: any[] = [];
+
+  if (types.length > 0) conditions.push(inArray(productsTable.type, types));
+  if (categoryIds.length > 0) conditions.push(inArray(productsTable.categoryId, categoryIds));
+  if (workerIds.length > 0) conditions.push(inArray(productsTable.workerId, workerIds));
+  if (branchIds.length > 0) {
+    const branchArray = sql.join(branchIds.map(id => sql`${id}`), sql`, `);
+    conditions.push(sql`(cardinality(${productsTable.branchIds}) = 0 OR ${productsTable.branchIds} && ARRAY[${branchArray}]::integer[])`);
+  }
+  if (query.search?.trim()) {
+    const pattern = `%${query.search.trim()}%`;
+    conditions.push(or(
+      ilike(productsTable.name, pattern),
+      ilike(productsTable.sku, pattern),
+      ilike(productsTable.barcode, pattern),
+    ));
+  }
+  if (minPrice != null) conditions.push(sql`${productsTable.sellingPrice} >= ${minPrice}`);
+  if (maxPrice != null) conditions.push(sql`${productsTable.sellingPrice} <= ${maxPrice}`);
+  if (minCost != null) conditions.push(sql`${productsTable.costPrice} >= ${minCost}`);
+  if (maxCost != null) conditions.push(sql`${productsTable.costPrice} <= ${maxCost}`);
+  if (minMargin != null) conditions.push(sql`${productsTable.sellingPrice} > 0 AND ${marginSql} >= ${minMargin}`);
+  if (maxMargin != null) conditions.push(sql`${productsTable.sellingPrice} > 0 AND ${marginSql} <= ${maxMargin}`);
+  if (query.vendable === "true") conditions.push(eq(productsTable.isSellable, true));
+  if (query.achetable === "true") conditions.push(eq(productsTable.isPurchasable, true));
+  if (query.missingCategory === "true") conditions.push(isNull(productsTable.categoryId));
+  if (query.missingWorker === "true") conditions.push(isNull(productsTable.workerId));
+  if (query.missingPrice === "true") conditions.push(lte(productsTable.sellingPrice, "0"));
+  if (query.missingCost === "true") conditions.push(lte(productsTable.costPrice, "0"));
+
+  if (stockStatuses.length > 0) {
+    const stockConditions = stockStatuses.flatMap(status => {
+      if (status === "in") return [sql`${totalStockSql} > 0`];
+      if (status === "out") return [sql`${totalStockSql} <= 0`];
+      if (status === "low") {
+        return [sql`${totalStockSql} > 0 AND ${productsTable.alertQuantity} IS NOT NULL AND ${productsTable.alertQuantity} > 0 AND ${totalStockSql} <= ${productsTable.alertQuantity}`];
+      }
+      return [];
+    });
+    if (stockConditions.length > 0) conditions.push(or(...stockConditions));
+  }
+
   const rows = await db.select({
     p: productsTable,
     unitName: unitsTable.abbreviation,
-    totalStock: sql<string>`COALESCE((SELECT SUM(sl.quantity) FROM stock_levels sl WHERE sl.product_id = ${productsTable.id}), 0)`,
+    totalStock: totalStockSql,
     catName: categoriesTable.name,
     workerName: workersTable.name,
   }).from(productsTable)
     .leftJoin(unitsTable, eq(productsTable.unitId, unitsTable.id))
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .leftJoin(workersTable, eq(productsTable.workerId, workersTable.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(productsTable.name);
 
-  let products = rows.map(r => ({
+  const products = rows.map(r => ({
     ...r.p,
     unitName: r.unitName ?? "",
     categoryName: r.catName ?? null,
     workerName: r.workerName ?? null,
-    totalStock: parseFloat(r.totalStock),
+    totalStock: Number(r.totalStock),
     costPrice: parseFloat(r.p.costPrice as string),
     sellingPrice: parseFloat(r.p.sellingPrice as string),
     alertQuantity: r.p.alertQuantity ? parseFloat(r.p.alertQuantity as string) : null
   }));
-  if (type) products = products.filter(p => p.type === type);
-  if (categoryId) products = products.filter(p => p.categoryId === parseInt(categoryId, 10));
-  if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || (p.sku ?? "").toLowerCase().includes(search.toLowerCase()));
   res.json(products);
+});
+
+router.get("/products/filter-options", requireAuth, async (_req, res): Promise<void> => {
+  const types = await db.selectDistinct({ value: productsTable.type }).from(productsTable).orderBy(productsTable.type);
+  const workers = await db.selectDistinct({
+    id: workersTable.id,
+    name: workersTable.name,
+  }).from(productsTable)
+    .innerJoin(workersTable, eq(productsTable.workerId, workersTable.id))
+    .orderBy(workersTable.name);
+
+  res.json({
+    types: types.map(row => row.value),
+    workers,
+  });
 });
 
 async function resolvePieceUnitId(): Promise<number | null> {
