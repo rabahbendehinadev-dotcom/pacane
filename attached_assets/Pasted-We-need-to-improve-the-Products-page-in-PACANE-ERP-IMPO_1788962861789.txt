@@ -1,0 +1,197 @@
+We need to improve the Products page in PACANE ERP.
+
+IMPORTANT:
+- Do NOT delete, rename, or break any existing feature.
+- Do NOT modify existing product data.
+- Do NOT remove the current search, export, import CSV, delete catalogue, or create product features.
+- Keep the current UI style/design of PACANE.
+- Use the existing backend/database architecture.
+- All filters must work with real PostgreSQL data, no mock data.
+
+PAGE:
+ /products
+
+GOAL:
+Add a complete advanced product filtering system to the existing Products page.
+
+Current table already contains:
+- Produit
+- Type
+- Catégorie
+- Responsable
+- Sites commerciaux
+- Coût
+- Prix vente
+- Marge %
+- Attributs
+
+Add a button near the existing search area:
+
+"Filtres"
+
+When clicking it, open a clean dropdown/popover or side filter panel.
+
+FILTERS REQUIRED:
+
+1. Type de produit
+Multi-select:
+- Produit fini
+- Ingrédient
+- Consommable
+- Any other existing product types from the database
+
+2. Catégorie
+Multi-select based dynamically on categories existing in PostgreSQL.
+
+3. Responsable
+Multi-select based on existing responsables/users linked to products.
+
+4. Site commercial
+Multi-select:
+Load all existing commercial sites dynamically from the database.
+
+5. Prix de vente
+Numeric range:
+- Prix minimum
+- Prix maximum
+
+6. Coût
+Numeric range:
+- Coût minimum
+- Coût maximum
+
+7. Marge
+Allow filtering:
+- Marge négative
+- 0%
+- 0–20%
+- 20–40%
+- 40–60%
+- Plus de 60%
+Also allow Min % / Max % if easy to integrate.
+
+8. Attributs
+Checkbox filters:
+- Vendable
+- Achetable
+- Both
+Use existing product attributes, do not create duplicate attributes.
+
+9. Products with missing information
+Allow filtering products where:
+- Catégorie is empty
+- Responsable is empty
+- Prix de vente is missing or zero
+- Coût is missing or zero
+
+10. Stock / disponibilité
+If product stock information already exists in the project, add:
+- En stock
+- Rupture de stock
+- Stock faible
+
+IMPORTANT:
+Only add stock filtering if the project already has reliable stock information.
+Do not invent a new stock logic.
+
+FILTER BEHAVIOR:
+
+- Multiple filters must be combinable.
+Example:
+Type = Ingrédient
++
+Site = ECOLE STOCK
++
+Marge < 0
+
+must return only products matching all selected filters.
+
+- Filters must also work together with the existing text search.
+
+- Existing "Tous les sites" filter must remain functional.
+If possible, integrate it into the new filter system without breaking existing behavior.
+
+ACTIVE FILTERS:
+
+When filters are active, show small removable chips above the table, for example:
+
+[Type: Ingrédient ×]
+[Site: ECOLE STOCK ×]
+[Marge: Négative ×]
+
+Add:
+"Réinitialiser les filtres"
+
+Also display the filtered result count:
+
+"128 produits trouvés"
+
+instead of always showing the total catalogue count.
+
+PERFORMANCE:
+
+The catalogue contains hundreds of products (currently around 856), so implement filters efficiently.
+
+Prefer server-side filtering if the existing Products API already supports pagination/server queries.
+
+If current product listing is paginated from backend:
+extend the existing API with optional query parameters, for example:
+
+GET /api/products?
+search=
+&type=
+&categoryId=
+&responsibleId=
+&siteId=
+&minPrice=
+&maxPrice=
+&minCost=
+&maxCost=
+&minMargin=
+&maxMargin=
+&vendable=
+&achetable=
+
+Do NOT load the entire database into the frontend just to filter it.
+
+Preserve pagination and make pagination work on filtered results.
+
+UX:
+
+Desktop:
+- Keep the current clean horizontal layout.
+- Add "Filtres" near the existing search / dropdowns.
+- Filter panel should be compact and professional.
+
+Mobile/tablet:
+- Open filters in a drawer or full-width modal.
+- Keep the product table/page usable.
+
+Add a small badge on the filter button showing active filter count:
+
+Filtres (3)
+
+IMPORTANT TESTS:
+
+Test combinations such as:
+- Ingrédient + ECOLE STOCK
+- Produit fini + specific category
+- Vendable only
+- Achetable only
+- Negative margin
+- Cost between 100 and 1000 DA
+- Sale price between 500 and 5000 DA
+- Products without category
+- Search text + filters simultaneously
+
+Verify:
+- result count is correct
+- pagination remains correct
+- edit/delete product still works
+- export/import remains unchanged
+- no existing product data is modified
+
+Before coding:
+First inspect the current Products frontend, API routes, database schema, pagination logic, and existing site/category/type filters.
+
+Reuse the current components and architecture instead of rebuilding the page.
