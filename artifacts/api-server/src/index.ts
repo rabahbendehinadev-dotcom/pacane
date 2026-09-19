@@ -891,6 +891,7 @@ async function runMigrations() {
       );
     `);
     // Auto-create attendance settings for all existing users who don't have them
+    await db.execute(sql`ALTER TABLE user_attendance_settings ALTER COLUMN pointage_enabled SET DEFAULT true;`);
     await db.execute(sql`
       INSERT INTO user_attendance_settings (
         user_id, branch_id, pointage_enabled,
@@ -903,7 +904,7 @@ async function runMigrations() {
       SELECT
         u.id,
         CASE WHEN array_length(u.branch_ids, 1) > 0 THEN u.branch_ids[1] ELSE NULL END,
-        false,
+        true,
         '08:00', '17:00', ARRAY['lun','mar','mer','jeu','ven']::text[],
         10, 0, 'monthly',
         'per_minute', 0, 0,
@@ -914,6 +915,26 @@ async function runMigrations() {
         SELECT 1 FROM user_attendance_settings uas WHERE uas.user_id = u.id
       )
       AND u.status = 'active';
+    `);
+    // One-time activation for all existing accounts. The migration marker ensures
+    // later manual deactivations remain untouched on subsequent server starts.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        key TEXT PRIMARY KEY,
+        applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(sql`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (key)
+        VALUES ('enable_pointage_for_existing_users')
+        ON CONFLICT (key) DO NOTHING
+        RETURNING key
+      )
+      UPDATE user_attendance_settings
+      SET pointage_enabled = true, updated_at = NOW()
+      WHERE pointage_enabled = false
+        AND EXISTS (SELECT 1 FROM claimed);
     `);
     // Multi-branch support for pointage (allowed_branch_ids column)
     await db.execute(sql`ALTER TABLE user_attendance_settings ADD COLUMN IF NOT EXISTS allowed_branch_ids integer[];`);
