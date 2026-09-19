@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGetUsers, useCreateUser, useUpdateUser, useGetRoles, useGetBranches, User, getGetUsersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Edit2, UserCircle, Trash2, Shield, Monitor, Smartphone, Clock, AlertTriangle, CheckCircle, XCircle, LogOut, RefreshCw, MapPin, Bell } from "lucide-react";
+import { Plus, Edit2, UserCircle, Trash2, Shield, Monitor, Smartphone, Clock, AlertTriangle, CheckCircle, XCircle, LogOut, RefreshCw, MapPin, Bell, Search } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -562,8 +562,17 @@ export default function Users() {
   const [form, setForm] = useState({ ...EMPTY });
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deviceTarget, setDeviceTarget] = useState<User | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: users = [], isLoading } = useGetUsers({});
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return users;
+    return users.filter(user =>
+      user.name.toLocaleLowerCase().includes(query)
+      || user.username.toLocaleLowerCase().includes(query)
+    );
+  }, [users, searchQuery]);
   const { data: roles = [] } = useGetRoles();
   const { data: branches = [] } = useGetBranches();
   const { data: workers = [] } = useQuery<WorkerOption[]>({
@@ -608,6 +617,18 @@ export default function Users() {
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nouvel utilisateur</Button>
         </div>
 
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            placeholder="Rechercher par nom ou username..."
+            aria-label="Rechercher un utilisateur"
+            className="pl-9"
+          />
+        </div>
+
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -624,7 +645,9 @@ export default function Users() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Chargement...</TableCell></TableRow>
-                ) : users.map(u => (
+                ) : filteredUsers.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Aucun utilisateur trouvé</TableCell></TableRow>
+                ) : filteredUsers.map(u => (
                   <TableRow key={u.id}>
                     <TableCell>
                       <div className="flex items-center gap-2.5">
