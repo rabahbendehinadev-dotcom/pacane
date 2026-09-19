@@ -80,7 +80,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       items: [
         { label: t("dashboard"), href: "/", icon: LayoutDashboard },
         { label: t("branches"), href: "/branches", icon: Store, adminOnly: true },
-        { label: t("users"), href: "/users", icon: Users, adminOnly: true },
+        { label: t("users"), href: "/users", icon: Users, perm: "users.view" },
         { label: t("roles"), href: "/roles", icon: Shield, adminOnly: true },
         { label: t("contacts"), href: "/contacts", icon: ContactRound, perm: "contacts.view" },
       ],
