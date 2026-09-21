@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import {
   db, purchasesTable, purchaseItemsTable, purchasePaymentsTable,
   purchaseReceptionsTable, purchaseReceptionItemsTable,
-  contactsTable, branchesTable, productsTable, unitsTable, usersTable
+  contactsTable, branchesTable, productsTable, unitsTable, usersTable,
+  stockLevelsTable
 } from "@workspace/db";
 import { eq, and, sql, inArray, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -15,6 +16,57 @@ const router: IRouter = Router();
 function genRef() {
   const d = new Date();
   return `BON-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+}
+
+async function receiveStockWithCmup(
+  productId: number,
+  branchId: number,
+  quantityReceived: number,
+  purchaseUnitCost: number,
+  reference: string,
+  purchaseId: number,
+) {
+  await db.transaction(async (tx) => {
+    const [product] = await tx
+      .select({ costPrice: productsTable.costPrice })
+      .from(productsTable)
+      .where(eq(productsTable.id, productId))
+      .for("update");
+
+    if (!product) throw new Error(`Produit introuvable: ${productId}`);
+
+    const stockRows = await tx
+      .select({ quantity: stockLevelsTable.quantity })
+      .from(stockLevelsTable)
+      .where(eq(stockLevelsTable.productId, productId))
+      .for("update");
+
+    const availableQuantityBefore = stockRows.reduce(
+      (total, row) => total + Math.max(0, parseFloat(row.quantity)),
+      0,
+    );
+    const currentCmup = parseFloat(product.costPrice);
+    const totalQuantity = availableQuantityBefore + quantityReceived;
+    const newCmup = totalQuantity > 0
+      ? ((availableQuantityBefore * currentCmup) + (quantityReceived * purchaseUnitCost)) / totalQuantity
+      : purchaseUnitCost;
+
+    await tx
+      .update(productsTable)
+      .set({ costPrice: newCmup.toFixed(2) })
+      .where(eq(productsTable.id, productId));
+
+    await adjustStock(
+      productId,
+      branchId,
+      quantityReceived,
+      "purchase_receipt",
+      reference,
+      purchaseUnitCost,
+      purchaseId,
+      tx,
+    );
+  });
 }
 
 async function buildPurchaseResponse(purchase: typeof purchasesTable.$inferSelect, includeReceptions = false) {
@@ -201,10 +253,9 @@ router.post("/purchases", requireAuth, requirePermission(P.purchases.create), as
   // If created as "received", immediately adjust stock for all items
   if (finalStatus === "received") {
     for (const item of items) {
-      await adjustStock(
+      await receiveStockWithCmup(
         item.productId, branchId, item.quantity,
-        "purchase_receipt", purchase.reference,
-        item.unitCost, purchase.id
+        item.unitCost, purchase.reference, purchase.id
       );
     }
   }
@@ -297,13 +348,12 @@ router.post("/purchases/:id/receive", requireAuth, requirePermission(P.purchases
     } as any).where(eq(purchaseItemsTable.id, pi.id));
 
     if (qReceived > 0) {
-      await adjustStock(
+      await receiveStockWithCmup(
         pi.productId,
         purchase.branchId,
         qReceived,
-        "purchase_receipt",
-        purchase.reference,
         parseFloat(pi.unitCost as string),
+        purchase.reference,
         purchase.id
       );
     }

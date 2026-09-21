@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetContacts, useGetBranches, useGetProducts, useGetUnits, getGetPurchasesQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
+import { useGetContacts, useGetBranches, useGetProducts, useGetUnits, getGetPurchasesQueryKey, getGetProductsQueryKey, useGetCompanySettings } from "@workspace/api-client-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { ExportButton } from "@/components/ExportButton";
 import { PdfButton } from "@/components/PdfButton";
@@ -711,6 +711,9 @@ export default function Purchases() {
         }),
       });
       toast({ title: "Bon de commande créé" });
+      if (form.status === "received") {
+        qc.invalidateQueries({ queryKey: getGetProductsQueryKey({}) });
+      }
       setCreateOpen(false);
       setLineItems([]);
       setForm({ supplierId: "", branchId: "", status: "received", discount: "0", tax: "0", notes: "", isPaid: false });
@@ -871,7 +874,10 @@ export default function Purchases() {
             <PurchaseDetailPanel
               purchaseId={selectedId}
               onClose={() => setSelectedId(null)}
-              onRefresh={() => refetch()}
+              onRefresh={() => {
+                qc.invalidateQueries({ queryKey: getGetProductsQueryKey({}) });
+                refetch();
+              }}
             />
           )}
         </SheetContent>
