@@ -28,7 +28,10 @@ async function receiveStockWithCmup(
 ) {
   await db.transaction(async (tx) => {
     const [product] = await tx
-      .select({ costPrice: productsTable.costPrice })
+      .select({
+        type: productsTable.type,
+        costPrice: productsTable.costPrice,
+      })
       .from(productsTable)
       .where(eq(productsTable.id, productId))
       .for("update");
@@ -53,7 +56,14 @@ async function receiveStockWithCmup(
 
     await tx
       .update(productsTable)
-      .set({ costPrice: newCmup.toFixed(2) })
+      .set(product.type === "ingredient"
+        ? {
+            costPrice: newCmup.toFixed(2),
+            sellingPrice: newCmup.toFixed(2),
+          }
+        : {
+            costPrice: newCmup.toFixed(2),
+          })
       .where(eq(productsTable.id, productId));
 
     await adjustStock(
