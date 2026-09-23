@@ -1094,7 +1094,7 @@ export default function Sales() {
                     <div className="flex gap-2">
                       <SearchableCombobox
                         items={products
-                          .filter(p => p.isSellable && p.type === "finished")
+                          .filter(p => p.isSellable && (p.type === "finished" || p.type === "ingredient"))
                           .filter(p => {
                             if (!productCatFilter || productCatFilter === "all") return true;
                             if (productCatFilter === "none") return !(p as any).categoryId;
