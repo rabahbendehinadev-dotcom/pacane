@@ -12,3 +12,4 @@
 - [ERP permissions come from roles DB table](erp-permissions-roles-db.md) — permissions live in roles.permissions (text[]) in the DB, not from ROLE_PERMISSIONS in code; new perms must be added via ALTER/UPDATE in startup migration block, not just in the TS constant.
 - [Worker Notifications & Tickets system](worker-notifications-system.md) — 4 new DB tables, 2 backend routes, 6 frontend pages; admin notifications bypass sendPushToUser to track delivery per-recipient.
 - [Ingredient sellability on receipt](ingredient-sellability-on-receipt.md) — each ingredient purchase receipt enables Vendable, even after a manual OFF.
+- [Orval/js-yaml compatibility](orval-js-yaml-compat.md) — codegen needs a scoped compatible js-yaml major; a newer major has no ESM default export.

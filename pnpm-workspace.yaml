@@ -167,3 +167,4 @@ overrides:
   dompurify: ">=3.4.9"
   uuid: ">=10.0.0"
   js-yaml: ">=4.2.0"
+  "orval>js-yaml": "^4.2.0"

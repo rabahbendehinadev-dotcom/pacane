@@ -936,6 +936,20 @@ async function runMigrations() {
       WHERE pointage_enabled = false
         AND EXISTS (SELECT 1 FROM claimed);
     `);
+    // Align existing zero-margin product prices once; leave costs and other types untouched.
+    await db.execute(sql`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (key)
+        VALUES ('align_ingredient_consumable_sale_prices')
+        ON CONFLICT (key) DO NOTHING
+        RETURNING key
+      )
+      UPDATE products
+      SET selling_price = cost_price, updated_at = NOW()
+      WHERE type IN ('ingredient', 'consumable')
+        AND selling_price IS DISTINCT FROM cost_price
+        AND EXISTS (SELECT 1 FROM claimed);
+    `);
     // Multi-branch support for pointage (allowed_branch_ids column)
     await db.execute(sql`ALTER TABLE user_attendance_settings ADD COLUMN IF NOT EXISTS allowed_branch_ids integer[];`);
     // ─────────────────────────────────────────────────────────────────────────

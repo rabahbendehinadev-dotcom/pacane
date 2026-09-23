@@ -62,6 +62,11 @@ async function receiveStockWithCmup(
             sellingPrice: newCmup.toFixed(2),
             isSellable: true,
           }
+        : product.type === "consumable"
+        ? {
+            costPrice: newCmup.toFixed(2),
+            sellingPrice: newCmup.toFixed(2),
+          }
         : {
             costPrice: newCmup.toFixed(2),
           })

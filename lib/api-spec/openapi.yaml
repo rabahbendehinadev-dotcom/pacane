@@ -2629,7 +2629,7 @@ components:
           type: ["string", "null"]
         type:
           type: string
-          enum: [finished, ingredient, packaging, semi_finished]
+          enum: [finished, ingredient, packaging, semi_finished, consumable]
         categoryId:
           type: ["integer", "null"]
         categoryName:
@@ -2688,7 +2688,7 @@ components:
           type: ["string", "null"]
         type:
           type: string
-          enum: [finished, ingredient, packaging, semi_finished]
+          enum: [finished, ingredient, packaging, semi_finished, consumable]
         categoryId:
           type: ["integer", "null"]
         unitId:

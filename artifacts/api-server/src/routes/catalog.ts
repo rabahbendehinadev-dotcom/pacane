@@ -182,9 +182,10 @@ router.post("/products", requireAuth, requirePermission(P.products.create), asyn
   let { name, sku, barcode, type, categoryId, unitId, workerId, description, costPrice, sellingPrice, alertQuantity, shelfLifeDays, isManaged, isSellable, isPurchasable, isFabricated, isInternalConsumable, branchIds, imageUrl } = req.body;
   if (!name || !type || !unitId) { res.status(400).json({ error: "Champs requis manquants" }); return; }
   try {
+    const zeroMargin = type === "ingredient" || type === "consumable";
     const [product] = await db.insert(productsTable).values({
       name, sku, barcode, type, categoryId, unitId, workerId: workerId ?? null, description, imageUrl: imageUrl ?? null,
-      costPrice: costPrice?.toString() ?? "0", sellingPrice: sellingPrice?.toString() ?? "0",
+      costPrice: costPrice?.toString() ?? "0", sellingPrice: zeroMargin ? (costPrice?.toString() ?? "0") : (sellingPrice?.toString() ?? "0"),
       alertQuantity: alertQuantity?.toString(), shelfLifeDays, isManaged: isManaged ?? true,
       isSellable: isSellable ?? true, isPurchasable: isPurchasable ?? false, isFabricated: isFabricated ?? false,
       isInternalConsumable: isInternalConsumable ?? false,
@@ -254,6 +255,14 @@ router.patch("/products/:id", requireAuth, requirePermission(P.products.edit), a
     }
   }
   try {
+    const [existing] = await db.select({
+      type: productsTable.type,
+      costPrice: productsTable.costPrice,
+    }).from(productsTable).where(eq(productsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Produit introuvable" }); return; }
+    if (["ingredient", "consumable"].includes(String(updates.type ?? existing.type))) {
+      updates.sellingPrice = updates.costPrice != null ? updates.costPrice : existing.costPrice;
+    }
     const [product] = await db.update(productsTable).set(updates as any).where(eq(productsTable.id, id)).returning();
     if (!product) { res.status(404).json({ error: "Produit introuvable" }); return; }
     const [unit] = await db.select().from(unitsTable).where(eq(unitsTable.id, product.unitId));

@@ -98,6 +98,7 @@ export default function Products() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
+  const zeroMarginType = form.type === "ingredient" || form.type === "consumable";
   const [margeStr, setMargeStr] = useState("");
   const isEditingMargeRef = useRef(false);
   const [selectedBranchIds, setSelectedBranchIds] = useState<number[]>([]);
@@ -130,6 +131,10 @@ export default function Products() {
 
   useEffect(() => {
     if (isEditingMargeRef.current) return;
+    if (zeroMarginType) {
+      setMargeStr("0.0");
+      return;
+    }
     const cost = parseFloat(form.costPrice);
     const sell = parseFloat(form.sellingPrice);
     if (!form.costPrice || !form.sellingPrice || isNaN(cost) || isNaN(sell) || cost === 0 || sell === 0) {
@@ -137,7 +142,7 @@ export default function Products() {
     } else {
       setMargeStr(((sell - cost) / cost * 100).toFixed(1));
     }
-  }, [form.costPrice, form.sellingPrice]);
+  }, [form.costPrice, form.sellingPrice, zeroMarginType]);
 
   const { user } = useAuth();
   const isAdmin = !!(user as any)?.adminAccess;
@@ -258,7 +263,7 @@ export default function Products() {
   async function openEdit(p: Product) {
     setEditing(p);
     const effectiveUnitId = p.type === "finished" ? (pieceUnitId ?? p.unitId?.toString() ?? "none") : (p.unitId?.toString() ?? "none");
-    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, workerId: (p as any).workerId?.toString() ?? "none", costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.sellingPrice?.toString() ?? "", alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, isInternalConsumable: (p as any).isInternalConsumable ?? false, description: p.description ?? "" });
+    setForm({ name: p.name, type: p.type, sku: p.sku ?? "", categoryId: p.categoryId?.toString() ?? "none", unitId: effectiveUnitId, workerId: (p as any).workerId?.toString() ?? "none", costPrice: p.costPrice?.toString() ?? "", sellingPrice: p.type === "ingredient" || p.type === "consumable" ? (p.costPrice?.toString() ?? "") : (p.sellingPrice?.toString() ?? ""), alertQuantity: p.alertQuantity?.toString() ?? "", isSellable: p.isSellable, isPurchasable: p.isPurchasable, isFabricated: p.isFabricated, isInternalConsumable: (p as any).isInternalConsumable ?? false, description: p.description ?? "" });
     setSelectedBranchIds((p as any).branchIds ?? []);
     setImagePreview(p.imageUrl ?? null);
     setPendingImagePath(null);
@@ -318,7 +323,9 @@ export default function Products() {
       unitId: form.unitId && form.unitId !== "none" ? parseInt(form.unitId) : null,
       workerId: form.workerId && form.workerId !== "none" ? parseInt(form.workerId) : null,
       costPrice: form.costPrice ? parseFloat(form.costPrice) : null,
-      sellingPrice: form.sellingPrice ? parseFloat(form.sellingPrice) : null,
+      sellingPrice: zeroMarginType
+        ? (form.costPrice ? parseFloat(form.costPrice) : 0)
+        : (form.sellingPrice ? parseFloat(form.sellingPrice) : null),
       alertQuantity: form.alertQuantity ? parseFloat(form.alertQuantity) : null,
       branchIds: selectedBranchIds,
       imageUrl,
@@ -650,6 +657,7 @@ export default function Products() {
                   <TableCell className="text-sm font-semibold text-primary">{p.sellingPrice ? formatDA(parseFloat(p.sellingPrice.toString())) : "—"}</TableCell>
                   <TableCell className="text-sm font-mono">
                     {(() => {
+                      if (p.type === "ingredient" || p.type === "consumable") return <span>0.0%</span>;
                       const cost = p.costPrice ? parseFloat(p.costPrice.toString()) : null;
                       const sell = p.sellingPrice ? parseFloat(p.sellingPrice.toString()) : null;
                       if (cost == null || sell == null || sell === 0) return <span className="text-muted-foreground">—</span>;
@@ -888,7 +896,7 @@ export default function Products() {
               <div><Label>Nom *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
               <div>
                 <Label>Type *</Label>
-                <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v, unitId: v === "finished" ? (pieceUnitId ?? f.unitId) : f.unitId }))}>
+                <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v, unitId: v === "finished" ? (pieceUnitId ?? f.unitId) : f.unitId, sellingPrice: v === "ingredient" || v === "consumable" ? f.costPrice : f.sellingPrice }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="finished">Produit fini</SelectItem>
@@ -1006,8 +1014,8 @@ export default function Products() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div><Label>Prix coût (DA)</Label><Input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} /></div>
-              <div><Label>Prix vente (DA)</Label><Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} /></div>
+              <div><Label>Prix coût (DA)</Label><Input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value, sellingPrice: f.type === "ingredient" || f.type === "consumable" ? e.target.value : f.sellingPrice }))} /></div>
+              <div><Label>Prix vente (DA)</Label><Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} disabled={zeroMarginType} /></div>
               <div>
                 <Label>Marge %</Label>
                 <div className="relative">
@@ -1015,6 +1023,7 @@ export default function Products() {
                     type="number"
                     value={margeStr}
                     placeholder="—"
+                    disabled={zeroMarginType}
                     className={parseFloat(margeStr) < 0 ? "text-red-500 pr-6" : "pr-6"}
                     onFocus={() => { isEditingMargeRef.current = true; }}
                     onBlur={() => {

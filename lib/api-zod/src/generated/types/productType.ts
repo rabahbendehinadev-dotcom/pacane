@@ -14,4 +14,5 @@ export const ProductType = {
   ingredient: 'ingredient',
   packaging: 'packaging',
   semi_finished: 'semi_finished',
+  consumable: 'consumable',
 } as const;
