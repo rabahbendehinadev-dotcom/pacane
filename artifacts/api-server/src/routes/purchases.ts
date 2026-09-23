@@ -60,6 +60,7 @@ async function receiveStockWithCmup(
         ? {
             costPrice: newCmup.toFixed(2),
             sellingPrice: newCmup.toFixed(2),
+            isSellable: true,
           }
         : {
             costPrice: newCmup.toFixed(2),
